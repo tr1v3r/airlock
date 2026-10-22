@@ -37,7 +37,9 @@ NOSCRIPT 明确没有执行，可回退到 EVAL。其他网络/脚本错误返�
 但响应丢失，不能擅自重试，尤其 Renew 没有独立 operation ID，重试可能再次延长租期。
 
 go-redis v9.22.0 的每命令 NoRetry 禁止不确定传输错误的内部重试，保留明确的 Cluster
-MOVED/ASK 路由。构造器不修改共享客户端配置；要求 ContextTimeoutEnabled，拒绝副本读取。
+MOVED/ASK 路由。构造器不修改共享客户端配置；要求 ContextTimeoutEnabled，拒绝副本读取及禁用 socket deadline 的配置。
+原始 ReadTimeout/WriteTimeout=-1 仍保留 context deadline，可以使用；-2 会禁用底层
+SetReadDeadline/SetWriteDeadline，不能仅凭 context 保证超时，因此构造时拒绝。
 用户自行安装的 hooks 也不能偷偷重试未知写入。默认总操作超时 5 秒；ctx 更早的期限优先。
 业务拒绝仍可能伴随维护状态提交，不能因为返回队满等错误而丢弃新快照。
 
@@ -74,6 +76,10 @@ Redis 默认异步复制可能在切换后丢失已经确认的授权。持久�
 
 
 实际验证记录（2026-10-23）：Go 1.24.13 / Darwin arm64；根模块覆盖率 100%，
-Redis 生产文件覆盖率 97.12%，独立模块的 race/vet/lint 通过。真实 Redis 7.4 standalone、
+Redis 生产文件覆盖率 97.22%，独立模块的 race/vet/lint 通过。真实 Redis 7.4 standalone、
 Redis 7 三主 Cluster 契约测试，以及异步复制缺失 seed/verify 实验通过。
 CI 增加 Redis 7/8 standalone、Cluster 和异步故障边界检查；这些是正确性验证，未给出吞吐或 P99 承诺。
+
+审查后补充：构造校验拒绝禁用 socket deadline 的选项；默认和仅 context 超时配置均通过
+net.Pipe 黑洞读写测试。Redis 模块最终在 race/覆盖率插桩下重复 5 轮通过；并发契约仍要求
+24 个请求全部完成且容量从不超额，轮询间隔使用 50ms，不把此检查当作性能 SLA。

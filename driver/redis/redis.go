@@ -41,7 +41,10 @@ func WithOperationTimeout(timeout time.Duration) Option {
 }
 
 // New constructs an adapter without I/O. Client must be a nonnil *redis.Client
-// or *redis.ClusterClient with ContextTimeoutEnabled. Replica routing is rejected.
+// or *redis.ClusterClient with ContextTimeoutEnabled and socket deadline writes
+// enabled. Replica routing is rejected. Raw ReadTimeout/WriteTimeout=-1 is
+// accepted (context deadlines remain active); -2 and other disabling values are
+// rejected after go-redis normalization.
 // Prefix must be UTF-8, contain no NUL, and be at most 256 bytes. The caller owns
 // the client and must not change options or install hooks retrying ambiguous
 // writes. Network retries are disabled per command, preserving client options.
@@ -51,11 +54,21 @@ func New(client goredis.UniversalClient, prefix string, options ...Option) (*Dri
 		if c == nil || !c.Options().ContextTimeoutEnabled {
 			return nil, errors.New("airlock/redis: client requires ContextTimeoutEnabled")
 		}
+		// Options() is already normalized: raw -1 becomes zero, preserving
+		// context deadlines; raw -2 becomes negative and skips Set*Deadline.
+		if o := c.Options(); o.ReadTimeout < 0 || o.WriteTimeout < 0 {
+			return nil, errors.New("airlock/redis: socket deadlines must be enabled")
+		}
 	case *goredis.ClusterClient:
 		if c == nil {
 			return nil, errors.New("airlock/redis: nil cluster client")
 		}
 		o := c.Options()
+		// Cluster normalization leaves raw -2 negative; the node clients
+		// would normalize it again to a disabled socket deadline.
+		if o.ReadTimeout < 0 || o.WriteTimeout < 0 {
+			return nil, errors.New("airlock/redis: cluster socket deadlines must be enabled")
+		}
 		if !o.ContextTimeoutEnabled || o.ReadOnly || o.RouteByLatency || o.RouteRandomly {
 			return nil, errors.New("airlock/redis: cluster requires context deadlines and primary routing")
 		}

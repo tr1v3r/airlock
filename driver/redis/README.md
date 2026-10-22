@@ -23,7 +23,11 @@ AIRLOCK_REDIS_ADDR=127.0.0.1:6379 go run ./examples/basic
 
 `New` performs no I/O, accepts a `*redis.Client` or `*redis.ClusterClient`, and
 never closes or changes the caller's client. `ContextTimeoutEnabled` must be true;
-Cluster read-only/replica routing is rejected. `WithOperationTimeout` bounds the
+Cluster read-only/replica routing is rejected. Socket deadline updates must remain
+enabled: raw `ReadTimeout`/`WriteTimeout=-2` (and other disabling negative values)
+are rejected after go-redis normalizes the options. Raw `-1` is accepted: it
+disables the configured socket timeout but still applies context deadlines.
+`WithOperationTimeout` bounds the
 whole operation (default five seconds); earlier caller deadlines prevail.
 Do not mutate client options or install hooks that retry ambiguous operations.
 

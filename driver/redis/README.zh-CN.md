@@ -22,6 +22,9 @@ AIRLOCK_REDIS_ADDR=127.0.0.1:6379 go run ./examples/basic
 
 `New` 不访问网络，接受 `*redis.Client` 或 `*redis.ClusterClient`，不关闭或修改
 调用方的连接。必须启用 `ContextTimeoutEnabled`；拒绝 Cluster 只读/副本路由。
+必须保留 socket deadline 设置：go-redis 规范化后会禁用 deadline 的配置会被拒绝，
+包括原始 `ReadTimeout`/`WriteTimeout=-2` 及其他此类负数。原始 `-1` 可接受：
+它只取消配置的 socket 超时，context 截止时间仍有效。
 `WithOperationTimeout` 限制整个操作（默认五秒）；调用方更早的截止时间优先。
 不得修改 client options，或安装会重试结果不确定操作的 hooks。
 

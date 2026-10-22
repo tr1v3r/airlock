@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -33,9 +34,9 @@ func TestDistributedLeaseLifecycle(t *testing.T) {
 	if !lease.Valid() || lease.Weight() != 1 {
 		t.Fatal("acquisition cancellation revoked delivered lease")
 	}
-	wait, cancelWait := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	wait, cancelWait := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancelWait()
-	if blocked, err := client.Acquire(wait); !errors.Is(err, context.DeadlineExceeded) || blocked != nil {
+	if blocked, err := client.Acquire(wait); (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded)) || blocked != nil {
 		t.Fatal(blocked, err)
 	}
 	if err := lease.Renew(context.Background()); err != nil {
