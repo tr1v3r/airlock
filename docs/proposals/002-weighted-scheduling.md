@@ -4,7 +4,7 @@
 原提案基线为 `dev` 的 `b6c7f62`；本文不表示此功能分支已经合入 `dev` 或发布。
 单令牌、多令牌及 TryAcquire 的现有签名不变；新增 `Config.Priority` 和 `ErrGroupQueueFull`。
 `Priority == nil` 保留单组租户轮转；启用时采用下述组选择机会契约。
-按组统计、动态迁组、分布式 driver 和租约仍未实现；对比实测见
+按组统计、动态迁组仍未实现；分布式 driver 与租约见 [driver 架构的当前状态](002-driver-architecture.md)；对比实测见
 [本地优先级实验](002-priority-experiment-results.md)，取舍见
 [设计决定](../decisions/003-local-priority.md)。
 整体范围和 driver 分工见 [总提案](002-weighted-priority-drivers.md)。

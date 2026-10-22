@@ -10,7 +10,9 @@ for manifest in driver/*/go.mod; do
     go mod tidy -diff
     go mod verify
     go vet ./...
-    go test -race -shuffle=on -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+    # Runnable examples are compiled, but aren't SDK runtime coverage targets.
+    coverpkg=$(go list ./... | grep -v '/examples/' | paste -sd, -)
+    go test -race -shuffle=on -count=1 -covermode=atomic -coverpkg="$coverpkg" -coverprofile=coverage.out ./...
     python3 "$repo/scripts/check_coverage.py" coverage.out
   )
 done

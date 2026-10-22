@@ -158,6 +158,56 @@ jobs:
           go-version: stable
       - run: bash scripts/postgres-failover.sh
 
+  redis:
+    name: Redis ${{ matrix.redis }} integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        redis: ['7', '8']
+    services:
+      redis:
+        image: redis:${{ matrix.redis }}-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - name: Real Redis protocol tests
+        working-directory: driver/redis
+        env:
+          AIRLOCK_REDIS_ADDR: 127.0.0.1:6379
+        run: go test -race -shuffle=on -count=1 -timeout=5m ./...
+      - name: Run distributed example
+        working-directory: driver/redis
+        env:
+          AIRLOCK_REDIS_ADDR: 127.0.0.1:6379
+        run: go run ./examples/basic
+
+  redis-cluster:
+    name: Redis Cluster and asynchronous failover boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - run: bash scripts/redis-cluster.sh
+      - run: bash scripts/redis-failover.sh
+
   security:
     name: Vulnerabilities
     runs-on: ubuntu-latest
@@ -175,7 +225,7 @@ jobs:
   gate:
     name: CI Gate
     if: always()
-    needs: [quality, test, race, security, drivers, postgres, postgres-failover]
+    needs: [quality, test, race, security, drivers, postgres, postgres-failover, redis, redis-cluster]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
