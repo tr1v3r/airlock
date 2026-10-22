@@ -120,11 +120,12 @@ func runJob(ctx context.Context, lease jobLease, renewEvery, operationTimeout ti
 			if !errors.Is(err, cause) {
 				err = errors.Join(err, cause)
 			}
-			// Renew can close Done before returning its error. Preserve the
-			// backend failure even if the watcher won the cancellation race.
-			if renewalErr != nil && !errors.Is(renewalErr, workCtx.Err()) && !errors.Is(err, renewalErr) {
-				err = errors.Join(err, renewalErr)
-			}
+		}
+		// Preserve a backend failure even when work finished (or the watcher
+		// cancelled) before Renew returned. Normal cancellation caused by stopping
+		// the supervisors is not itself a failed job.
+		if renewalErr != nil && !onlyContextError(renewalErr, workCtx.Err()) && !errors.Is(err, renewalErr) {
+			err = errors.Join(err, renewalErr)
 		}
 		err = errors.Join(err, releaseStoppedJob(ctx, lease, operationTimeout))
 	}()
@@ -135,6 +136,32 @@ func runJob(ctx context.Context, lease jobLease, renewEvery, operationTimeout ti
 		return context.Cause(workCtx)
 	}
 	return work(workCtx)
+}
+
+// onlyContextError ignores a normal supervisor shutdown only when every leaf
+// is that context error. errors.Is alone would also match a joined transport
+// failure and incorrectly discard the non-cancellation diagnostic.
+func onlyContextError(err, target error) bool {
+	if err == nil || target == nil {
+		return false
+	}
+	switch wrapped := err.(type) {
+	case interface{ Unwrap() []error }:
+		children := wrapped.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if !onlyContextError(child, target) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		return onlyContextError(wrapped.Unwrap(), target)
+	default:
+		return errors.Is(err, target)
+	}
 }
 
 func releaseStoppedJob(ctx context.Context, lease jobLease, timeout time.Duration) error {
