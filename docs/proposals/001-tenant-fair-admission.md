@@ -37,7 +37,7 @@ type Config struct {
 }
 
 func New(Config) (*Airlock, error)
-func (*Airlock) Acquire(ctx context.Context, tenant string) (*Permit, error)
+func (*Airlock) Acquire(ctx context.Context, tenantID ...string) (*Permit, error)
 func (*Airlock) Stats() Stats
 func (*Permit) Release() // 并发安全，重复调用不重复释放
 
@@ -49,13 +49,13 @@ type Stats struct {
 }
 ```
 
-使用方式：`permit, err := gate.Acquire(ctx, tenantID)`，成功后立即 `defer permit.Release()`，任务仍由调用方执行。
+使用方式：`permit, err := lock.Acquire(ctx, tenantID)`，成功后立即 `defer permit.Release()`，任务仍由调用方执行。
 
 配置规则：`Capacity > 0`，两个队列上限均非负，`MaxQueuedPerTenant <= MaxQueued`；非法配置构造时返回错误。零队列上限表示不能等待，而不是无限排队。第一版不提供无限模式。
 
-`tenant` 必须非空；相等字符串视为同一租户。身份由可信业务代码提供；伪造大量不同租户可破坏公平性，本库不负责身份认证。传入 nil context 属于调用错误，panic。字符串字节数和调用方 goroutine 内存不由队列条数上限严格约束，调用方应限制身份长度及上游请求数。
+省略租户参数时使用一个共享默认租户（内部使用不可显式传入的空 key）；它不与任何显式 ID 冲突。最多允许一个显式 ID，且必须非空；多个 ID 或显式空字符串返回 `ErrInvalidTenant`。相等字符串视为同一租户。身份由可信业务代码提供；伪造大量不同租户可破坏公平性，本库不负责身份认证。传入 nil context 属于调用错误，panic。字符串字节数和调用方 goroutine 内存不由队列条数上限严格约束，调用方应限制身份长度及上游请求数。
 
-错误契约：无效租户返回 `ErrInvalidTenant`；排队人数超限返回 `ErrQueueFull` 或 `ErrTenantQueueFull`；取消返回 `ctx.Err()`。顺序：参数校验、取消检查、尝试准入、检查全局队列上限、检查租户队列上限。两个上限同时触发时优先返回全局错误。
+错误契约：无效租户或参数个数返回 `ErrInvalidTenant`；排队人数超限返回 `ErrQueueFull` 或 `ErrTenantQueueFull`；取消返回 `ctx.Err()`。顺序：参数校验、取消检查、尝试准入、检查全局队列上限、检查租户队列上限。两个上限同时触发时优先返回全局错误。
 
 ## 调度契约
 

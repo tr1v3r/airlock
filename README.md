@@ -16,6 +16,39 @@ go get github.com/tr1v3r/airlock
 This API is under development on the feature branch targeting `dev`; it is not
 available in a tagged release yet.
 
+## Hello world
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/tr1v3r/airlock"
+)
+
+func main() {
+	lock, err := airlock.New(airlock.Config{Capacity: 2})
+	if err != nil {
+		log.Fatal(err)
+	}
+	permit, err := lock.Acquire(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer permit.Release()
+	fmt.Println("hello, airlock")
+}
+```
+
+`Acquire(ctx)` uses one shared default tenant. With only `Capacity` configured,
+full capacity returns `ErrQueueFull` immediately. To wait, set **both** queue
+limits, for example `Config{Capacity: 2, MaxQueued: 8, MaxQueuedPerTenant: 8}`.
+The default tenant uses the same queue limits, FIFO and cancellation rules as
+named tenants; it does not collide with any explicit tenant ID.
+
 ## Usage and contract
 
 ```go
@@ -41,8 +74,10 @@ This snippet belongs in an error-returning function. See the runnable
 - Capacity must be positive. Queue limits must be nonnegative, and the per-tenant
   limit cannot exceed the global limit; otherwise `New` returns
   `ErrInvalidConfig`. Zero queue limits disable waiting. Limits are fixed.
-- A tenant ID is an exact, nonempty string. A nil context panics; empty IDs return
-  `ErrInvalidTenant` before cancellation is checked. Use trusted, bounded IDs:
+- Pass zero or one tenant ID: `Acquire(ctx)` uses the default tenant, while
+  `Acquire(ctx, "tenant-a")` selects an exact, nonempty string. A nil context
+  panics; an explicit empty ID or multiple IDs returns `ErrInvalidTenant` before
+  cancellation is checked. Use trusted, bounded IDs:
   Airlock does not authenticate callers or bound string lengths.
 - If no immediate slot is available, full queues return `ErrQueueFull` or
   `ErrTenantQueueFull`. Global rejection takes precedence when both are full.
@@ -81,6 +116,7 @@ Run from `airlock/`:
 
 | Example | Command |
 | --- | --- |
+| [Hello world](examples/hello/example.go) | `go run ./examples/hello` |
 | [Bounded batch and ordered results](examples/batch/example.go) | `go run ./examples/batch` |
 | [Acquisition timeout](examples/cancellation/example.go) | `go run ./examples/cancellation` |
 | [Caller-owned completion notification](examples/completion/example.go) | `go run ./examples/completion` |
@@ -99,10 +135,15 @@ Weighted requests, unlimited mode, and dynamic capacity are not implemented.
 
 This is a breaking development change: `Pool`/`NewPool` and the earlier
 `Gate`/`NewGate` names are removed. Existing callers must select explicit queue
-limits and a tenant ID, retain the returned permit, and release that permit.
+limits, optionally supply a tenant ID, retain the returned permit, and release it.
 `Stats().InUse` and `Stats().Capacity` replace `Num()` and `Size()` snapshots.
 For a simple concurrency cap without tenant admission, use `x/sync/semaphore`.
 No compatibility aliases are provided.
+
+`Acquire` now has signature `Acquire(context.Context, ...string) (*Permit, error)`.
+Existing direct calls with one tenant ID still work, but interfaces, mocks, and
+method-value function types declaring the former fixed string parameter must
+change to the variadic signature.
 
 The original channel strategy is retained only as a test baseline. The initial
 code migrated from `tr1v3r/pkg` commit

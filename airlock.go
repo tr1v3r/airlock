@@ -10,8 +10,8 @@ import (
 var (
 	// ErrInvalidConfig reports an invalid capacity or queue limit.
 	ErrInvalidConfig = errors.New("airlock: invalid configuration")
-	// ErrInvalidTenant reports an empty tenant ID.
-	ErrInvalidTenant = errors.New("airlock: empty tenant")
+	// ErrInvalidTenant reports an empty explicit ID or more than one tenant ID.
+	ErrInvalidTenant = errors.New("airlock: expected zero or one nonempty tenant ID")
 	// ErrQueueFull reports that the global waiting queue is full.
 	ErrQueueFull = errors.New("airlock: queue full")
 	// ErrTenantQueueFull reports that the tenant's waiting queue is full.
@@ -89,19 +89,27 @@ func New(cfg Config) (*Airlock, error) {
 // A grant that wins may return success even after ctx is cancelled; the caller
 // must release every successful permit. Cancellation does not stop running work.
 //
-// A nil context panics. Empty tenant IDs return ErrInvalidTenant. Next, an
-// already-cancelled context returns ctx.Err(). If capacity cannot be granted,
+// Omitting tenantID uses a shared default tenant, distinct from every explicit
+// tenant. It obeys the same queue limits and scheduling rules as named tenants.
+// A nil context panics. An empty explicit ID or more than one ID returns
+// ErrInvalidTenant. Next, an already-cancelled context returns ctx.Err().
+// If capacity cannot be granted,
 // global and then per-tenant queue limits are checked; a full global queue takes
 // precedence over a full tenant queue. Queue rejection does not wait for ctx.
 //
 // Tenant IDs are exact strings supplied by the caller. Use trusted, bounded IDs:
 // this package neither authenticates tenants nor limits their string length.
-func (g *Airlock) Acquire(ctx context.Context, tenant string) (*Permit, error) {
+func (g *Airlock) Acquire(ctx context.Context, tenantID ...string) (*Permit, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
 	}
-	if tenant == "" {
+	if len(tenantID) > 1 || (len(tenantID) == 1 && tenantID[0] == "") {
 		return nil, ErrInvalidTenant
+	}
+	// Empty is reserved internally for the default tenant; callers cannot name it.
+	tenant := ""
+	if len(tenantID) == 1 {
+		tenant = tenantID[0]
 	}
 	g.mu.Lock()
 	if err := ctx.Err(); err != nil {
