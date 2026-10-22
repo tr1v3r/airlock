@@ -5,21 +5,28 @@ cd "$(dirname "$0")/.."
 image=${AIRLOCK_REDIS_IMAGE:-redis:7-alpine}
 prefix="airlock-redis-cluster-$$"
 nodes=()
+network=
 cleanup() {
-  for node in "${nodes[@]}"; do docker rm -f "$node" >/dev/null 2>&1 || true; done
-  docker network rm "$prefix" >/dev/null 2>&1 || true
+  # Empty-array expansion must also work with macOS's Bash 3 and nounset.
+  for node in "${nodes[@]:-}"; do
+    [[ -z "$node" ]] || docker rm -f "$node" >/dev/null 2>&1 || true
+  done
+  [[ -z "$network" ]] || docker network rm "$network" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
-docker network create "$prefix" >/dev/null
+trap 'exit 130' INT
+trap 'exit 143' TERM
+created=$(docker network create "$prefix")
+network=$created
 addresses=()
 seeds=()
 mapping=()
 for i in 1 2 3; do
-  node="$prefix-$i"
-  nodes+=("$node")
-  docker run --rm -d --name "$node" --network "$prefix" -p 127.0.0.1::6379 \
+  node=$(docker run --rm -d --name "$prefix-$i" --network "$network" -p 127.0.0.1::6379 \
     "$image" redis-server --cluster-enabled yes --cluster-node-timeout 5000 \
-    --save '' --appendonly no --maxmemory-policy noeviction >/dev/null
+    --save '' --appendonly no --maxmemory-policy noeviction)
+  # Append only after docker run succeeded and returned this container's ID.
+  nodes+=("$node")
   ready=false
   for ((j=0;j<120;j++)); do
     if docker exec "$node" redis-cli ping 2>/dev/null | grep -q PONG; then ready=true; break; fi
