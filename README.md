@@ -134,6 +134,9 @@ scan run [CI](.github/workflows/ci.yml). All jobs must pass the final **CI Gate*
 
 - `gofmt`, `go vet`, and pinned golangci-lint check correctness, error handling,
   exported API comments, naming, spelling, and explained lint suppressions.
+  The quality job pins Go 1.27.0 with golangci-lint v2.13.2; upgrade and validate
+  them together because analyzer support can lag Go export-format changes.
+  Compatibility tests and vulnerability scans still track stable Go.
 - Module tidiness/checksums and standard-library-only runtime dependencies are enforced.
 - Tests run without cache and in shuffled order on Linux (Go 1.24, 1.25,
   previous stable, and stable), plus macOS and Windows (stable). `GOTOOLCHAIN=local`
