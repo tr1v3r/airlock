@@ -4,6 +4,8 @@ Airlock is a standalone Go module for weighted concurrency admission.
 The local baseline is migrated from pkg/pools at b3e47bd. It provides NewPool,
 Acquire(ctx), Release(), Num(), and Size(). Weighted acquisition is not yet
 implemented; preserve the current single-token semantics until explicitly changed.
+Gate provides single-token tenant admission with bounded waiting queues and
+round-robin scheduling. Keep its contract distinct from the simpler Pool API.
 
 - Keep runtime dependencies limited to the standard library unless justified.
 - Define atomic acquisition, cancellation, weight validation, release accounting,
@@ -14,5 +16,6 @@ implemented; preserve the current single-token semantics until explicitly change
 - Run gofmt, go test ./..., and go vet ./... for code changes; use race tests for
   concurrency implementations.
 - Preserve unrelated changes. Keep development worktrees under .worktrees/.
+- Keep the primary checkout on dev and clean; implement changes in a worktree.
 - Use Conventional Commits. Do not create tags or releases without explicit
   user authorization.

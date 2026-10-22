@@ -4,7 +4,7 @@
 
 仅依赖标准库的 Go 并发限制器，支持通过 context 取消等待，需要 Go 1.24+。
 池只负责控制准入；goroutine、结果、错误和完成等待均由调用方管理。
-不维护 worker 或任务队列，也不启动后台 goroutine。
+不维护 worker 或可执行任务队列，也不启动后台 goroutine；Gate 只排队准入请求。
 
 ## 迁移状态
 
@@ -15,20 +15,50 @@
 `main` 分支保留基础实现，后续开发在 `dev` 分支进行。
 下方 breaking change 部分为继承自 pools 的历史说明。
 
-## 实验开发
+## 按租户准入的 Gate
 
-[RFC 001：按租户公平的准入](docs/proposals/001-tenant-fair-admission.md)
-提议新增独立的单令牌 Gate，提供按租户轮转的等待队列和队列人数上限。
-原型位于 `internal/fairgate`，不是受支持的公开 API；现有 Pool 行为不变。
-运行时仍仅依赖标准库，`x/sync` 仅用于测试。
+只需要总并发上限时使用 `Pool`。共享容量且需要租户内 FIFO、等待租户间轮转及显式排队上限时，
+使用 `Gate`。两者**每次均只申请一个令牌**，尚不支持多权重请求。
 
-`internal/comparison` 包含确定性策略模型、真实取消测试和可选的 goroutine 负载测试，
-比较 Pool、Weighted、租户优先的两级 semaphore 和 Gate。
-[实验结果](docs/proposals/001-experiment-results.md) 记录测量与局限：在当前负载下，
-原型尚未证明优于表现最好的两级基线。
+```go
+gate, err := airlock.NewGate(airlock.GateConfig{
+    Capacity:           20,
+    MaxQueued:          100,
+    MaxQueuedPerTenant: 10,
+})
+if err != nil {
+    return err
+}
+permit, err := gate.Acquire(ctx, tenantID)
+if err != nil {
+    return err
+}
+defer permit.Release()
+// 执行业务，另外把 ctx 传给业务代码。
+```
+
+该片段位于返回 error 的函数中。完整可运行代码见[租户示例](examples/tenants/example.go)。
+
+- 容量必须为正数，队列上限非负，单租户上限不能超过全局上限；否则 `NewGate` 返回
+  `ErrInvalidGateConfig`。队列上限为零表示不允许等待。所有上限创建后固定。
+- 租户 ID 为精确匹配的非空字符串。nil context 会 panic；空 ID 在检查取消之前返回
+  `ErrInvalidTenant`。调用方应提供可信且长度受限的 ID，Gate 不负责身份验证或字符串长度限制。
+- 无法立即获取时，队列已满分别返回 `ErrQueueFull` 或 `ErrTenantQueueFull`；同时触发时优先返回
+  全局错误。已取消的 context 在检查容量和队列之前返回其错误。支持 `errors.Is`，失败时不返回 Permit。
+- 非空租户队列轮流放行，租户内部 FIFO。新等待租户加入轮转队尾；队列清空即移除，重新活跃时再次加入队尾。
+- 队列上限只统计尚未授予名额的请求。其他租户空闲时，单个租户可使用全部执行容量。不会抢占已运行任务。
+  公平不代表执行时间相同或延迟有上界；全局队列满时，新租户仍可能被拒绝。
+- 取消和授予串行决定：取消先完成则不保留令牌；授予先完成则成功返回，即使随后取消也需要释放。
+  取消准入等待不会停止已经获得名额的业务。
+- 仅使用返回的 `*Permit`，禁止值复制。`Release` 并发安全且幂等，nil/零值 Permit 释放无操作；不会自动归还名额。
+- `Stats()` 返回一致的 `GateStats` 快照：`Capacity`、`InUse`、`Queued`、`WaitingTenants`，不能作为任务完成屏障。
+  Gate 必须通过 `NewGate` 创建、禁止复制，内部不启动 goroutine。
+
+[设计记录](docs/proposals/001-tenant-fair-admission.md) 描述具体契约。
+[历史原型测量](docs/proposals/001-experiment-results.md) 尚未证明优于表现最好的两级 semaphore，
+也不构成生产延迟保证。比较负载现已接入公开 Gate API；`x/sync` 仍仅用于测试。
 
 ```sh
-GOWORK=off go test -race ./...
 GOWORK=off AIRLOCK_LOAD=1 go test -v ./internal/comparison -run '^TestLoadComparison$' -count=1
 GOWORK=off go test ./internal/comparison -run '^$' -bench BenchmarkAdmission -benchmem -count=3
 ```
@@ -131,6 +161,7 @@ defer p.Release()
 | [有界批量处理与有序结果](examples/batch/example.go) | `go run ./examples/batch` |
 | [获取令牌超时](examples/cancellation/example.go) | `go run ./examples/cancellation` |
 | [调用方管理完成通知](examples/completion/example.go) | `go run ./examples/completion` |
+| [按租户的单令牌准入](examples/tenants/example.go) | `go run ./examples/tenants` |
 
 ```sh
 GOWORK=off go test -race ./...

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/tr1v3r/airlock"
-	"github.com/tr1v3r/airlock/internal/fairgate"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -21,7 +20,7 @@ type admission func(context.Context, string) (func(), error)
 func adapters(capacity, queue int) map[string]admission {
 	p := airlock.NewPool(capacity)
 	s := semaphore.NewWeighted(int64(capacity))
-	g, _ := fairgate.New(fairgate.Config{Capacity: capacity, MaxQueued: queue, MaxQueuedPerTenant: queue})
+	g, _ := airlock.NewGate(airlock.GateConfig{Capacity: capacity, MaxQueued: queue, MaxQueuedPerTenant: queue})
 	m := map[string]admission{
 		"pool": func(ctx context.Context, _ string) (func(), error) { err := p.Acquire(ctx); return p.Release, err },
 		"weighted": func(ctx context.Context, _ string) (func(), error) {

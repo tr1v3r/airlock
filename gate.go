@@ -1,6 +1,4 @@
-// Package fairgate is an experimental tenant admission controller for RFC 001.
-// It is internal deliberately: its API is not a supported Airlock public API.
-package fairgate
+package airlock
 
 import (
 	"container/list"
@@ -10,29 +8,47 @@ import (
 )
 
 var (
-	ErrInvalidTenant   = errors.New("airlock: empty tenant")
-	ErrQueueFull       = errors.New("airlock: queue full")
+	// ErrInvalidGateConfig reports an invalid capacity or queue limit.
+	ErrInvalidGateConfig = errors.New("airlock: invalid gate configuration")
+	// ErrInvalidTenant reports an empty tenant ID.
+	ErrInvalidTenant = errors.New("airlock: empty tenant")
+	// ErrQueueFull reports that the global waiting queue is full.
+	ErrQueueFull = errors.New("airlock: queue full")
+	// ErrTenantQueueFull reports that the tenant's waiting queue is full.
 	ErrTenantQueueFull = errors.New("airlock: tenant queue full")
 )
 
-type Config struct {
-	Capacity           int
-	MaxQueued          int
+// GateConfig defines fixed limits for a Gate. Queue limits count pending
+// requests, not granted permits. Zero queue limits disable waiting.
+type GateConfig struct {
+	// Capacity is the positive maximum number of held permits.
+	Capacity int
+	// MaxQueued is the nonnegative maximum number of pending requests.
+	MaxQueued int
+	// MaxQueuedPerTenant is nonnegative and must not exceed MaxQueued.
+	// It does not limit a tenant's number of held permits.
 	MaxQueuedPerTenant int
 }
 
-type Stats struct {
+// GateStats is a consistent snapshot, not a completion barrier.
+type GateStats struct {
 	Capacity       int
 	InUse          int
 	Queued         int
 	WaitingTenants int
 }
 
-// Gate must be constructed with New and must not be copied.
-// It owns no workers. Fairness applies to waiting requests, not execution time.
+// Gate controls single-token admission with FIFO waiting within each tenant
+// and round-robin admission across nonempty tenant queues. New waiting tenants
+// join the end of the rotation. It does not start workers or track completion.
+//
+// Fairness applies to queued requests, not execution time or requests rejected
+// before queueing. Running work is never preempted. One tenant may hold every
+// slot when others are idle. Use NewGate; the zero value is not usable.
+// A Gate is safe for concurrent use and must not be copied.
 type Gate struct {
 	mu           sync.Mutex
-	cfg          Config
+	cfg          GateConfig
 	used, queued int
 	tenants      map[string]*tenantQueue
 	rotation     list.List
@@ -53,21 +69,33 @@ type waiter struct {
 
 // Permit must not be copied. Release is idempotent, including concurrent calls.
 // Cancellation after a successful Acquire does not release it automatically.
+// Obtain permits from Gate.Acquire; a zero-value Permit holds no capacity.
 type Permit struct {
 	once sync.Once
 	gate *Gate
 }
 
-func New(cfg Config) (*Gate, error) {
+// NewGate constructs a Gate, or returns ErrInvalidGateConfig for invalid limits.
+// Unlike NewPool, it has no unlimited mode. Limits cannot be changed after creation.
+func NewGate(cfg GateConfig) (*Gate, error) {
 	if cfg.Capacity <= 0 || cfg.MaxQueued < 0 || cfg.MaxQueuedPerTenant < 0 || cfg.MaxQueuedPerTenant > cfg.MaxQueued {
-		return nil, errors.New("airlock: invalid gate configuration")
+		return nil, ErrInvalidGateConfig
 	}
 	return &Gate{cfg: cfg, tenants: make(map[string]*tenantQueue)}, nil
 }
 
 // Acquire atomically acquires one slot or returns an error without holding any.
 // The first state transition under the lock wins cancellation/grant races.
-// A nil context panics; tenant IDs must be trusted and nonempty.
+// A grant that wins may return success even after ctx is cancelled; the caller
+// must release every successful permit. Cancellation does not stop running work.
+//
+// A nil context panics. Empty tenant IDs return ErrInvalidTenant. Next, an
+// already-cancelled context returns ctx.Err(). If capacity cannot be granted,
+// global and then per-tenant queue limits are checked; a full global queue takes
+// precedence over a full tenant queue. Queue rejection does not wait for ctx.
+//
+// Tenant IDs are exact strings supplied by the caller. Use trusted, bounded IDs:
+// this package neither authenticates tenants nor limits their string length.
 func (g *Gate) Acquire(ctx context.Context, tenant string) (*Permit, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
@@ -144,19 +172,28 @@ func (g *Gate) dispatch() {
 	}
 }
 
+// Release returns the permit once and dispatches waiting requests. Subsequent
+// calls, including concurrent calls, are no-ops. A nil or zero Permit is a no-op.
 func (p *Permit) Release() {
+	if p == nil {
+		return
+	}
 	p.once.Do(func() {
 		g := p.gate
+		if g == nil {
+			return
+		}
 		g.mu.Lock()
 		g.used--
 		g.dispatch()
 		g.mu.Unlock()
+		p.gate = nil // a released permit need not retain the Gate and its queues
 	})
 }
 
 // Stats returns a consistent snapshot, not a completion barrier.
-func (g *Gate) Stats() Stats {
+func (g *Gate) Stats() GateStats {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return Stats{g.cfg.Capacity, g.used, g.queued, len(g.tenants)}
+	return GateStats{Capacity: g.cfg.Capacity, InUse: g.used, Queued: g.queued, WaitingTenants: len(g.tenants)}
 }

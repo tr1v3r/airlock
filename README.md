@@ -4,7 +4,8 @@
 
 A standard-library-only, context-aware concurrency limiter for Go 1.24+.
 The pool controls admission; callers own goroutines, results, errors, and completion.
-It does not maintain workers, queue jobs, or start background goroutines.
+It does not maintain workers, queue executable jobs, or start background goroutines.
+Gate queues admission requests only.
 
 ## Migration status
 
@@ -15,22 +16,66 @@ each acquisition holds one token. Weighted acquisition is planned, not implement
 The `main` branch contains the baseline; ongoing development takes place on `dev`.
 The breaking-change section below describes the history inherited from pools.
 
-## Experimental development
+## Tenant-aware Gate
 
-[RFC 001: tenant-fair admission (Chinese)](docs/proposals/001-tenant-fair-admission.md)
-proposes a separate single-token Gate with per-tenant round-robin waiting queues
-and bounded queue sizes. A prototype lives in `internal/fairgate`; it is not a
-supported public API. Existing Pool behavior is unchanged. Runtime dependencies
-remain standard-library-only; `x/sync` is a test dependency.
+Use `Pool` for a simple concurrency cap. Use `Gate` when callers share capacity
+but need FIFO waiting within each tenant, round-robin admission between waiting
+tenants, and explicit waiting-queue limits. Both acquire **one token per call**;
+weighted requests are not implemented.
 
-`internal/comparison` includes deterministic policy models, real cancellation
-tests, and an opt-in goroutine workload comparing Pool, Weighted, tenant-first
-nested semaphores, and Gate. See [experiment results](docs/proposals/001-experiment-results.md)
-for measurements and limitations: the prototype has not demonstrated an advantage
-over the strongest nested baseline in the measured workloads.
+```go
+gate, err := airlock.NewGate(airlock.GateConfig{
+    Capacity:           20,
+    MaxQueued:          100,
+    MaxQueuedPerTenant: 10,
+})
+if err != nil {
+    return err
+}
+permit, err := gate.Acquire(ctx, tenantID)
+if err != nil {
+    return err
+}
+defer permit.Release()
+// Execute work, passing ctx to it separately.
+```
+
+This snippet belongs in an error-returning function. See the runnable
+[tenant example](examples/tenants/example.go).
+
+- Capacity must be positive. Queue limits must be nonnegative, and the per-tenant
+  limit cannot exceed the global limit; otherwise `NewGate` returns
+  `ErrInvalidGateConfig`. Zero queue limits disable waiting. Limits are fixed.
+- A tenant ID is an exact, nonempty string. A nil context panics; empty IDs return
+  `ErrInvalidTenant` before cancellation is checked. Use trusted, bounded IDs:
+  Gate does not authenticate callers or bound string lengths.
+- If no immediate slot is available, full queues return `ErrQueueFull` or
+  `ErrTenantQueueFull`. Global rejection takes precedence when both are full.
+  An already-cancelled context returns its error before any capacity/queue check.
+  Errors are compatible with `errors.Is`; failed acquisitions return no permit.
+- Nonempty tenant queues take turns, with FIFO order inside each queue. New
+  waiting tenants join the end of the rotation. An empty tenant queue is removed;
+  when it becomes active again it rejoins at the end.
+- Queue limits count pending requests only. One tenant may use all execution
+  capacity when others are idle. Running work is never preempted. Fairness does
+  not guarantee equal execution time or bounded latency, and cannot protect a
+  new tenant from rejection when the global waiting queue is already full.
+- Cancellation and granting are serialized. If cancellation wins, no token is
+  retained. If granting wins, Acquire succeeds even if cancellation follows:
+  release every successful permit. Cancellation does not stop admitted work.
+- Use the returned `*Permit` without copying it. `Release` is concurrency-safe
+  and idempotent; nil/zero permits do nothing. No automatic release occurs.
+- `Stats()` returns one consistent `GateStats` snapshot: `Capacity`, `InUse`,
+  `Queued`, and `WaitingTenants`. It is not a completion barrier. Gate must be
+  constructed with `NewGate` and must not be copied. It starts no goroutines.
+
+The [design record](docs/proposals/001-tenant-fair-admission.md) describes the
+contract. [Historical prototype measurements](docs/proposals/001-experiment-results.md)
+do not establish superiority over the strongest nested semaphore baseline or
+production latency guarantees. The comparison workload now exercises the public
+Gate API; `x/sync` remains a test-only dependency.
 
 ```sh
-GOWORK=off go test -race ./...
 GOWORK=off AIRLOCK_LOAD=1 go test -v ./internal/comparison -run '^TestLoadComparison$' -count=1
 GOWORK=off go test ./internal/comparison -run '^$' -bench BenchmarkAdmission -benchmem -count=3
 ```
@@ -138,6 +183,7 @@ Run from `airlock/`:
 | [Bounded batch and ordered results](examples/batch/example.go) | `go run ./examples/batch` |
 | [Acquisition timeout](examples/cancellation/example.go) | `go run ./examples/cancellation` |
 | [Caller-owned completion notification](examples/completion/example.go) | `go run ./examples/completion` |
+| [Tenant-aware single-token admission](examples/tenants/example.go) | `go run ./examples/tenants` |
 
 ```sh
 GOWORK=off go test -race ./...
