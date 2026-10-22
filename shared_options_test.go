@@ -66,6 +66,44 @@ func TestSharedProtocolOverridesAndValidation(t *testing.T) {
 	}
 }
 
+func TestSharedClockAllowanceValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name                    string
+		allowance, submit, wait time.Duration
+		valid                   bool
+	}{
+		{"zero default", 0, 0, 0, true},
+		{"positive default", time.Millisecond, 0, 0, true},
+		{"largest default", 2499 * time.Millisecond, 0, 0, true},
+		{"half default submit", 2500 * time.Millisecond, 0, 0, false},
+		{"negative", -time.Millisecond, 0, 0, false},
+		{"fractional", time.Millisecond + time.Nanosecond, 0, 0, false},
+		{"max duration", time.Duration(1<<63 - 1), 0, 0, false},
+		{"large whole duration", time.Duration(1<<63 - 1).Truncate(time.Millisecond), 0, 0, false},
+		{"below half submit", time.Millisecond, 3 * time.Millisecond, time.Second, true},
+		{"half submit", time.Millisecond, 2 * time.Millisecond, time.Second, false},
+		{"half wait", time.Millisecond, time.Second, 2 * time.Millisecond, false},
+		{"above wait", time.Second, 5 * time.Second, time.Second, false},
+		{"zero smallest windows", 0, time.Millisecond, time.Millisecond, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o := SharedOptions{Resource: "validation", Config: ResourceConfig{Admission: Config{Capacity: 1}, SubmitWindow: tc.submit, MaxWait: tc.wait}, ClockSkewAllowance: tc.allowance}
+			d := &clientStateDriver{}
+			c, err := NewShared(d, o)
+			if tc.valid {
+				if err != nil || c.options.ClockSkewAllowance != tc.allowance {
+					t.Fatalf("valid allowance changed/rejected: %+v %v", c, err)
+				}
+			} else if !errors.Is(err, ErrInvalidConfig) || c != nil {
+				t.Fatalf("invalid allowance accepted: %+v %v", c, err)
+			}
+			if len(d.commands()) != 0 {
+				t.Fatal("constructor accessed backend")
+			}
+		})
+	}
+}
+
 func TestSharedDefaultsDoNotMigrateExistingResource(t *testing.T) {
 	d := &clientStateDriver{}
 	original := clientOptions()

@@ -1,0 +1,241 @@
+package airlock
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+)
+
+// clockStateDriver uses the real state machine with a stable backend clock
+// offset, not a backward jump between operations on an existing resource.
+// after can lose or delay a response after its transition has committed.
+type clockStateDriver struct {
+	clientStateDriver
+	offset time.Duration
+}
+
+func (d *clockStateDriver) executeClock(ctx context.Context, cmd Command) (Result, error) {
+	d.mu.Lock()
+	next, result, err := Transition(d.state, time.Now().Add(d.offset), cmd)
+	if next != nil {
+		d.state = next
+	}
+	d.calls = append(d.calls, cmd)
+	d.mu.Unlock()
+	if d.after != nil {
+		return d.after(ctx, cmd, result, err)
+	}
+	return result, err
+}
+func (d *clockStateDriver) Submit(ctx context.Context, r Request) (Result, error) {
+	return d.executeClock(ctx, Command{Kind: Submit, Request: r})
+}
+func (d *clockStateDriver) Observe(ctx context.Context, r Request) (Result, error) {
+	return d.executeClock(ctx, Command{Kind: Observe, Request: r})
+}
+func (d *clockStateDriver) Cancel(ctx context.Context, r Request) (Result, error) {
+	return d.executeClock(ctx, Command{Kind: Cancel, Request: r})
+}
+func (d *clockStateDriver) Renew(ctx context.Context, r LeaseRef) (Result, error) {
+	return d.executeClock(ctx, Command{Kind: Renew, Request: r.Request, LeaseID: r.ID})
+}
+func (d *clockStateDriver) Release(ctx context.Context, r LeaseRef) (Result, error) {
+	return d.executeClock(ctx, Command{Kind: Release, Request: r.Request, LeaseID: r.ID})
+}
+
+func clockOptions() SharedOptions {
+	o := clientOptions()
+	o.Config.SubmitWindow = 10 * time.Second
+	o.Config.MaxWait = 10 * time.Second
+	o.Config.LeaseTTL = 5 * time.Second
+	return o
+}
+
+func TestSharedClockAllowanceOffsets(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		offset    time.Duration
+		allowance time.Duration
+		want      error
+	}{
+		{"zero unchanged", 0, 0, nil},
+		{"zero does not calibrate", -time.Second, 0, ErrInvalidRequest},
+		{"client ahead", -time.Second, 1500 * time.Millisecond, nil},
+		{"client behind", time.Second, 1500 * time.Millisecond, nil},
+		{"allowance with aligned clocks", 0, 1500 * time.Millisecond, nil},
+		{"insufficient allowance fails closed", -2 * time.Second, 1500 * time.Millisecond, ErrInvalidRequest},
+		{"backend beyond submission window", 11 * time.Second, 1500 * time.Millisecond, ErrSubmitExpired},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &clockStateDriver{offset: tc.offset}
+			o := clockOptions()
+			o.ClockSkewAllowance = tc.allowance
+			c := clientNew(t, d, o)
+			for attempt := 0; attempt < 3; attempt++ {
+				lease, err := c.Acquire(context.Background())
+				if !errors.Is(err, tc.want) {
+					t.Fatalf("attempt %d: lease=%v error=%v want=%v", attempt, lease, err, tc.want)
+				}
+				if tc.want != nil {
+					if lease != nil {
+						t.Fatal("failed acquisition authorized work")
+					}
+					continue
+				}
+				if lease == nil || !lease.Valid() {
+					t.Fatal("live grant missing")
+				}
+				if err := lease.Renew(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				if err := lease.Release(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				clientClosed(t, lease)
+			}
+		})
+	}
+}
+
+func TestSharedClockAllowanceDeadlineIdentity(t *testing.T) {
+	for _, early := range []bool{false, true} {
+		t.Run(fmt.Sprint(early), func(t *testing.T) {
+			d := &clockStateDriver{offset: -time.Second}
+			o := clockOptions()
+			o.ClockSkewAllowance = 1500 * time.Millisecond
+			c := clientNew(t, d, o)
+			ctx := context.Background()
+			var callerDeadline time.Time
+			if early {
+				callerDeadline = time.Now().Add(4 * time.Second)
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithDeadline(ctx, callerDeadline)
+				defer cancel()
+			}
+			before := time.Now().UTC().Truncate(time.Millisecond)
+			lease, err := c.Acquire(ctx)
+			after := time.Now().UTC().Truncate(time.Millisecond)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = lease.Release(context.Background()) }()
+			r := d.commands()[0].Request
+			window := o.Config.SubmitWindow - o.ClockSkewAllowance
+			if r.SubmitUntil.Before(before.Add(window)) || r.SubmitUntil.After(after.Add(window)) {
+				t.Fatalf("submission budget not reserved: %v", r.SubmitUntil)
+			}
+			if !strings.HasPrefix(r.ID, strconv.FormatInt(r.SubmitUntil.UnixMilli(), 10)+"-") {
+				t.Fatal("request identity lost its immutable deadline binding")
+			}
+			if early {
+				if !r.WaitUntil.Equal(callerDeadline.UTC().Truncate(time.Millisecond).Add(-o.ClockSkewAllowance)) {
+					t.Fatalf("caller deadline not shortened: %v", r.WaitUntil)
+				}
+			} else {
+				wait := o.Config.MaxWait - o.ClockSkewAllowance
+				if r.WaitUntil.Before(before.Add(wait)) || r.WaitUntil.After(after.Add(wait)) {
+					t.Fatalf("waiting budget not reserved: %v", r.WaitUntil)
+				}
+			}
+			if r.Config != o.Config { // This fixture has no pointer-valued priority policy.
+				t.Fatal("client allowance changed the immutable resource policy")
+			}
+		})
+	}
+}
+
+func TestSharedClockAllowanceShortContextDoesNotSubmit(t *testing.T) {
+	for _, cancelled := range []bool{false, true} {
+		d := &clockStateDriver{}
+		o := clockOptions()
+		o.ClockSkewAllowance = 1500 * time.Millisecond
+		c := clientNew(t, d, o)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		if cancelled {
+			cancel()
+		}
+		lease, err := c.Acquire(ctx)
+		cancel()
+		want := ErrLeaseLost
+		if cancelled {
+			want = context.Canceled
+		}
+		if lease != nil || !errors.Is(err, want) || len(d.commands()) != 0 {
+			t.Fatalf("cancelled=%v lease=%v error=%v commands=%d", cancelled, lease, err, len(d.commands()))
+		}
+	}
+}
+
+// deadlineCancellingContext exposes cancellation between Acquire's initial
+// context check and its short-budget preflight, without a timer/scheduler race.
+type deadlineCancellingContext struct {
+	context.Context
+	cancel   context.CancelFunc
+	deadline time.Time
+}
+
+func (c deadlineCancellingContext) Deadline() (time.Time, bool) {
+	c.cancel()
+	return c.deadline, true
+}
+
+func TestSharedClockAllowanceCancellationDuringBudgetCheck(t *testing.T) {
+	d := &clockStateDriver{}
+	o := clockOptions()
+	o.ClockSkewAllowance = 1500 * time.Millisecond
+	client := clientNew(t, d, o)
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx := deadlineCancellingContext{Context: parent, cancel: cancel, deadline: time.Now().Add(time.Second)}
+	if ctx.Err() != nil {
+		t.Fatal("context cancelled before acquisition preflight")
+	}
+	lease, err := client.Acquire(ctx)
+	if lease != nil || !errors.Is(err, context.Canceled) || errors.Is(err, ErrLeaseLost) || len(d.commands()) != 0 {
+		t.Fatalf("cancellation precedence: lease=%v error=%v commands=%d", lease, err, len(d.commands()))
+	}
+}
+
+func TestSharedClockAllowanceIsClientLocal(t *testing.T) {
+	d := &clockStateDriver{}
+	o := clockOptions()
+	without := clientNew(t, d, o)
+	o.ClockSkewAllowance = time.Second
+	with := clientNew(t, d, o)
+	first := clientAcquire(t, without)
+	second := clientAcquire(t, with)
+	if !first.Valid() || !second.Valid() {
+		t.Fatal("client-local allowance prevented sharing a resource")
+	}
+}
+
+func TestSharedClockAllowanceCancelledGrantCannotRevive(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d := &clockStateDriver{offset: -time.Second}
+	d.after = func(_ context.Context, cmd Command, result Result, err error) (Result, error) {
+		if cmd.Kind == Submit {
+			cancel() // The backend granted, but the caller no longer accepts it.
+		}
+		return result, err
+	}
+	o := clockOptions()
+	o.ClockSkewAllowance = 1500 * time.Millisecond
+	c := clientNew(t, d, o)
+	lease, err := c.Acquire(ctx)
+	if lease != nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled grant: %v %v", lease, err)
+	}
+	calls := d.commands()
+	if len(calls) != 2 || calls[1].Kind != Cancel || calls[0].Request.ID != calls[1].Request.ID {
+		t.Fatal("cleanup changed the submission identity")
+	}
+	result, err := d.Submit(context.Background(), calls[0].Request)
+	if err != nil || result.Status != Cancelled {
+		t.Fatalf("late submission revived cancelled work: %+v %v", result, err)
+	}
+}
