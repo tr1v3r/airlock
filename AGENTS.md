@@ -7,8 +7,11 @@ and protected head requests that cannot be bypassed while awaiting capacity.
 TryAcquire/TryAcquireFor and TryAcquireN/TryAcquireNFor never queue or wait for
 capacity; they return ErrWouldBlock when immediate acquisition would bypass a
 waiter or exceed available capacity. They still acquire the internal mutex.
-Pool and Gate are no longer public APIs. Priority groups and distributed drivers
-remain proposals; the implemented permits are local and have no lease.
+Optional Config.Priority adds static tenant-to-group mappings, weighted selection
+turns, and reserved group waiting budgets. Group shares count request selections,
+not tokens or execution time; a protected request blocks all groups. Pool and Gate
+are no longer public APIs. Distributed drivers remain proposals; implemented
+permits are local and have no lease.
 
 - Keep runtime dependencies limited to the standard library unless justified.
 - Define atomic acquisition, cancellation, weight validation, release accounting,

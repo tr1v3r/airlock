@@ -1,6 +1,6 @@
 # 决策 001：本地多令牌准入的取舍
 
-状态：当前本地多令牌实现采用的设计决策。适用于 `AcquireN` / `AcquireNFor` 及其单令牌入口，不包含尚未实现的优先级分组、分布式 driver 或租约。记录日期：2026-10-22。
+状态：当前本地多令牌实现采用的设计决策。适用于 `AcquireN` / `AcquireNFor` 及其单令牌入口，本文不覆盖优先级分组的扩展（见[优先级决定](003-local-priority.md)），分布式 driver 和租约仍未实现。记录日期：2026-10-22。
 
 契约及后续设计见 [RFC 002](../proposals/002-weighted-scheduling.md)；实现见 [airlock.go](../../airlock.go)，验证见 [weighted_test.go](../../weighted_test.go)。本文记录选择理由、成本和重新评估条件，不新增 API 保证。
 

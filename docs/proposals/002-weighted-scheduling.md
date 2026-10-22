@@ -1,11 +1,12 @@
 # 多租户、多令牌与优先级：本地调度提案
 
-状态：**本地原子多令牌与租户轮转队首保护在当前功能分支实现，优先级部分仍为提案**。
-原提案基线为 `dev` 的 `b6c7f62`；本文不表示已经合入 `dev` 或发布。
-当前分支新增 `AcquireN` / `AcquireNFor`、权重错误与 `Stats.ActivePermits`，
-保持原单令牌入口和取消竞态契约，不增加组配置、组队列错误或 driver。
-后文涉及 `PriorityPolicy`、组份额/组额度、跨组游标及优先级比较实验的内容均为后续设计，
-不代表当前 API。当前调度仅有一个隐式组，按租户选择机会轮转；已选请求取消仍消耗轮转机会。
+状态：**本地原子多令牌、优先级组、独占组等待额度及队首保护已在当前功能分支实现**。
+原提案基线为 `dev` 的 `b6c7f62`；本文不表示此功能分支已经合入 `dev` 或发布。
+单令牌、多令牌及 TryAcquire 的现有签名不变；新增 `Config.Priority` 和 `ErrGroupQueueFull`。
+`Priority == nil` 保留单组租户轮转；启用时采用下述组选择机会契约。
+按组统计、动态迁组、分布式 driver 和租约仍未实现；对比实测见
+[本地优先级实验](002-priority-experiment-results.md)，取舍见
+[设计决定](../decisions/003-local-priority.md)。
 整体范围和 driver 分工见 [总提案](002-weighted-priority-drivers.md)。
 
 ## 1. 推荐决定
@@ -18,7 +19,7 @@
 
 ## 2. API 与配置
 
-保留现有两个入口，新增两个明确的多令牌入口，避免变参和重载含义：
+保留现有四个阻塞入口，避免变参和重载含义：
 
 ```go
 func (a *Airlock) Acquire(ctx context.Context) (*Permit, error)
@@ -27,9 +28,11 @@ func (a *Airlock) AcquireN(ctx context.Context, n int) (*Permit, error)
 func (a *Airlock) AcquireNFor(ctx context.Context, tenantID string, n int) (*Permit, error)
 ```
 
+`TryAcquire` 系列入口也保留原签名，不接受 context、不排队；有任何等待者或容量不足时返回 `ErrWouldBlock`，不能跨组插队。
+
 `Acquire` 等价于默认租户的 `AcquireN(ctx, 1)`；`AcquireFor` 等价于 `AcquireNFor(ctx, tenantID, 1)`。默认租户仍是内部保留身份，与所有显式租户不同；显式空 ID 仍错误。
 
-配置草案如下，字段名可在实现 PR 中整理，行为需保持：
+当前本地配置如下：
 
 ```go
 type PriorityGroup struct {
@@ -73,7 +76,7 @@ defer p.Release() // 一次归还全部 3 个；不让调用方再传释放数�
 
 固定处理顺序：nil context panic → 显式租户 ID 校验 → 权重校验 → 持锁检查 `ctx.Err()` → 即时授予条件 → 全局队列上限 → 组队列上限 → 租户队列上限。新增组上限错误 `ErrGroupQueueFull`；已有入口在未启用优先级时保留原错误顺序。
 
-即时授予仅允许**全局没有等待者且没有受保护请求**，并且 `n <= C - used`。有等待者时新请求不能绕过调度器。队列上限只计算 pending 请求；可以即时授予的请求不受队列上限阻止。进入等待队列后，即使同次调度最终授予，也先通过队列额度检查，避免“刚好能执行”的隐式插队路径。
+即时授予仅允许**全局没有等待者且没有受保护请求**，并且 `n <= C - used`。即时授予不消耗组槽位或租户轮转机会。有等待者时新请求不能绕过调度器。队列上限只计算 pending 请求；可以即时授予的请求不受队列上限阻止。进入等待队列后，即使同次调度最终授予，也先通过队列额度检查，避免“刚好能执行”的隐式插队路径。
 
 维护以下不变量：
 
@@ -87,7 +90,7 @@ defer p.Release() // 一次归还全部 3 个；不让调用方再传释放数�
 
 容量判断使用 `n <= C - used`，避免 `used + n` 溢出。构造期组额度/份额求和也要检查溢出。默认不增加容易溢出的排队权重总和统计。
 
-`Stats.InUse` 改为持有令牌数；增加 `ActivePermits` 表示未释放凭证数。`Capacity` 是令牌，`Queued` 是请求，`WaitingTenants` 是租户，不能混用单位。原来的单令牌使用中 `InUse == ActivePermits`。按组的排队/授予/拒绝统计宜另提供快照，以组名为有限维度，避免默认输出无限租户标签。
+`Stats.InUse` 改为持有令牌数；增加 `ActivePermits` 表示未释放凭证数。`Capacity` 是令牌，`Queued` 是请求，`WaitingTenants` 是租户，不能混用单位。原来的单令牌使用中 `InUse == ActivePermits`。本阶段不增加公开按组统计。后续可另提供快照，以组名为有限维度，避免默认输出无限租户标签。
 
 ## 4. 精确调度规则
 
@@ -177,6 +180,6 @@ Kubernetes APF 将请求映射到优先级，提供组级并发份额、隔离�
 
 工作负载区分等权/混合权重、短持有/长持有、全部组饱和/低组稀疏、低组大请求/高组小请求、取消风暴。统一容量、到达轨迹、持有时间和随机种子；报告授予次数、等待分位、每组最长选择间隔、拒绝数、令牌利用率、空闲令牌但有等待者的时长、吞吐。各模型不共同支持的队列上限/优先级列为不适用，不能伪装成公平的端到端比较。不能以有限测试“证明永不饿死”，证明靠第 5 节前提和状态机，测试负责查实现偏差。
 
-建议分两个本地实现 PR：先原子多令牌及现有租户 RR 的队首保护，再新增优先级配置/组级等待隔离。两者都需同步中英文 README 和 runnable examples，执行 gofmt、`go test ./...`、`go vet ./...`、`go test -race ./...`。后续 driver 复用同样的选择规则与模型测试，网络结果不确定、lease 失效等语义由独立提案定义，不强行套用本地无错误 Release。
+本地按两个实现阶段交付：原子多令牌及现有租户 RR 的队首保护，以及本分支的优先级配置/组级等待隔离。两者都需同步中英文 README 和 runnable examples，执行 gofmt、`go test ./...`、`go vet ./...`、`go test -race ./...`。后续 driver 复用同样的选择规则与模型测试，网络结果不确定、lease 失效等语义由独立提案定义，不强行套用本地无错误 Release。
 
 来源核验日期：2026-10-22；链接是可变上游页面，落地测试应锁定比较库版本。

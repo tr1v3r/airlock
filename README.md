@@ -4,7 +4,8 @@
 
 A Go 1.24+ library for weighted, tenant-aware concurrency admission.
 It provides FIFO waiting within each tenant, round-robin selection across waiting
-tenants, and global/per-tenant queue limits. Runtime dependencies are standard
+tenants, optional priority groups with weighted selection and reserved waiting
+budgets, and global/per-tenant queue limits. Runtime dependencies are standard
 library only. Callers own goroutines, results, errors, and completion.
 
 ## Installation
@@ -81,7 +82,7 @@ See the runnable [immediate acquisition example](examples/tryacquire/example.go)
   requests**; it cannot bypass a protected large request even if smaller work fits.
 - Otherwise it returns `ErrWouldBlock` with no permit and no changes to capacity,
   queues, or tenant rotation. Queue allowances do not affect this decision.
-  `ErrWouldBlock` means immediate admission is unavailable; `ErrQueueFull` and
+  `ErrWouldBlock` means immediate admission is unavailable; `ErrQueueFull`, `ErrGroupQueueFull`, and
   `ErrTenantQueueFull` instead describe rejected attempts to join an `Acquire` queue.
 - Explicit tenant IDs are validated before weights. Empty IDs return
   `ErrInvalidTenant`; nonpositive weights return `ErrInvalidWeight`, and weights
@@ -94,6 +95,75 @@ See the runnable [immediate acquisition example](examples/tryacquire/example.go)
 
 The [TryAcquire design decision](docs/decisions/002-try-acquire.md) records the
 fairness boundary and API alternatives (document in Chinese).
+
+## Local priority groups
+
+Priority is configured once at construction; existing acquisition signatures stay
+unchanged. For example, use more selection turns for online tenants while keeping
+background tenants eligible under sustained load:
+
+```go
+lock, err := airlock.New(airlock.Config{
+    Capacity: 20, MaxQueued: 120, MaxQueuedPerTenant: 10,
+    Priority: &airlock.PriorityPolicy{
+        Groups: []airlock.PriorityGroup{
+            {Name: "high", Turns: 8, MaxQueued: 80},
+            {Name: "normal", Turns: 3, MaxQueued: 30},
+            {Name: "low", Turns: 1, MaxQueued: 10},
+        },
+        DefaultGroup: "low",
+        TenantGroups: map[string]string{
+            "online": "high", "batch": "normal",
+        },
+    },
+})
+if err != nil {
+    return err
+}
+permit, err := lock.AcquireNFor(ctx, "online", 3)
+if err != nil {
+    return err
+}
+defer permit.Release()
+```
+
+This snippet belongs in an error-returning function. The runnable
+[priority example](examples/priority/example.go) queues low-priority work first,
+then demonstrates the `8:3:1` selection order without depending on goroutine start order.
+
+- `Priority: nil` keeps the existing single-group behavior. With a policy, the
+  default tenant and unmapped named tenants use `DefaultGroup`. `New` deep-copies
+  the groups and tenant mapping; later caller changes have no effect. There is no
+  live remapping. Configure mappings from trusted identities: this is scheduling,
+  not authentication, and callers must not be allowed to impersonate a high-group tenant.
+- Groups must be nonempty, with unique nonempty names, positive `Turns` in
+  non-increasing order, and total turns at most 1024. The default and all mapped
+  groups must exist; mapping keys cannot be empty. Group queue limits are
+  nonnegative and their sum cannot exceed `MaxQueued`. Violations return
+  `ErrInvalidConfig`.
+- `8:3:1` means the repeating selection slots `HHHHHHHHMMML`. Within each group,
+  tenants rotate and requests remain FIFO. Empty groups are skipped, with no
+  accumulated credit. A selected request consumes its slot even if later cancelled.
+  Immediate acquisitions when nobody is waiting consume no slot.
+- Shares count **request selections**, not tokens or execution time. With every
+  group continuously backlogged and no selected-request cancellations, a full
+  cycle grants eight high, three normal, and one low request. This is not strict
+  priority or preemption. An already-selected low-group large request blocks later
+  high-group work until it fits or is cancelled; `TryAcquire` cannot bypass it.
+- Group queue allowances are reserved and cannot be borrowed. Unassigned global
+  allowance is not shared automatically. Queue rejection order is global
+  `ErrQueueFull`, then group `ErrGroupQueueFull`, then tenant `ErrTenantQueueFull`.
+  Queue limits count requests, including a protected request; zero group allowance
+  disables queuing for that group but still permits immediate acquisition.
+- Positive turns preserve progress for accepted, uncancelled requests if holders
+  eventually release and scheduling progresses. A continuously waiting low group
+  sees at most 11 other selections between its turns in `8:3:1`; this is neither a
+  per-tenant bound nor a time bound. Queue admission itself may still be rejected.
+  `Stats` remains an aggregate snapshot; per-group statistics are not exposed yet.
+
+See the [priority design tradeoffs](docs/decisions/003-local-priority.md) and
+[comparison results](docs/proposals/002-priority-experiment-results.md) for the
+fairness boundaries and utilization cost (documents in Chinese).
 
 ## Usage and contract
 
@@ -132,11 +202,11 @@ the same `permit.Release()` returns all three. Without a tenant ID, use
   (`ErrInvalidTenant`), then weight validation: `n <= 0` returns
   `ErrInvalidWeight`; `n > Capacity` returns `ErrWeightExceedsCapacity`.
   Invalid weights fail immediately without queuing, even with a cancelled context.
-- If immediate acquisition is not possible, full queues return `ErrQueueFull` or
-  `ErrTenantQueueFull`. Global rejection takes precedence when both are full.
+- If immediate acquisition is not possible, full queues return `ErrQueueFull`,
+  `ErrGroupQueueFull` (with priority enabled), or `ErrTenantQueueFull`, checked in that order.
   An already-cancelled context returns its error before available-capacity and queue checks.
   Errors are compatible with `errors.Is`; failed acquisitions return no permit.
-- Nonempty tenant queues take turns, with FIFO order inside each queue. When
+- Nonempty tenant queues take turns within their group, with FIFO order inside each queue. When
   capacity is available, the scheduler selects the next tenant's head request
   and consumes that tenant's turn. If its full weight does not fit, it remains
   protected: smaller or newly arriving requests cannot bypass it. Cancelling
@@ -173,7 +243,7 @@ fairness, and keeps explicit release, including costs and reassessment criteria
 
 The [initial design record](docs/proposals/001-tenant-fair-admission.md) describes
 the single-token foundation. The [weighted contract](docs/proposals/002-weighted-scheduling.md)
-extends it; priority groups in that document remain proposed. [Historical prototype measurements](docs/proposals/001-experiment-results.md)
+extends it with the implemented local priority policy. [Historical prototype measurements](docs/proposals/001-experiment-results.md)
 do not establish superiority over the strongest nested semaphore baseline or
 production latency guarantees. The comparison workload now exercises the public
 Airlock API; `x/sync` remains a test-only dependency.
@@ -196,6 +266,7 @@ Run from `airlock/`:
 | [Tenant-aware single-token admission](examples/tenants/example.go) | `go run ./examples/tenants` |
 | [Multi-tenant weighted admission](examples/weighted/example.go) | `go run ./examples/weighted` |
 | [Immediate acquisition and fallback](examples/tryacquire/example.go) | `go run ./examples/tryacquire` |
+| [Priority selection order](examples/priority/example.go) | `go run ./examples/priority` |
 
 ```sh
 GOWORK=off go test -race ./...
@@ -264,8 +335,11 @@ Weekly schedules run from the repository's default branch.
 The sole admission type is `Airlock`, constructed with `New(Config)`. Every
 `Acquire(ctx)` or `AcquireFor(ctx, tenantID)` still acquires **one token**.
 The new `AcquireN(ctx, n)` and `AcquireNFor(ctx, tenantID, n)` acquire `n` tokens,
-returned together by `Permit.Release()`. Unlimited mode, dynamic capacity,
-priority groups, and distributed drivers are not implemented.
+returned together by `Permit.Release()`. `Config.Priority` optionally enables local
+priority groups without changing these signatures. Unlimited mode, dynamic capacity,
+and distributed drivers are not implemented. Existing keyed configurations with
+`Priority: nil` (or omitted) retain single-group behavior. The new `Config.Priority`
+field requires callers using unkeyed `Config` literals to migrate to keyed fields.
 
 This is a breaking development change: `Pool`/`NewPool` and the earlier
 `Gate`/`NewGate` names are removed. Existing callers must select explicit queue
@@ -289,6 +363,6 @@ when a later acquisition fails. Airlock does not execute jobs or track completio
 
 ## Design proposal
 
-The [weighted, priority-aware admission and optional drivers proposal](docs/proposals/002-weighted-priority-drivers.md) describes local, Redis, and PostgreSQL support. This branch implements phase 1: local atomic multi-token acquisition with tenant
-round-robin and head-request protection. Priority groups and distributed drivers
-remain proposals. This does not indicate a merged or tagged release.
+The [weighted, priority-aware admission and optional drivers proposal](docs/proposals/002-weighted-priority-drivers.md) describes local, Redis, and PostgreSQL support. This branch implements local phases 1 and 2: atomic multi-token acquisition,
+priority groups with tenant round-robin, reserved waiting budgets, and head-request
+protection. Distributed drivers and leases remain proposals. This does not indicate a merged or tagged release.
