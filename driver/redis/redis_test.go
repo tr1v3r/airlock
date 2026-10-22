@@ -51,7 +51,15 @@ func mustExecute(t *testing.T, d *Driver, c airlock.Command) airlock.Result {
 	return result
 }
 func TestConformance(t *testing.T) {
-	driverconformance.Run(t, func(t *testing.T) airlock.Driver { d, _, _ := fixture(t); return d })
+	driverconformance.Run(t, func(t *testing.T) airlock.Driver {
+		d, _, _ := fixture(t)
+		if os.Getenv("AIRLOCK_STRESS") == "1" {
+			// Match the conformance harness's heavy budget; otherwise the
+			// adapter's inner five-second context still wins under contention.
+			d.timeout = 20 * time.Second
+		}
+		return d
+	})
 }
 
 func TestConstructor(t *testing.T) {
