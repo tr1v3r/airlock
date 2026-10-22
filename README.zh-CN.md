@@ -109,6 +109,53 @@ GOWORK=off go test -race ./...
 GOWORK=off go vet ./...
 ```
 
+## CI 质量门禁
+
+PR、推送到 `dev`/`main`、合并队列、手动触发和每周扫描均运行
+[CI](.github/workflows/ci.yml)。所有任务必须成功，最终的 **CI Gate** 才会通过：
+
+- `gofmt`、`go vet` 和固定版本的 golangci-lint 检查正确性、错误处理、
+  导出 API 注释、命名、拼写，并要求 lint 豁免注明具体检查项和原因。
+  质量检查固定使用 Go 1.27.0 与 golangci-lint v2.13.2，需配套升级并验证，
+  避免分析器尚未支持新版 Go 的导出格式。兼容性测试和漏洞扫描仍跟踪稳定版 Go。
+- 检查模块清单整洁性、校验和，并保证运行时仅依赖标准库。
+- Linux 覆盖 Go 1.24、1.25、上一稳定版及稳定版，macOS/Windows 覆盖稳定版。
+  测试禁用缓存并随机排序，`GOTOOLCHAIN=local` 防止自动升级工具链掩盖最低版本不兼容。
+  每个矩阵任务都会执行所有文档示例。
+- Linux 运行 race 检测，并在 CPU 数 1/2/4 下各重复十轮乱序测试。
+  原子语句覆盖率要求每个生产文件及总计均达到 **95%**（当前核心基线为 **100%**）。
+  示例和仅用于比较的代码不计入覆盖率；新增生产包自动纳入。
+  覆盖率报告保存 14 天，失败时也上传。
+- 固定版本的 `govulncheck -test` 阻止 SDK 和测试中可达的已知漏洞；这不代表不存在其他漏洞。
+- 校验工作流语法并测试覆盖率检查器。Action 固定完整提交 SHA，只授予读取权限，
+  配置任务超时，PR 不使用密钥。Dependabot 每周提出 Action/模块更新；
+  工作流中固定的 CLI 工具版本需单独审查更新。
+
+本地等效检查（需要 Go、Python 3、Bash 和对应固定版本的工具）：
+
+```sh
+bash scripts/check.sh format
+bash scripts/check.sh modules
+GOWORK=off go vet ./...
+golangci-lint config verify && golangci-lint run
+actionlint
+python3 -m unittest discover -s scripts -p 'test_*.py'
+GOWORK=off go test -shuffle=on -count=1 -timeout=5m ./...
+bash scripts/check.sh coverage
+GOWORK=off go test -race -shuffle=on -count=10 -cpu=1,2,4 -timeout=5m ./...
+bash scripts/check.sh examples
+GOWORK=off govulncheck -test ./...
+```
+
+`modules` 会运行 `go mod tidy`，模块清单变化时失败；本地清单可能被更新，供审查。
+工具安装命令和版本见工作流。覆盖率统计可执行语句，不代表分支覆盖率或正确性；
+不要仅为通过 CI 降低阈值或屏蔽问题。共享 runner 缺少稳定的性能基线，
+性能比较保留为按需运行。API 兼容性检查需要先约定已发布的 API 基线，目前尚未强制执行。
+
+**仓库设置：** 推送并运行工作流后，需要为 `dev`/`main` 配置分支规则，
+要求 **CI Gate** 成功、通过 PR 和审查批准，并按需禁止绕过与强推。
+仅提交工作流不能阻止合并；本次变更不修改远端仓库规则。每周定时任务运行默认分支的工作流。
+
 ## 迁移
 
 唯一的准入类型为 `Airlock`，通过 `New(Config)` 构造。
