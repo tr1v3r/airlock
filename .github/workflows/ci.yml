@@ -109,6 +109,11 @@ jobs:
         with:
           go-version: stable
       - run: bash scripts/driver-check.sh
+      - name: Run Shared hello and lifecycle examples
+        working-directory: driver/memory
+        run: |
+          go run ./examples/hello
+          go run ./examples/lifecycle
 
   postgres:
     name: PostgreSQL ${{ matrix.postgres }} integration

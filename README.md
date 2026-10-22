@@ -8,13 +8,24 @@ tenants, optional priority groups with weighted selection and reserved waiting
 budgets, and global/per-tenant queue limits. Runtime dependencies are standard
 library only. Callers own goroutines, results, errors, and completion.
 
+## Choose an entry point
+
+| Need | Entry point | Start here |
+| --- | --- | --- |
+| Admission within one process | `New(Config)` → `*Airlock`, `*Permit` | [Hello world](#hello-world) |
+| Share capacity through Redis or PostgreSQL | `NewShared(driver, options)` → `*Shared`, `*Lease` | [Shared quick start](#shared-quick-start) |
+| Test or demonstrate the Shared lease API | `NewShared(memory.New(), options)` | [Memory examples](driver/memory) |
+
+Ordinary local admission does not need a driver. The core runtime uses only the
+standard library; remote driver dependencies are installed separately.
+
 ## Installation
 
 ```sh
 go get github.com/tr1v3r/airlock
 ```
 
-This API is under development on the feature branch targeting `dev`; it is not
+This README describes the development API targeting `dev`; it is not
 available in a tagged release yet.
 
 ## Hello world
@@ -49,6 +60,35 @@ full capacity returns `ErrQueueFull` immediately. To wait, set **both** queue
 limits, for example `Config{Capacity: 2, MaxQueued: 8, MaxQueuedPerTenant: 8}`.
 The default tenant uses the same queue limits, FIFO and cancellation rules as
 named tenants; it does not collide with any explicit tenant ID.
+
+## Shared quick start
+
+Create a [Redis](driver/redis) or [PostgreSQL](driver/postgres) driver, then set
+resource, capacity and optional queue limits. Protocol parameters have defaults:
+
+```go
+shared, err := airlock.NewShared(driver, airlock.SharedOptions{
+    Resource: "jobs",
+    Config: airlock.ResourceConfig{
+        Admission: airlock.Config{
+            Capacity: 10, MaxQueued: 20, MaxQueuedPerTenant: 10,
+        },
+    },
+})
+if err != nil {
+    return err
+}
+```
+
+Use `shared.Acquire(ctx)` for one token without a tenant ID, or
+`shared.AcquireNFor(ctx, "online", 2)` for two tokens for a tenant.
+As with local admission, omitted queue limits disable waiting. Shared returns a
+Lease: default TTL is 30s, release uses `lease.Release(ctx) error`, and work must
+stop on lease loss. Longer work needs explicit renewal.
+
+Start with the [Shared guide](docs/guides/shared.md) for backend setup, a runnable
+hello example, a complete cancellation/renewal/cleanup example, and advanced
+settings. You do not need to learn the Driver protocol to use Shared.
 
 ## Immediate acquisition
 
@@ -392,40 +432,14 @@ priority groups with tenant round-robin, reserved waiting budgets, and head-requ
 protection. The driver contract, lease client and memory reference are implemented;
 PostgreSQL and Redis are provided as independent modules. This does not indicate a tagged release.
 
-## Distributed leases and drivers
+## Driver implementation details
 
-This branch implements the driver protocol, `NewShared`, and the independent
-[memory](driver/memory), [PostgreSQL](driver/postgres), and [Redis](driver/redis) drivers. Local `New(Config)` and `Permit` are unchanged.
-`NewShared(driver, SharedOptions)` returns a `*Shared` for admission coordinated
-through the chosen driver. The driver determines the sharing scope. Construction
-validates and copies configuration without backend I/O or acquiring tokens.
-The previous `NewDistributed`, `Distributed`, and `DistributedOptions` names
-remain deprecated compatibility aliases/entry points.
+Backend authors can use the separate [custom driver guide](docs/guides/drivers.md),
+[protocol decisions](docs/decisions/005-driver-contract.md), and
+[module guide](MODULES.md). Redis and PostgreSQL are independent modules with
+backend-specific deployment and failure boundaries documented in their READMEs.
 
-Use the independent [memory module](driver/memory) to exercise the same protocol
-in one process. It does not provide durable storage or cross-process capacity.
-
-The driver exposes `Submit(ctx, Request)`, `Observe(ctx, Request)`, and
-`Cancel(ctx, Request)`, plus `Renew(ctx, LeaseRef)` and `Release(ctx, LeaseRef)`.
-Each returns `(Result, error)`. `LeaseRef{Request: original, ID: result.LeaseID}`
-identifies the grant. Custom drivers must implement these five methods; the
-earlier `Execute(ctx, Command)` interface has been removed. `Command` remains
-a state-machine helper for driver implementations.
-
-`Shared.AcquireNFor(ctx, tenant, n)` returns `(*Lease, error)`. Waiting uses
-bounded persistent queues and periodic Observe; a lease requires explicit
-`Renew(ctx)` and `Release(ctx) error`. Stop work when `Done()` closes or `Valid()`
-is false. The acquisition context does not revoke a delivered lease. There is
-no automatic renewal or business retry. Network errors never authorize work.
-
-See the [contract and tradeoffs](docs/decisions/005-driver-contract.md) and
-[module guide](MODULES.md). Leases bound valid allocations, not physical work
-that ignores expiry; they do not provide generic fencing or a latency SLA.
-
-PostgreSQL uses caller-owned `*sql.DB`, explicit schema setup, per-resource row
-locks and database time after locking. See its [tradeoffs and tested failover
-model](docs/decisions/006-postgres-driver.md).
-
-Redis uses a caller-owned go-redis client, one permanent key per resource, and
-backend-time-guarded snapshot CAS. Async failover can lose acknowledged grants;
-see the [Redis example and setup](driver/redis) and [tradeoffs and fault model](docs/decisions/007-redis-driver.md).
+`NewShared` performs no backend I/O at construction and does not own connections.
+The former `NewDistributed`, `Distributed`, and `DistributedOptions` names remain
+deprecated compatibility entry points/aliases. NewShared zero-value defaults also
+apply through the old constructor; existing explicit configurations are unchanged.

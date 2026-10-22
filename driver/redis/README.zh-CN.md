@@ -5,6 +5,11 @@
 独立模块 `github.com/tr1v3r/airlock/driver/redis`。根模块运行时仍只依赖标准库；
 此 adapter 使用 `go-redis/v9`，miniredis 仅供测试。Redis 需支持 Lua 和 `TIME`。
 
+接入业务先看 [Shared 使用指南](../../docs/guides/shared.zh-CN.md)：只配置资源、容量和队列
+即可开始，高级协议参数有默认值。该指南提供显式续租、任务取消和释放清理的完整示例。
+下面的存储实现细节供部署和后端维护时参考。
+
+
 ```go
 client := redis.NewClient(&redis.Options{
     Addr: "127.0.0.1:6379", ContextTimeoutEnabled: true,

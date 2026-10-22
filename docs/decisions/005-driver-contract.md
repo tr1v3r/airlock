@@ -65,7 +65,8 @@ Cancel 可以先于 Submit 到达：创建 Cancelled tombstone，迟到 Submit �
 ## 客户端生命周期
 
 公开命名统一为 `NewShared`、`Shared`、`SharedOptions`，强调通过后端共享并发额度与排队状态；Lease 继续表达授权有效期。
-构造时不做后端 I/O、不申请令牌、不接管连接。旧 Distributed 系列名称保留为已弃用的兼容入口，
+构造时不做后端 I/O、不申请令牌、不接管连接。零值协议参数由构造器补默认值，
+完整规则和已有资源迁移边界见 [ADR 008](008-shared-usability.md)。旧 Distributed 系列名称保留为已弃用的兼容入口，
 不维护第二份实现；本地 `New(Config)` 不变。
 
 `NewShared(driver, options)` 返回独立的 lease API，提供 Acquire/AcquireFor/AcquireN/AcquireNFor。

@@ -9,12 +9,20 @@ import (
 )
 
 // SharedOptions specifies one backend resource and bounded network polling.
-// There is no implicit renewal or background acquisition worker.
+// NewShared fills zero protocol fields with the defaults documented below.
+// Resource and Config.Admission.Capacity are required. Admission queue limits
+// remain unchanged: zero disables waiting. There is no implicit renewal or
+// background acquisition worker.
 type SharedOptions struct {
-	Resource         string
-	Config           ResourceConfig
+	Resource string
+	// Config fixes resource-wide admission and lease policy. Zero protocol fields
+	// default to LeaseTTL=30s, MaxWait=30s, SubmitWindow=5s, Retention=1m, and
+	// MaxRecords=10000. All clients of a resource must use the same resolved Config.
+	Config ResourceConfig
+	// OperationTimeout bounds each backend call; zero defaults to 5s.
 	OperationTimeout time.Duration
-	PollInterval     time.Duration
+	// PollInterval spaces observations while queued; zero defaults to 50ms.
+	PollInterval time.Duration
 }
 
 // Shared coordinates admission to a resource through an injected Driver.
@@ -31,6 +39,7 @@ type Shared struct {
 // Construction performs no backend I/O and acquires no tokens. The caller owns
 // the driver and its connections; Acquire starts admission.
 func NewShared(d Driver, options SharedOptions) (*Shared, error) {
+	options = options.withDefaults()
 	if d == nil || options.Resource == "" || !validText(options.Resource) || len(options.Resource) > 256 || options.OperationTimeout <= 0 || options.OperationTimeout > time.Minute || options.PollInterval <= 0 || options.PollInterval > time.Minute {
 		return nil, ErrInvalidConfig
 	}

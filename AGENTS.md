@@ -12,7 +12,11 @@ turns, and reserved group waiting budgets. Group shares count request selections
 not tokens or execution time; a protected request blocks all groups. Pool and Gate
 are no longer public APIs. Local permits have no lease. The distributed Driver contract, Transition state
 machine and NewShared/Shared/SharedOptions are implemented; memory is the reference
-driver. PostgreSQL provides transactional persistence; Redis uses guarded snapshot CAS
+driver for tests and demos; ordinary local admission uses New(Config).
+NewShared fills zero protocol settings with documented defaults, without changing
+capacity or queue limits. Shared user and custom-driver guides are separate under
+docs/guides; lifecycle supervision is application-owned example code.
+PostgreSQL provides transactional persistence; Redis uses guarded snapshot CAS
 with backend time. Both are independent modules with explicit deployment limits.
 
 - Keep runtime dependencies limited to the standard library unless justified.
