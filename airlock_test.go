@@ -12,16 +12,16 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
-func newGate(t *testing.T, capacity, total, tenant int) *airlock.Gate {
+func newAirlock(t *testing.T, capacity, total, tenant int) *airlock.Airlock {
 	t.Helper()
-	g, err := airlock.NewGate(airlock.GateConfig{Capacity: capacity, MaxQueued: total, MaxQueuedPerTenant: tenant})
+	g, err := airlock.New(airlock.Config{Capacity: capacity, MaxQueued: total, MaxQueuedPerTenant: tenant})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return g
 }
 
-func acquire(t *testing.T, g *airlock.Gate, tenant string) *airlock.Permit {
+func acquire(t *testing.T, g *airlock.Airlock, tenant string) *airlock.Permit {
 	t.Helper()
 	p, err := g.Acquire(context.Background(), tenant)
 	if err != nil {
@@ -31,7 +31,7 @@ func acquire(t *testing.T, g *airlock.Gate, tenant string) *airlock.Permit {
 	return p
 }
 
-func queued(t *testing.T, g *airlock.Gate, n int) {
+func queued(t *testing.T, g *airlock.Airlock, n int) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for g.Stats().Queued != n {
@@ -60,7 +60,7 @@ func receive(t *testing.T, ch <-chan result) result {
 }
 
 func TestRoundRobinFIFOAndNoBarging(t *testing.T) {
-	g := newGate(t, 1, 20, 10)
+	g := newAirlock(t, 1, 20, 10)
 	held := acquire(t, g, "holder")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -85,7 +85,7 @@ func TestRoundRobinFIFOAndNoBarging(t *testing.T) {
 }
 
 func TestLimitsCancellationAndReuse(t *testing.T) {
-	g := newGate(t, 1, 3, 2)
+	g := newAirlock(t, 1, 3, 2)
 	held := acquire(t, g, "holder")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -117,12 +117,12 @@ func TestLimitsCancellationAndReuse(t *testing.T) {
 }
 
 func TestZeroQueueAndValidation(t *testing.T) {
-	for _, cfg := range []airlock.GateConfig{{}, {Capacity: -1}, {Capacity: 1, MaxQueued: -1}, {Capacity: 1, MaxQueuedPerTenant: -1}, {Capacity: 1, MaxQueued: 1, MaxQueuedPerTenant: 2}} {
-		if _, err := airlock.NewGate(cfg); err == nil {
+	for _, cfg := range []airlock.Config{{}, {Capacity: -1}, {Capacity: 1, MaxQueued: -1}, {Capacity: 1, MaxQueuedPerTenant: -1}, {Capacity: 1, MaxQueued: 1, MaxQueuedPerTenant: 2}} {
+		if _, err := airlock.New(cfg); err == nil {
 			t.Fatalf("accepted %+v", cfg)
 		}
 	}
-	g := newGate(t, 1, 0, 0)
+	g := newAirlock(t, 1, 0, 0)
 	if _, err := g.Acquire(context.Background(), ""); !errors.Is(err, airlock.ErrInvalidTenant) {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestZeroQueueAndValidation(t *testing.T) {
 
 func TestCancelGrantRaceAndDuplicateRelease(t *testing.T) {
 	for i := 0; i < 200; i++ {
-		g := newGate(t, 1, 1, 1)
+		g := newAirlock(t, 1, 1, 1)
 		held := acquire(t, g, "holder")
 		ctx, cancel := context.WithCancel(context.Background())
 		ch := make(chan result, 1)
@@ -174,7 +174,7 @@ func TestCancelGrantRaceAndDuplicateRelease(t *testing.T) {
 }
 
 func TestConcurrentCapacityAndTenantReclamation(t *testing.T) {
-	g := newGate(t, 8, 512, 512)
+	g := newAirlock(t, 8, 512, 512)
 	var wg sync.WaitGroup
 	for i := 0; i < 500; i++ {
 		wg.Add(1)
@@ -200,7 +200,7 @@ func TestConcurrentCapacityAndTenantReclamation(t *testing.T) {
 }
 
 func TestSingleTenantUsesAllSlots(t *testing.T) {
-	g := newGate(t, 8, 0, 0)
+	g := newAirlock(t, 8, 0, 0)
 	for i := 0; i < 8; i++ {
 		acquire(t, g, "A")
 	}
@@ -210,7 +210,7 @@ func TestSingleTenantUsesAllSlots(t *testing.T) {
 }
 
 func TestGrantedSlotCannotBeStolen(t *testing.T) {
-	g := newGate(t, 1, 1, 1)
+	g := newAirlock(t, 1, 1, 1)
 	held := acquire(t, g, "holder")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

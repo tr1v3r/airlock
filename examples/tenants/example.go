@@ -11,7 +11,7 @@ import (
 )
 
 func run(ctx context.Context) error {
-	g, err := airlock.NewGate(airlock.GateConfig{
+	g, err := airlock.New(airlock.Config{
 		Capacity: 2, MaxQueued: 8, MaxQueuedPerTenant: 4,
 	})
 	if err != nil {

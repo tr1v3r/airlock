@@ -2,13 +2,13 @@
 
 状态：单令牌实现已落地于当前开发分支，尚未发布版本。
 
-公开入口为 `NewGate(GateConfig)`，`Stats()` 返回 `GateStats`。实现从内部原型迁入根包，
-`internal/fairgate` 已移除；比较测试直接调用公开 API。`Pool` 语义不变。
+公开入口为 `New(Config)`，`Stats()` 返回 `Stats`。实现从内部原型迁入根包，
+`internal/fairgate` 已移除；比较测试直接调用公开 API。公开 Pool 已移除，channel 策略仅作测试基线。
 原型实测见[历史实验结果](001-experiment-results.md)，不代表本实现已通过生产性能验收。
 
 ## 决策摘要
 
-为 Airlock 增加独立的 `Gate`：在一个进程内，按租户轮转分配单个并发名额，并限制全局及单租户等待人数。当前 `Pool` API 与单令牌语义保持不变。
+为 Airlock 增加独立的 `Airlock`：在一个进程内，按租户轮转分配单个并发名额，并限制全局及单租户等待人数。公开 Pool 被移除，单令牌语义保持不变。
 
 首版重点是可解释的排队隔离和共享容量，不是重写一个更快的 semaphore。一次申请多个令牌、租户份额、自适应容量均不在首版范围。先验证单权重情况下的价值，再设计权重与公平性的组合。
 
@@ -30,18 +30,18 @@
 以下为接口摘要：
 
 ```go
-type GateConfig struct {
+type Config struct {
     Capacity           int
     MaxQueued          int
     MaxQueuedPerTenant int
 }
 
-func NewGate(GateConfig) (*Gate, error)
-func (*Gate) Acquire(ctx context.Context, tenant string) (*Permit, error)
-func (*Gate) Stats() GateStats
+func New(Config) (*Airlock, error)
+func (*Airlock) Acquire(ctx context.Context, tenant string) (*Permit, error)
+func (*Airlock) Stats() Stats
 func (*Permit) Release() // 并发安全，重复调用不重复释放
 
-type GateStats struct {
+type Stats struct {
     Capacity       int
     InUse          int
     Queued         int
@@ -79,9 +79,9 @@ type GateStats struct {
 - 已取消 context 不准入。排队后取消若先取得状态变更权，移除请求，不占容量，并继续调度。
 - 授予若先完成，允许成功，即使 context 随后取消；返回成功则必须释放。返回错误则绝不残留名额。
 - Permit 仅由库创建，记录授予者，释放一次；并发或重复 Release 是 no-op。禁止值复制，文档明确只使用指针；nil/零值 Permit 释放无操作。不会用 finalizer 或计时器自动回收。
-- 租户队列为空时立即移除队列索引。已授予 Permit 只需持有 Gate，无需保留租户索引；首次实现不维护每租户历史指标。
+- 租户队列为空时立即移除队列索引。已授予 Permit 只需持有 Airlock，无需保留租户索引；首次实现不维护每租户历史指标。
 - `Stats` 是同一锁内的一致快照，不是批次完成屏障。必须满足 `0 <= InUse <= Capacity`、`0 <= Queued <= MaxQueued`、`WaitingTenants <= Queued`。
-- Gate 不执行任务、不创建内部 worker、不收集结果或任务错误；无需后台维护 goroutine。
+- Airlock 不执行任务、不创建内部 worker、不收集结果或任务错误；无需后台维护 goroutine。
 
 ## 内部实现候选
 
@@ -95,7 +95,7 @@ type GateStats struct {
 
 ## 比较对象与现有实验
 
-`internal/comparison` 为测试专用包，`golang.org/x/sync v0.16.0` 仅作测试依赖（兼容本仓库 Go 1.24，不声称它是最新版）。测试依赖不进入运行时；现有 Pool API 保持不变。
+`internal/comparison` 为测试专用包，`golang.org/x/sync v0.16.0` 仅作测试依赖（兼容本仓库 Go 1.24，不声称它是最新版）。测试依赖不进入运行时；channel 基线只存在于比较测试中。
 
 当前分两层证据：
 
@@ -128,11 +128,11 @@ GOWORK=off go vet ./...
 
 ## 验证状态与后续计划
 
-阶段 1：根据单令牌实现授权，公开 GateConfig/NewGate/GateStats/Permit 和错误值，保留 Pool。
+阶段 1：根据单令牌实现授权，公开 Config/New/Stats/Permit 和错误值，移除 Pool。
 
 阶段 2：公开实现已覆盖以下黑盒并发测试：公平顺序、快速路径不插队、取消与授予竞争、Permit 重复释放、瞬时多空位派发、零队列模式、短命租户回收。使用同步屏障，时间只作测试超时保护；运行 race。
 
-阶段 3：真实负载对比，增加原始 Pool、单 Weighted、tenant-first 两级组合（租户上限扫描 1/容量一半/容量）、Gate。固定到达轨迹和服务时间分布，多随机种子，记录每租户排队 p50/p95/p99、完成率、拒绝率、总吞吐、allocs 和内存；拒绝与取消必须计入，不能只统计幸存请求。
+阶段 3：真实负载对比，增加原始 Pool、单 Weighted、tenant-first 两级组合（租户上限扫描 1/容量一半/容量）、Airlock。固定到达轨迹和服务时间分布，多随机种子，记录每租户排队 p50/p95/p99、完成率、拒绝率、总吞吐、allocs 和内存；拒绝与取消必须计入，不能只统计幸存请求。
 
 运行两个独立比较：不触发队满时隔离调度收益；相同等待预算时比较过载行为。两级适配器如补充队列预算须单独标注。增加长短任务混合，揭示轮转在非抢占条件下的局限。
 

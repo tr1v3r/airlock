@@ -11,8 +11,8 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
-func TestGateErrorPrecedence(t *testing.T) {
-	g := newGate(t, 1, 1, 1)
+func TestAirlockErrorPrecedence(t *testing.T) {
+	g := newAirlock(t, 1, 1, 1)
 	acquire(t, g, "holder")
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -42,21 +42,21 @@ func TestGateErrorPrecedence(t *testing.T) {
 	}
 }
 
-func TestGateZeroTenantQueueAndInvalidConfig(t *testing.T) {
-	g := newGate(t, 1, 10, 0)
+func TestAirlockZeroTenantQueueAndInvalidConfig(t *testing.T) {
+	g := newAirlock(t, 1, 10, 0)
 	p := acquire(t, g, "A")
 	if _, err := g.Acquire(context.Background(), "B"); !errors.Is(err, airlock.ErrTenantQueueFull) {
 		t.Fatal(err)
 	}
 	p.Release()
 	acquire(t, g, "B").Release()
-	if _, err := airlock.NewGate(airlock.GateConfig{}); !errors.Is(err, airlock.ErrInvalidGateConfig) {
+	if _, err := airlock.New(airlock.Config{}); !errors.Is(err, airlock.ErrInvalidConfig) {
 		t.Fatal(err)
 	}
 }
 
-func TestGateCancelledTenantRejoinsAtTail(t *testing.T) {
-	g := newGate(t, 1, 10, 10)
+func TestAirlockCancelledTenantRejoinsAtTail(t *testing.T) {
+	g := newAirlock(t, 1, 10, 10)
 	held := acquire(t, g, "holder")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -94,8 +94,8 @@ func TestGateCancelledTenantRejoinsAtTail(t *testing.T) {
 	held.Release()
 }
 
-func TestGateCancelMiddleRequest(t *testing.T) {
-	g := newGate(t, 1, 10, 10)
+func TestAirlockCancelMiddleRequest(t *testing.T) {
+	g := newAirlock(t, 1, 10, 10)
 	held := acquire(t, g, "holder")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -128,8 +128,8 @@ func TestGateCancelMiddleRequest(t *testing.T) {
 	held.Release()
 }
 
-func TestGateMultipleSlotsAndChurn(t *testing.T) {
-	g := newGate(t, 4, 32, 4)
+func TestAirlockMultipleSlotsAndChurn(t *testing.T) {
+	g := newAirlock(t, 4, 32, 4)
 	for wave := 0; wave < 30; wave++ {
 		var held []*airlock.Permit
 		for i := 0; i < 4; i++ {
@@ -175,8 +175,8 @@ func TestGateMultipleSlotsAndChurn(t *testing.T) {
 	}
 }
 
-func TestGateDeadlineAndPermitZeroValue(t *testing.T) {
-	g := newGate(t, 1, 1, 1)
+func TestAirlockDeadlineAndPermitZeroValue(t *testing.T) {
+	g := newAirlock(t, 1, 1, 1)
 	held := acquire(t, g, "A")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
@@ -194,8 +194,8 @@ func TestGateDeadlineAndPermitZeroValue(t *testing.T) {
 	absent.Release()
 }
 
-func ExampleGate() {
-	g, err := airlock.NewGate(airlock.GateConfig{Capacity: 2, MaxQueued: 8, MaxQueuedPerTenant: 4})
+func ExampleAirlock() {
+	g, err := airlock.New(airlock.Config{Capacity: 2, MaxQueued: 8, MaxQueuedPerTenant: 4})
 	if err != nil {
 		panic(err)
 	}

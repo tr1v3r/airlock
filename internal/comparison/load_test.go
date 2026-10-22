@@ -18,16 +18,16 @@ import (
 type admission func(context.Context, string) (func(), error)
 
 func adapters(capacity, queue int) map[string]admission {
-	p := airlock.NewPool(capacity)
+	p := newChannelBaseline(capacity)
 	s := semaphore.NewWeighted(int64(capacity))
-	g, _ := airlock.NewGate(airlock.GateConfig{Capacity: capacity, MaxQueued: queue, MaxQueuedPerTenant: queue})
+	g, _ := airlock.New(airlock.Config{Capacity: capacity, MaxQueued: queue, MaxQueuedPerTenant: queue})
 	m := map[string]admission{
-		"pool": func(ctx context.Context, _ string) (func(), error) { err := p.Acquire(ctx); return p.Release, err },
+		"channel": func(ctx context.Context, _ string) (func(), error) { err := p.Acquire(ctx); return p.Release, err },
 		"weighted": func(ctx context.Context, _ string) (func(), error) {
 			err := s.Acquire(ctx, 1)
 			return func() { s.Release(1) }, err
 		},
-		"gate": func(ctx context.Context, tenant string) (func(), error) {
+		"airlock": func(ctx context.Context, tenant string) (func(), error) {
 			p, err := g.Acquire(ctx, tenant)
 			if err != nil {
 				return nil, err
@@ -47,7 +47,7 @@ func adapters(capacity, queue int) map[string]admission {
 
 // Opt-in actual goroutine workload, not a CI timing assertion. All adapters get
 // the same outer in-system budget (executing + pending), avoiding a hidden
-// unlimited backlog advantage. Gate's own queue limit is also configured.
+// unlimited backlog advantage. Airlock's own queue limit is also configured.
 func TestLoadComparison(t *testing.T) {
 	if os.Getenv("AIRLOCK_LOAD") != "1" {
 		t.Skip("set AIRLOCK_LOAD=1 for workload measurements")
@@ -59,7 +59,7 @@ func TestLoadComparison(t *testing.T) {
 				queue = 12
 			}
 			all := adapters(4, queue)
-			for _, name := range []string{"pool", "weighted", "nested-1", "nested-2", "nested-4", "gate"} {
+			for _, name := range []string{"channel", "weighted", "nested-1", "nested-2", "nested-4", "airlock"} {
 				t.Run(fmt.Sprintf("%s/seed%d/%s", scenario, seed, name), func(t *testing.T) {
 					rng := rand.New(rand.NewSource(seed))
 					type sample struct {
