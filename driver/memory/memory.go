@@ -26,8 +26,8 @@ type Driver struct {
 // New creates a reference driver. The zero value is also usable.
 func New() *Driver { return &Driver{} }
 
-// Execute serializes each resource and uses the shared durable state machine.
-func (d *Driver) Execute(ctx context.Context, cmd airlock.Command) (airlock.Result, error) {
+// execute serializes each resource and uses the shared durable state machine.
+func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Result, error) {
 	if err := ctx.Err(); err != nil {
 		return airlock.Result{}, err
 	}
@@ -64,3 +64,28 @@ func (d *Driver) Execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 }
 
 var _ airlock.Driver = (*Driver)(nil)
+
+// Submit atomically submits the whole request without refreshing an existing lease.
+func (d *Driver) Submit(ctx context.Context, request airlock.Request) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Submit, Request: request})
+}
+
+// Observe returns the request outcome after advancing expiry and scheduling.
+func (d *Driver) Observe(ctx context.Context, request airlock.Request) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Observe, Request: request})
+}
+
+// Cancel cancels the request, including a grant or a cancellation before submission.
+func (d *Driver) Cancel(ctx context.Context, request airlock.Request) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Cancel, Request: request})
+}
+
+// Renew extends a live lease matching the original request and lease ID.
+func (d *Driver) Renew(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Renew, Request: lease.Request, LeaseID: lease.ID})
+}
+
+// Release ends a matching lease and returns its whole weight at most once.
+func (d *Driver) Release(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Release, Request: lease.Request, LeaseID: lease.ID})
+}

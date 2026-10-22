@@ -18,6 +18,10 @@ GOWORK=off go test -race ./...
 GOWORK=off go vet ./...
 ```
 
+The public operations are `Submit`, `Observe`, `Cancel`, `Renew`, and `Release`.
+The first three accept an immutable `airlock.Request`; renewal and release use
+`airlock.LeaseRef{Request: original, ID: result.LeaseID}`. All return `(airlock.Result, error)`.
+
 ## 中文
 
 memory 是分布式协议的进程内参考实现，复用 core 状态机，支持多令牌、租户/优先级公平队列、
@@ -25,3 +29,7 @@ memory 是分布式协议的进程内参考实现，复用 core 状态机，支�
 参见上面的可运行示例。它不持久化、不启动业务 worker，重启或新实例会创建独立容量池，
 不能作为远端故障时的自动降级。终态记录在后续操作中回收，资源配置保留到 driver 丢弃为止。
 租约过期仅回收账本额度，业务必须自行停止工作。
+
+公开操作为 `Submit`、`Observe`、`Cancel`、`Renew` 和 `Release`。前三者接收不可变
+`airlock.Request`；续租与释放接收 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`，
+均返回 `(airlock.Result, error)`。

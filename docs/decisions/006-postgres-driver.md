@@ -4,7 +4,7 @@
 
 ## 每资源行锁与持久快照
 
-每个 `(namespace, resource)` 对应一个永久 logged row。一次 Execute 在短事务内创建缺失行、
+每个 `(namespace, resource)` 对应一个永久 logged row。每次 Submit/Observe/Cancel/Renew/Release 都在短事务内创建缺失行、
 `SELECT ... FOR UPDATE`、读取当前数据库时间、执行 core Transition、写回快照并 COMMIT。
 不同资源不共享行锁；同资源所有客户端串行，不用 SKIP LOCKED 绕过 protected head。
 业务执行期间不持连接或事务，连接池归调用者拥有，构造器不隐式运行 DDL。

@@ -18,7 +18,7 @@ import (
 // Drivers do not own injected connections, execute work, or fall back locally.
 // All callers of a resource must use the same immutable ResourceConfig.
 type Driver interface {
-	// Submit admits the whole request or returns its existing outcome without refreshing TTL.
+	// Submit admits or queues the whole request; retries do not refresh an existing lease.
 	Submit(context.Context, Request) (Result, error)
 	// Observe advances expiry and scheduling, then returns the request's current outcome.
 	Observe(context.Context, Request) (Result, error)
