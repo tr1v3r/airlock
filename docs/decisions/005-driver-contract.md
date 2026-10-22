@@ -4,10 +4,35 @@
 
 ## API 与原子边界
 
-`Driver.Execute(ctx, Command)` 是一个原子操作入口，`Kind` 为 Submit、Observe、Cancel、Renew、Release。
-相比提案的五个草图方法，统一入口允许同一个可持久化状态转换器处理全部操作；非法 Kind 会拒绝。
-所有命令携带完整、不可变 Request（资源、配置、ID、Owner、租户、重量、提交截止、等待截止）。
-Renew/Release 还必须提供授予的 LeaseID。调用者负责可信租户身份和后端访问控制。
+公开 Driver 使用五个有明确含义的方法：
+
+```go
+type Driver interface {
+    Submit(context.Context, Request) (Result, error)
+    Observe(context.Context, Request) (Result, error)
+    Cancel(context.Context, Request) (Result, error)
+    Renew(context.Context, LeaseRef) (Result, error)
+    Release(context.Context, LeaseRef) (Result, error)
+}
+
+type LeaseRef struct {
+    Request Request
+    ID      string
+}
+```
+
+Submit/Observe/Cancel 携带完整、不可变 Request（资源、配置、ID、Owner、租户、重量、提交截止、等待截止）。
+Renew/Release 使用 LeaseRef，包含原 Request 和授予结果的 LeaseID；引用本身不证明租约仍有效。
+调用者负责可信租户身份和后端访问控制。
+
+取舍：方法数量增加，但调用点直接表达操作，续租和释放明确要求租约引用，不再由调用者拼装 Kind。
+返回值保留统一 Result：所有操作都需要表达权威终态及可能发生的取消/过期竞态。
+这替换了早期 Execute 契约；自定义 driver 必须实现五个方法，没有旧 Execute 兼容适配器。
+高层 Shared 的申请/释放接口不变，本地 Airlock 不受影响。
+
+Command、Operation、ValidateCommand 和 Transition 保留为独立 driver 模块可以复用的状态机工具，
+不是 Driver 调用入口。各内置 driver 的五个方法转入同一私有执行路径，不复制调度逻辑，
+不改变原子边界、幂等身份、TTL、错误优先级或取消语义。
 
 `Transition(previous, backendNow, command)` 返回新 snapshot、Result 和业务错误。
 Driver 必须串行化整个资源的读、转换、写，并且在新 snapshot 非 nil 时即使业务错误也要提交；

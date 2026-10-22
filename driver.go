@@ -11,15 +11,23 @@ import (
 	"unicode/utf8"
 )
 
-// Driver atomically executes one command for a resource. Implementations must
-// serialize all commands, use backend time after obtaining exclusive access,
+// Driver provides atomic admission operations for a resource. Implementations must
+// serialize all operations, use backend time after obtaining exclusive access,
 // persist the returned snapshot even when Transition returns a business error,
 // and honor ctx. Transport errors are ambiguous and never authorize work.
 // Drivers do not own injected connections, execute work, or fall back locally.
 // All callers of a resource must use the same immutable ResourceConfig.
-// Execute is one protocol boundary; Kind selects submit/observe/cancel/renew/release.
 type Driver interface {
-	Execute(context.Context, Command) (Result, error)
+	// Submit admits the whole request or returns its existing outcome without refreshing TTL.
+	Submit(context.Context, Request) (Result, error)
+	// Observe advances expiry and scheduling, then returns the request's current outcome.
+	Observe(context.Context, Request) (Result, error)
+	// Cancel terminates a queued or granted request, including cancellation before submission.
+	Cancel(context.Context, Request) (Result, error)
+	// Renew extends only a live lease matching the original request and lease ID.
+	Renew(context.Context, LeaseRef) (Result, error)
+	// Release returns a matching lease's whole weight at most once.
+	Release(context.Context, LeaseRef) (Result, error)
 }
 
 // ResourceConfig fixes admission, expiry and recovery bounds for a resource.
@@ -51,6 +59,14 @@ type Request struct {
 	Config      ResourceConfig
 }
 
+// LeaseRef identifies a granted lease for Renew and Release. Request must be the
+// unchanged original submission; ID is the LeaseID returned by a successful grant.
+// It is an identity reference, not proof that the lease is still valid.
+type LeaseRef struct {
+	Request Request
+	ID      string
+}
+
 // Operation identifies an atomic protocol transition.
 type Operation string
 
@@ -67,7 +83,8 @@ const (
 	Release Operation = "release"
 )
 
-// Command carries the original request and, for Renew/Release, the granted LeaseID.
+// Command is the input to the shared Transition implementation. Driver callers
+// use the named methods with Request or LeaseRef instead of constructing commands.
 type Command struct {
 	Kind    Operation
 	Request Request

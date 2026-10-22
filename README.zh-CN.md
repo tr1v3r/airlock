@@ -332,6 +332,12 @@ driver 契约、租约客户端和 memory 参考实现在本 PR 提供，Postgre
 本地 `New(Config)` 和 `Permit` 保持原有语义。独立的 [memory 模块](driver/memory)
 可在单进程演示同一协议，但不提供持久存储或跨进程容量。
 
+Driver 提供 `Submit(ctx, Request)`、`Observe(ctx, Request)`、`Cancel(ctx, Request)`，
+以及 `Renew(ctx, LeaseRef)`、`Release(ctx, LeaseRef)`，均返回 `(Result, error)`。
+`LeaseRef{Request: original, ID: result.LeaseID}` 标识授予的租约。自定义 driver
+需实现这五个方法；早期 `Execute(ctx, Command)` 接口已移除。`Command` 仍作为
+driver 实现可以复用的状态机工具。
+
 `Shared.AcquireNFor(ctx, tenant, n)` 返回 `(*Lease, error)`。有界持久队列配合定期
 Observe 实现等待，租约需要显式 `Renew(ctx)` 与 `Release(ctx) error`。
 `Done()` 关闭或 `Valid()` 为 false 时应停止工作。获取时的 ctx 不撤销已交付租约；
