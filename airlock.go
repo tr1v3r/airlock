@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	// ErrInvalidConfig reports an invalid capacity or queue limit.
+	// ErrInvalidConfig reports invalid limits or a priority policy.
 	ErrInvalidConfig = errors.New("airlock: invalid configuration")
 	// ErrInvalidTenant reports an empty explicitly supplied tenant ID.
 	ErrInvalidTenant = errors.New("airlock: empty tenant")
@@ -18,6 +18,8 @@ var (
 	ErrWeightExceedsCapacity = errors.New("airlock: weight exceeds capacity")
 	// ErrQueueFull reports that the global waiting queue is full.
 	ErrQueueFull = errors.New("airlock: queue full")
+	// ErrGroupQueueFull reports that the tenant's priority group waiting queue is full.
+	ErrGroupQueueFull = errors.New("airlock: priority group queue full")
 	// ErrTenantQueueFull reports that the tenant's waiting queue is full.
 	ErrTenantQueueFull = errors.New("airlock: tenant queue full")
 	// ErrWouldBlock reports that TryAcquire cannot grant capacity immediately
@@ -35,6 +37,9 @@ type Config struct {
 	// MaxQueuedPerTenant is nonnegative and must not exceed MaxQueued.
 	// It does not limit a tenant's number of held tokens or permits.
 	MaxQueuedPerTenant int
+	// Priority optionally enables fixed weighted selection between groups of
+	// tenants. Nil preserves a single group with tenant round-robin scheduling.
+	Priority *PriorityPolicy
 }
 
 // Stats is a consistent snapshot, not a completion barrier. Capacity and InUse
@@ -49,8 +54,10 @@ type Stats struct {
 }
 
 // Airlock controls weighted admission with FIFO waiting within each tenant
-// and round-robin selection across nonempty tenant queues. New waiting tenants
-// join the end of the rotation. It does not start workers or track completion.
+// and round-robin selection across nonempty tenant queues within each priority
+// group. Optional priority groups receive weighted selection opportunities.
+// New waiting tenants join the end of their group's rotation.
+// It does not start workers or track completion.
 //
 // A selected request waits for all its tokens before any later request can be
 // granted. This prevents starvation of large requests, but can leave capacity
@@ -66,11 +73,12 @@ type Airlock struct {
 	active       int
 	protected    *waiter
 	tenants      map[string]*tenantQueue
-	rotation     list.List
+	priority     priorityState
 }
 
 type tenantQueue struct {
 	id       string
+	group    *priorityQueue
 	turn     *list.Element
 	requests list.List
 }
@@ -93,13 +101,20 @@ type Permit struct {
 	weight int
 }
 
-// New constructs an Airlock, or returns ErrInvalidConfig for invalid limits.
-// It has no unlimited mode. Limits cannot be changed after creation.
+// New constructs an Airlock, or returns ErrInvalidConfig for invalid limits or
+// priority policy. It snapshots the policy. It has no unlimited mode; limits,
+// tenant assignments and selection shares cannot be changed after creation.
 func New(cfg Config) (*Airlock, error) {
 	if cfg.Capacity <= 0 || cfg.MaxQueued < 0 || cfg.MaxQueuedPerTenant < 0 || cfg.MaxQueuedPerTenant > cfg.MaxQueued {
 		return nil, ErrInvalidConfig
 	}
-	return &Airlock{cfg: cfg, tenants: make(map[string]*tenantQueue)}, nil
+	priority, err := newPriorityState(cfg.Priority, cfg.MaxQueued)
+	if err != nil {
+		return nil, err
+	}
+	// Retain only the compiled immutable policy, not caller-owned collections.
+	cfg.Priority = nil
+	return &Airlock{cfg: cfg, tenants: make(map[string]*tenantQueue), priority: priority}, nil
 }
 
 // Acquire atomically acquires one slot for a shared default tenant, distinct
@@ -107,8 +122,9 @@ func New(cfg Config) (*Airlock, error) {
 // as AcquireFor. A nil context panics.
 //
 // An already-cancelled context returns ctx.Err(). If capacity cannot be granted,
-// global and then per-tenant queue limits are checked; a full global queue takes
-// precedence over a full tenant queue. Queue rejection does not wait for ctx.
+// global, priority-group and then per-tenant queue limits are checked, in that
+// order. Queue rejection does not wait for ctx. Immediate grants do not consume
+// queue space or scheduling turns.
 //
 // The first state transition under the lock wins cancellation/grant races.
 // A grant that wins may return success even after ctx is cancelled; the caller
@@ -176,19 +192,25 @@ func (g *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 		g.mu.Unlock()
 		return nil, ErrQueueFull
 	}
+	group := g.priority.group(tenant)
+	if group.queued >= group.limit {
+		g.mu.Unlock()
+		return nil, ErrGroupQueueFull
+	}
 	tq := g.tenants[tenant]
 	if g.cfg.MaxQueuedPerTenant == 0 || (tq != nil && tq.requests.Len() >= g.cfg.MaxQueuedPerTenant) {
 		g.mu.Unlock()
 		return nil, ErrTenantQueueFull
 	}
 	if tq == nil {
-		tq = &tenantQueue{id: tenant}
-		tq.turn = g.rotation.PushBack(tq)
+		tq = &tenantQueue{id: tenant, group: group}
+		tq.turn = group.rotation.PushBack(tq)
 		g.tenants[tenant] = tq
 	}
 	w := &waiter{ready: make(chan struct{}), tenant: tq, weight: n}
 	w.node = tq.requests.PushBack(w)
 	g.queued++
+	group.queued++
 	g.dispatch()
 	g.mu.Unlock()
 	select {
@@ -215,8 +237,9 @@ func (g *Airlock) remove(w *waiter) {
 	tq := w.tenant
 	tq.requests.Remove(w.node)
 	g.queued--
+	tq.group.queued--
 	if tq.requests.Len() == 0 {
-		g.rotation.Remove(tq.turn)
+		tq.group.rotation.Remove(tq.turn)
 		delete(g.tenants, tq.id)
 	}
 }
@@ -224,11 +247,12 @@ func (g *Airlock) remove(w *waiter) {
 func (g *Airlock) dispatch() {
 	for g.used < g.cfg.Capacity && g.queued > 0 {
 		if g.protected == nil {
-			tq := g.rotation.Front().Value.(*tenantQueue)
+			group := g.priority.next()
+			tq := group.rotation.Front().Value.(*tenantQueue)
 			g.protected = tq.requests.Front().Value.(*waiter)
 			// Selection consumes this tenant's turn, even if it later cancels.
 			// Keep its queue indexed until the selected request is removed.
-			g.rotation.MoveToBack(tq.turn)
+			group.rotation.MoveToBack(tq.turn)
 		}
 		w := g.protected
 		if w.weight > g.cfg.Capacity-g.used {

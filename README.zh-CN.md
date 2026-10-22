@@ -3,7 +3,7 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 面向 Go 1.24+ 的多令牌、按租户并发准入库。
-提供租户内 FIFO、等待租户间轮转，以及全局和每租户排队上限。
+提供租户内 FIFO、等待租户间轮转、可选的优先级组加权选择与独立等待额度，以及全局和每租户排队上限。
 运行时仅依赖标准库；goroutine、结果、错误和任务完成由调用方管理。
 
 ## 安装
@@ -75,7 +75,7 @@ defer permit.Release()
   必须同时满足容量足够且**没有等待请求**；即使小请求放得下，也不能绕过受保护的大请求。
 - 否则返回 `ErrWouldBlock`，不返回 Permit，不改变容量、队列或租户轮转位置。
   队列是否还有额度不影响此判断。`ErrWouldBlock` 表示当前无法立即准入；
-  `ErrQueueFull` 和 `ErrTenantQueueFull` 则表示 `Acquire` 尝试入队时被拒绝。
+  `ErrQueueFull`、`ErrGroupQueueFull` 和 `ErrTenantQueueFull` 则表示 `Acquire` 尝试入队时被拒绝。
 - 先检查显式租户 ID，再检查权重。空 ID 返回 `ErrInvalidTenant`，非正权重返回
   `ErrInvalidWeight`，超过容量返回 `ErrWeightExceedsCapacity`。用 `errors.Is`
   区分非法请求和暂时无法准入。
@@ -84,6 +84,61 @@ defer permit.Release()
   这样会增加竞争，也不会获得公平队列中的位置；需要等待时使用配置了队列上限的 `Acquire` 和 context。
 
 [TryAcquire 设计决定](docs/decisions/002-try-acquire.md)记录公平性边界及接口方案取舍。
+
+## 本地优先级分组
+
+优先级在构造时配置，现有申请方法的签名不变。例如让在线租户获得更多选择机会，
+同时让后台租户在持续高负载下仍有机会准入：
+
+```go
+lock, err := airlock.New(airlock.Config{
+    Capacity: 20, MaxQueued: 120, MaxQueuedPerTenant: 10,
+    Priority: &airlock.PriorityPolicy{
+        Groups: []airlock.PriorityGroup{
+            {Name: "high", Turns: 8, MaxQueued: 80},
+            {Name: "normal", Turns: 3, MaxQueued: 30},
+            {Name: "low", Turns: 1, MaxQueued: 10},
+        },
+        DefaultGroup: "low",
+        TenantGroups: map[string]string{
+            "online": "high", "batch": "normal",
+        },
+    },
+})
+if err != nil {
+    return err
+}
+permit, err := lock.AcquireNFor(ctx, "online", 3)
+if err != nil {
+    return err
+}
+defer permit.Release()
+```
+
+片段位于返回 error 的函数中。完整的[优先级示例](examples/priority/example.go)先排入低组请求，
+再演示 `8:3:1` 的选择顺序，不依赖 goroutine 的启动先后顺序。
+
+- `Priority: nil` 保留原来的单组行为。启用策略后，默认租户及未映射的显式租户都进入
+  `DefaultGroup`。`New` 深拷贝组配置和租户映射，调用方随后修改原配置不影响已创建实例；
+  不支持运行时迁组。映射应基于可信身份：这是调度，不是身份认证，上层不能允许调用者冒用高组租户。
+- 组列表不能为空；组名非空且唯一，`Turns` 为正、按给定顺序不递增，总和不超过 1024。
+  默认组和映射目标都必须存在，映射键不能是空租户 ID。各组排队上限非负，总和不超过
+  `MaxQueued`。配置不合法时返回 `ErrInvalidConfig`。
+- `8:3:1` 对应循环选择槽位 `HHHHHHHHMMML`；组内租户轮转、租户内 FIFO。
+  空组直接跳过，不积累历史额度。已选请求即使随后取消也消耗该次机会。
+  没有等待者时的即时获取不消耗选择槽位。
+- 份额按**请求选择次数**计算，不是令牌数或执行时间。所有组持续积压、且没有已选请求取消时，
+  每完整周期授予高组八次、中组三次、低组一次。这不是严格优先或抢占；已选中的低组大请求
+  会阻挡后来高组请求，直到容量足够或该请求取消。`TryAcquire` 同样不能绕过等待者。
+- 各组等待额度独占、不互借；未分配的全局额度不会自动共享。入队拒绝顺序为全局
+  `ErrQueueFull`、组 `ErrGroupQueueFull`、租户 `ErrTenantQueueFull`。
+  上限按请求计数，包含受保护请求；组上限为零仅禁止排队，仍允许即时获取。
+- 在持有者最终释放、调度持续推进的前提下，正份额保证已接受且未取消的请求最终推进。
+  `8:3:1` 中持续非空的低组两次选择之间最多有 11 次其他组选择；这不是单租户上界或时间上界。
+  新请求仍可能因队列满被拒绝。`Stats` 继续提供汇总快照，本阶段未暴露按组统计。
+
+公平性边界与利用率代价见[优先级设计取舍](docs/decisions/003-local-priority.md)
+和[比较实验结果](docs/proposals/002-priority-experiment-results.md)。
 
 ## 用法与契约
 
@@ -118,9 +173,9 @@ defer permit.Release()
 - 对于 `Acquire` 系列方法，nil context 会 panic，然后检查显式租户 ID（`ErrInvalidTenant`），再检查权重：
   `n <= 0` 返回 `ErrInvalidWeight`，`n > Capacity` 返回 `ErrWeightExceedsCapacity`。
   非法权重立即失败、不入队，即使 context 已取消也优先返回权重错误。
-- 无法立即获取时，队列已满分别返回 `ErrQueueFull` 或 `ErrTenantQueueFull`；同时触发时优先返回
-  全局错误。已取消的 context 在检查可用容量和队列之前返回其错误。支持 `errors.Is`，失败时不返回 Permit。
-- 非空租户队列轮流放行，租户内部 FIFO。有可用容量时，调度器选择下一个租户的队首请求，
+- 无法立即获取时，按全局 `ErrQueueFull`、组 `ErrGroupQueueFull`（启用优先级时）、租户
+  `ErrTenantQueueFull` 的顺序检查排队上限。已取消的 context 在检查可用容量和队列之前返回其错误。支持 `errors.Is`，失败时不返回 Permit。
+- 同组内非空租户队列轮流放行，租户内部 FIFO。有可用容量时，调度器选择下一个租户的队首请求，
   消耗该租户的一次轮转机会。如果容量不足以容纳完整权重，该请求受保护，后续的小请求或新请求
   不能绕过。取消已选请求不会返还轮转机会。容量完全占满时不提前选择请求。
 - 新等待租户加入轮转队尾；队列清空即移除，重新活跃时再次加入队尾。公平按选择机会计量，
@@ -143,7 +198,7 @@ defer permit.Release()
 按请求机会公平和显式释放等选择的理由、代价与重新评估条件。
 
 [初始设计记录](docs/proposals/001-tenant-fair-admission.md) 描述单令牌基础，
-[多令牌契约](docs/proposals/002-weighted-scheduling.md) 在此基础上扩展；其中优先级分组仍为提案。
+[多令牌契约](docs/proposals/002-weighted-scheduling.md) 在此基础上扩展，包含本地优先级实现的契约。
 [历史原型测量](docs/proposals/001-experiment-results.md) 尚未证明优于表现最好的两级 semaphore，
 也不构成生产延迟保证。比较负载现已接入公开 Airlock API；`x/sync` 仍仅用于测试。
 
@@ -165,6 +220,7 @@ GOWORK=off go test ./internal/comparison -run '^$' -bench BenchmarkAdmission -be
 | [按租户的单令牌准入](examples/tenants/example.go) | `go run ./examples/tenants` |
 | [多租户多令牌准入](examples/weighted/example.go) | `go run ./examples/weighted` |
 | [立即获取与降级](examples/tryacquire/example.go) | `go run ./examples/tryacquire` |
+| [优先级选择顺序](examples/priority/example.go) | `go run ./examples/priority` |
 
 ```sh
 GOWORK=off go test -race ./...
@@ -223,7 +279,9 @@ GOWORK=off govulncheck -test ./...
 唯一的准入类型为 `Airlock`，通过 `New(Config)` 构造。
 每次 `Acquire(ctx)` 或 `AcquireFor(ctx, tenantID)` 仍然**仅获取一个令牌**。
 新增 `AcquireN(ctx, n)` 和 `AcquireNFor(ctx, tenantID, n)` 获取 `n` 个令牌，
-通过 `Permit.Release()` 一次归还。无限模式、动态容量、优先级分组和分布式 driver 尚未实现。
+通过 `Permit.Release()` 一次归还。`Config.Priority` 可选启用本地优先级组，无需修改申请签名。
+无限模式、动态容量和分布式 driver 尚未实现。使用字段名且省略 `Priority` 或设为 nil 的配置
+保持原有单组行为；新增 `Config.Priority` 字段会影响无字段名的 `Config` 字面量，请改用字段名。
 
 这是开发阶段的破坏性变更：移除 `Pool`/`NewPool` 和先前的 `Gate`/`NewGate` 名称。
 原调用方需要显式配置队列上限，可选择传入租户 ID，保存返回的 Permit 并释放它。
@@ -242,5 +300,5 @@ Airlock 不执行任务或跟踪完成状态。
 
 ## 设计提案
 
-[多令牌、优先级准入与可选 driver 提案](docs/proposals/002-weighted-priority-drivers.md)描述本地、Redis 和 PostgreSQL 方案。本分支实现阶段 1：本地原子多令牌申请、租户轮转与队首保护。
-优先级分组和分布式 driver 仍为提案；这不代表已经合入 `dev` 或发布标签版本。
+[多令牌、优先级准入与可选 driver 提案](docs/proposals/002-weighted-priority-drivers.md)描述本地、Redis 和 PostgreSQL 方案。本分支实现本地阶段 1 和 2：原子多令牌申请、优先级组与租户轮转、独占等待额度和队首保护。
+分布式 driver 与租约仍为提案；这不代表已经合入 `dev` 或发布标签版本。

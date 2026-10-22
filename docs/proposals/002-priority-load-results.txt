@@ -1,0 +1,296 @@
+=== RUN   TestPriorityLoadComparison
+=== RUN   TestPriorityLoadComparison/saturated/seed1/fifo
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.408 p95=47.377 p99=49.540 max=50.315
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.715 p95=47.270 p99=50.361 max=50.477
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.834 p95=48.109 p99=50.422 max=50.992
+    priority_load_test.go:244: throughput=2587.3/s utilization_proxy=0.9636 idle_pending_proxy_ms=0.240 elapsed_ms=74.209
+=== RUN   TestPriorityLoadComparison/saturated/seed1/nested
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=24.890 p95=48.087 p99=49.988 max=50.392
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.457 p95=47.978 p99=50.506 max=50.889
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.972 p95=47.335 p99=50.008 max=50.524
+    priority_load_test.go:244: throughput=2606.6/s utilization_proxy=0.9716 idle_pending_proxy_ms=0.468 elapsed_ms=73.661
+=== RUN   TestPriorityLoadComparison/saturated/seed1/airlock
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.452 p95=47.347 p99=49.708 max=50.366
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.727 p95=47.249 p99=50.303 max=50.562
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.851 p95=48.164 p99=50.469 max=51.068
+    priority_load_test.go:244: throughput=2584.7/s utilization_proxy=0.9633 idle_pending_proxy_ms=0.374 elapsed_ms=74.283
+=== RUN   TestPriorityLoadComparison/saturated/seed1/priority
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=31 wait_ms_p50=7.455 p95=15.157 p99=16.052 max=16.328
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=12 wait_ms_p50=29.642 p95=35.121 p99=35.609 max=36.306
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=5 wait_ms_p50=49.247 p95=51.100 p99=51.251 max=51.282
+    priority_load_test.go:244: throughput=2592.3/s utilization_proxy=0.9664 idle_pending_proxy_ms=0.399 elapsed_ms=74.067
+=== RUN   TestPriorityLoadComparison/saturated/seed2/fifo
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.414 p95=51.052 p99=53.278 max=53.979
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.322 p95=50.963 p99=53.185 max=53.884
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.336 p95=50.859 p99=53.785 max=54.078
+    priority_load_test.go:244: throughput=2492.9/s utilization_proxy=0.9736 idle_pending_proxy_ms=0.347 elapsed_ms=77.019
+=== RUN   TestPriorityLoadComparison/saturated/seed2/nested
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.020 p95=49.742 p99=52.687 max=54.983
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.199 p95=50.111 p99=52.907 max=53.632
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.288 p95=51.753 p99=53.087 max=54.484
+    priority_load_test.go:244: throughput=2470.8/s utilization_proxy=0.9604 idle_pending_proxy_ms=0.446 elapsed_ms=77.709
+=== RUN   TestPriorityLoadComparison/saturated/seed2/airlock
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.413 p95=51.064 p99=53.276 max=53.997
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.316 p95=50.976 p99=53.177 max=53.899
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.333 p95=50.875 p99=53.801 max=54.093
+    priority_load_test.go:244: throughput=2492.3/s utilization_proxy=0.9734 idle_pending_proxy_ms=0.363 elapsed_ms=77.037
+=== RUN   TestPriorityLoadComparison/saturated/seed2/priority
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=31 wait_ms_p50=7.329 p95=15.910 p99=17.411 max=17.814
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=12 wait_ms_p50=29.552 p95=36.576 p99=37.177 max=37.447
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=5 wait_ms_p50=50.809 p95=53.903 p99=54.145 max=54.437
+    priority_load_test.go:244: throughput=2493.1/s utilization_proxy=0.9725 idle_pending_proxy_ms=0.369 elapsed_ms=77.014
+=== RUN   TestPriorityLoadComparison/saturated/seed3/fifo
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.399 p95=49.707 p99=52.366 max=52.614
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.323 p95=49.733 p99=52.807 max=53.825
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.983 p95=50.519 p99=52.711 max=54.498
+    priority_load_test.go:244: throughput=2471.5/s utilization_proxy=0.9623 idle_pending_proxy_ms=0.338 elapsed_ms=77.686
+=== RUN   TestPriorityLoadComparison/saturated/seed3/nested
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.680 p95=49.670 p99=52.799 max=55.118
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.203 p95=50.462 p99=52.696 max=53.981
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=26.302 p95=50.368 p99=53.203 max=53.579
+    priority_load_test.go:244: throughput=2466.4/s utilization_proxy=0.9598 idle_pending_proxy_ms=0.478 elapsed_ms=77.846
+=== RUN   TestPriorityLoadComparison/saturated/seed3/airlock
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.405 p95=49.694 p99=52.350 max=52.603
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.326 p95=49.751 p99=52.795 max=53.809
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=25.976 p95=50.504 p99=52.695 max=54.487
+    priority_load_test.go:244: throughput=2471.9/s utilization_proxy=0.9622 idle_pending_proxy_ms=0.375 elapsed_ms=77.674
+=== RUN   TestPriorityLoadComparison/saturated/seed3/priority
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=31 wait_ms_p50=7.733 p95=16.089 p99=16.999 max=17.295
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=12 wait_ms_p50=30.716 p95=35.967 p99=37.050 max=37.368
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=5 wait_ms_p50=50.953 p95=53.936 p99=54.226 max=54.372
+    priority_load_test.go:244: throughput=2473.2/s utilization_proxy=0.9591 idle_pending_proxy_ms=0.357 elapsed_ms=77.633
+=== RUN   TestPriorityLoadComparison/sparse-low/seed1/fifo
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=34 wait_ms_p50=25.467 p95=48.160 p99=50.296 max=50.494
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=12 wait_ms_p50=25.708 p95=47.251 p99=49.492 max=50.223
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=2 wait_ms_p50=25.849 p95=45.384 p99=45.384 max=51.070
+    priority_load_test.go:244: throughput=2584.1/s utilization_proxy=0.9625 idle_pending_proxy_ms=0.345 elapsed_ms=74.301
+=== RUN   TestPriorityLoadComparison/sparse-low/seed1/nested
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=27 wait_ms_p50=35.457 p95=49.886 p99=51.409 max=51.722
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=18 wait_ms_p50=12.659 p95=20.706 p99=20.744 max=21.518
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=3 wait_ms_p50=9.557 p95=9.868 p99=9.868 max=10.397
+    priority_load_test.go:244: throughput=2602.4/s utilization_proxy=0.9723 idle_pending_proxy_ms=0.354 elapsed_ms=73.777
+=== RUN   TestPriorityLoadComparison/sparse-low/seed1/airlock
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=24 wait_ms_p50=34.846 p95=50.004 p99=51.241 max=51.939
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=18 wait_ms_p50=11.330 p95=17.947 p99=19.257 max=19.855
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=6 wait_ms_p50=1.905 p95=2.305 p99=2.305 max=2.789
+    priority_load_test.go:244: throughput=2598.2/s utilization_proxy=0.9728 idle_pending_proxy_ms=0.404 elapsed_ms=73.896
+=== RUN   TestPriorityLoadComparison/sparse-low/seed1/priority
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=34 wait_ms_p50=26.482 p95=49.239 p99=50.695 max=51.446
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=11 wait_ms_p50=27.331 p95=47.682 p99=48.468 max=50.400
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=3 wait_ms_p50=9.769 p95=15.799 p99=15.799 max=18.552
+    priority_load_test.go:244: throughput=2614.9/s utilization_proxy=0.9749 idle_pending_proxy_ms=0.337 elapsed_ms=73.427
+=== RUN   TestPriorityLoadComparison/sparse-low/seed2/fifo
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=34 wait_ms_p50=25.396 p95=51.641 p99=53.152 max=54.059
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=12 wait_ms_p50=25.297 p95=50.939 p99=53.252 max=53.862
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=2 wait_ms_p50=25.325 p95=47.922 p99=47.922 max=53.766
+    priority_load_test.go:244: throughput=2493.5/s utilization_proxy=0.9735 idle_pending_proxy_ms=0.327 elapsed_ms=77.000
+=== RUN   TestPriorityLoadComparison/sparse-low/seed2/nested
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=27 wait_ms_p50=36.921 p95=52.717 p99=54.119 max=54.546
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=18 wait_ms_p50=12.814 p95=22.942 p99=23.781 max=23.836
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=3 wait_ms_p50=9.671 p95=11.468 p99=11.468 max=11.934
+    priority_load_test.go:244: throughput=2511.0/s utilization_proxy=0.9727 idle_pending_proxy_ms=0.402 elapsed_ms=76.464
+=== RUN   TestPriorityLoadComparison/sparse-low/seed2/airlock
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=24 wait_ms_p50=37.211 p95=52.471 p99=53.681 max=54.604
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=18 wait_ms_p50=11.489 p95=20.554 p99=21.192 max=21.431
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=6 wait_ms_p50=1.630 p95=2.041 p99=2.041 max=2.309
+    priority_load_test.go:244: throughput=2541.8/s utilization_proxy=0.9874 idle_pending_proxy_ms=0.383 elapsed_ms=75.537
+=== RUN   TestPriorityLoadComparison/sparse-low/seed2/priority
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=34 wait_ms_p50=27.340 p95=52.456 p99=53.394 max=54.172
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=11 wait_ms_p50=27.949 p95=50.503 p99=51.088 max=52.909
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=3 wait_ms_p50=10.297 p95=17.901 p99=17.901 max=19.970
+    priority_load_test.go:244: throughput=2528.2/s utilization_proxy=0.9818 idle_pending_proxy_ms=0.564 elapsed_ms=75.943
+=== RUN   TestPriorityLoadComparison/sparse-low/seed3/fifo
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=34 wait_ms_p50=25.389 p95=50.254 p99=52.438 max=52.632
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=12 wait_ms_p50=25.344 p95=49.873 p99=52.303 max=53.666
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=2 wait_ms_p50=25.961 p95=46.473 p99=46.473 max=54.322
+    priority_load_test.go:244: throughput=2476.5/s utilization_proxy=0.9619 idle_pending_proxy_ms=0.356 elapsed_ms=77.530
+=== RUN   TestPriorityLoadComparison/sparse-low/seed3/nested
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=28 wait_ms_p50=37.274 p95=52.711 p99=54.418 max=54.788
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=18 wait_ms_p50=14.255 p95=22.350 p99=23.564 max=23.751
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=2 wait_ms_p50=10.548 p95=11.112 p99=11.112 max=11.319
+    priority_load_test.go:244: throughput=2479.3/s utilization_proxy=0.9617 idle_pending_proxy_ms=0.415 elapsed_ms=77.441
+=== RUN   TestPriorityLoadComparison/sparse-low/seed3/airlock
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=24 wait_ms_p50=37.377 p95=52.851 p99=53.936 max=54.772
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=18 wait_ms_p50=12.580 p95=19.755 p99=20.507 max=21.630
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=6 wait_ms_p50=1.919 p95=2.466 p99=2.466 max=2.708
+    priority_load_test.go:244: throughput=2535.8/s utilization_proxy=0.9849 idle_pending_proxy_ms=0.420 elapsed_ms=75.717
+=== RUN   TestPriorityLoadComparison/sparse-low/seed3/priority
+    priority_load_test.go:242: group=H granted=136 rejected=0 cancelled=0 first48=34 wait_ms_p50=27.062 p95=51.554 p99=53.622 max=54.398
+    priority_load_test.go:242: group=M granted=48 rejected=0 cancelled=0 first48=11 wait_ms_p50=27.521 p95=49.695 p99=50.416 max=53.327
+    priority_load_test.go:242: group=L granted=8 rejected=0 cancelled=0 first48=3 wait_ms_p50=10.162 p95=16.716 p99=16.716 max=18.980
+    priority_load_test.go:244: throughput=2510.8/s utilization_proxy=0.9734 idle_pending_proxy_ms=0.416 elapsed_ms=76.470
+=== RUN   TestPriorityLoadComparison/low-large/seed1/fifo
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=313.850 p95=590.230 p99=619.346 max=628.122
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=313.725 p95=590.123 p99=619.243 max=628.020
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=316.771 p95=592.323 p99=621.433 max=632.040
+    priority_load_test.go:244: throughput=291.8/s utilization_proxy=0.7647 idle_pending_proxy_ms=231.212 elapsed_ms=657.962
+=== RUN   TestPriorityLoadComparison/low-large/seed1/nested
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=28 wait_ms_p50=51.335 p95=102.655 p99=103.367 max=103.715
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=110.336 p95=196.897 p99=198.276 max=198.565
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=4 wait_ms_p50=311.913 p95=491.413 p99=510.655 max=517.120
+    priority_load_test.go:244: throughput=354.0/s utilization_proxy=0.9221 idle_pending_proxy_ms=72.912 elapsed_ms=542.403
+=== RUN   TestPriorityLoadComparison/low-large/seed1/airlock
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=321.358 p95=600.384 p99=629.347 max=629.649
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=321.232 p95=600.275 p99=629.236 max=629.540
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=314.032 p95=593.654 p99=622.909 max=633.284
+    priority_load_test.go:244: throughput=291.3/s utilization_proxy=0.7662 idle_pending_proxy_ms=230.788 elapsed_ms=659.204
+=== RUN   TestPriorityLoadComparison/low-large/seed1/priority
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=33 wait_ms_p50=43.080 p95=87.916 p99=88.822 max=89.085
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=11 wait_ms_p50=131.368 p95=215.907 p99=224.955 max=225.262
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=4 wait_ms_p50=305.724 p95=484.978 p99=504.186 max=510.376
+    priority_load_test.go:244: throughput=358.0/s utilization_proxy=0.9327 idle_pending_proxy_ms=91.533 elapsed_ms=536.269
+=== RUN   TestPriorityLoadComparison/low-large/seed2/fifo
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=309.162 p95=593.267 p99=622.446 max=632.106
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=309.053 p95=593.145 p99=622.336 max=631.985
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=313.051 p95=595.395 p99=625.365 max=636.155
+    priority_load_test.go:244: throughput=290.0/s utilization_proxy=0.7648 idle_pending_proxy_ms=234.559 elapsed_ms=662.061
+=== RUN   TestPriorityLoadComparison/low-large/seed2/nested
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=27 wait_ms_p50=50.650 p95=101.380 p99=102.011 max=102.114
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=17 wait_ms_p50=107.416 p95=192.774 p99=194.755 max=195.004
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=4 wait_ms_p50=309.614 p95=489.710 p99=508.163 max=514.637
+    priority_load_test.go:244: throughput=355.5/s utilization_proxy=0.9327 idle_pending_proxy_ms=65.575 elapsed_ms=540.119
+=== RUN   TestPriorityLoadComparison/low-large/seed2/airlock
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=315.220 p95=602.022 p99=630.889 max=631.188
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=315.122 p95=601.908 p99=630.779 max=631.082
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=307.919 p95=594.716 p99=624.580 max=634.850
+    priority_load_test.go:244: throughput=290.6/s utilization_proxy=0.7672 idle_pending_proxy_ms=233.324 elapsed_ms=660.746
+=== RUN   TestPriorityLoadComparison/low-large/seed2/priority
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=33 wait_ms_p50=42.504 p95=88.328 p99=89.240 max=89.531
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=11 wait_ms_p50=130.029 p95=219.271 p99=228.349 max=228.643
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=4 wait_ms_p50=308.766 p95=485.238 p99=504.717 max=510.900
+    priority_load_test.go:244: throughput=358.1/s utilization_proxy=0.9347 idle_pending_proxy_ms=91.668 elapsed_ms=536.210
+=== RUN   TestPriorityLoadComparison/low-large/seed3/fifo
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=318.409 p95=601.516 p99=633.121 max=643.438
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=318.307 p95=601.407 p99=633.010 max=643.311
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=321.310 p95=605.426 p99=637.187 max=647.284
+    priority_load_test.go:244: throughput=285.2/s utilization_proxy=0.7601 idle_pending_proxy_ms=242.395 elapsed_ms=673.188
+=== RUN   TestPriorityLoadComparison/low-large/seed3/nested
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=28 wait_ms_p50=50.850 p95=100.896 p99=102.329 max=102.897
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=108.304 p95=193.494 p99=196.008 max=196.333
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=4 wait_ms_p50=310.495 p95=489.458 p99=508.015 max=513.756
+    priority_load_test.go:244: throughput=355.8/s utilization_proxy=0.9314 idle_pending_proxy_ms=70.307 elapsed_ms=539.666
+=== RUN   TestPriorityLoadComparison/low-large/seed3/airlock
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=322.911 p95=605.401 p99=636.315 max=636.628
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=322.784 p95=605.292 p99=636.206 max=636.526
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=16 wait_ms_p50=315.576 p95=598.102 p99=629.957 max=640.387
+    priority_load_test.go:244: throughput=288.2/s utilization_proxy=0.7629 idle_pending_proxy_ms=238.621 elapsed_ms=666.293
+=== RUN   TestPriorityLoadComparison/low-large/seed3/priority
+    priority_load_test.go:242: group=H granted=64 rejected=0 cancelled=0 first48=33 wait_ms_p50=45.134 p95=91.218 p99=92.136 max=92.428
+    priority_load_test.go:242: group=M granted=64 rejected=0 cancelled=0 first48=11 wait_ms_p50=135.870 p95=224.783 p99=234.853 max=235.159
+    priority_load_test.go:242: group=L granted=64 rejected=0 cancelled=0 first48=4 wait_ms_p50=313.586 p95=493.498 p99=513.587 max=519.409
+    priority_load_test.go:244: throughput=352.1/s utilization_proxy=0.9298 idle_pending_proxy_ms=92.257 elapsed_ms=545.312
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed1/fifo
+    priority_load_test.go:242: group=H granted=41 rejected=0 cancelled=23 first48=17 wait_ms_p50=51.205 p95=104.669 p99=105.657 max=107.225
+    priority_load_test.go:242: group=M granted=44 rejected=0 cancelled=20 first48=17 wait_ms_p50=53.968 p95=99.847 p99=104.561 max=106.365
+    priority_load_test.go:242: group=L granted=40 rejected=0 cancelled=24 first48=14 wait_ms_p50=59.691 p95=105.771 p99=107.321 max=108.876
+    priority_load_test.go:244: throughput=945.5/s utilization_proxy=0.8745 idle_pending_proxy_ms=70.311 elapsed_ms=132.200
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed1/nested
+    priority_load_test.go:242: group=H granted=41 rejected=0 cancelled=23 first48=19 wait_ms_p50=47.634 p95=91.280 p99=101.410 max=101.648
+    priority_load_test.go:242: group=M granted=45 rejected=0 cancelled=19 first48=16 wait_ms_p50=61.824 p95=104.962 p99=112.112 max=112.898
+    priority_load_test.go:242: group=L granted=40 rejected=0 cancelled=24 first48=13 wait_ms_p50=60.024 p95=104.742 p99=106.462 max=108.186
+    priority_load_test.go:244: throughput=947.1/s utilization_proxy=0.8708 idle_pending_proxy_ms=87.892 elapsed_ms=133.044
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed1/airlock
+    priority_load_test.go:242: group=H granted=41 rejected=0 cancelled=23 first48=17 wait_ms_p50=52.877 p95=97.975 p99=102.197 max=104.787
+    priority_load_test.go:242: group=M granted=44 rejected=0 cancelled=20 first48=16 wait_ms_p50=63.842 p95=107.678 p99=111.517 max=113.475
+    priority_load_test.go:242: group=L granted=40 rejected=0 cancelled=24 first48=15 wait_ms_p50=57.944 p95=99.996 p99=103.886 max=105.817
+    priority_load_test.go:244: throughput=934.4/s utilization_proxy=0.8693 idle_pending_proxy_ms=81.847 elapsed_ms=133.779
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed1/priority
+    priority_load_test.go:242: group=H granted=42 rejected=0 cancelled=22 first48=33 wait_ms_p50=18.302 p95=42.132 p99=42.626 max=46.150
+    priority_load_test.go:242: group=M granted=44 rejected=0 cancelled=20 first48=11 wait_ms_p50=62.166 p95=82.053 p99=84.615 max=85.208
+    priority_load_test.go:242: group=L granted=40 rejected=0 cancelled=24 first48=4 wait_ms_p50=100.829 p95=111.160 p99=111.638 max=112.359
+    priority_load_test.go:244: throughput=936.7/s utilization_proxy=0.8677 idle_pending_proxy_ms=88.898 elapsed_ms=134.512
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed2/fifo
+    priority_load_test.go:242: group=H granted=42 rejected=0 cancelled=22 first48=16 wait_ms_p50=50.413 p95=92.209 p99=99.294 max=99.633
+    priority_load_test.go:242: group=M granted=41 rejected=0 cancelled=23 first48=16 wait_ms_p50=50.316 p95=94.375 p99=97.218 max=101.800
+    priority_load_test.go:242: group=L granted=38 rejected=0 cancelled=26 first48=16 wait_ms_p50=50.440 p95=92.303 p99=99.398 max=99.745
+    priority_load_test.go:244: throughput=974.8/s utilization_proxy=0.8586 idle_pending_proxy_ms=77.954 elapsed_ms=124.133
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed2/nested
+    priority_load_test.go:242: group=H granted=42 rejected=0 cancelled=22 first48=17 wait_ms_p50=43.795 p95=91.578 p99=97.898 max=98.474
+    priority_load_test.go:242: group=M granted=41 rejected=0 cancelled=23 first48=17 wait_ms_p50=43.065 p95=85.914 p99=95.418 max=96.012
+    priority_load_test.go:242: group=L granted=38 rejected=0 cancelled=26 first48=14 wait_ms_p50=60.376 p95=93.014 p99=93.209 max=95.884
+    priority_load_test.go:244: throughput=999.5/s utilization_proxy=0.8770 idle_pending_proxy_ms=64.686 elapsed_ms=121.061
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed2/airlock
+    priority_load_test.go:242: group=H granted=42 rejected=0 cancelled=22 first48=16 wait_ms_p50=51.192 p95=90.482 p99=95.802 max=99.434
+    priority_load_test.go:242: group=M granted=41 rejected=0 cancelled=23 first48=16 wait_ms_p50=53.557 p95=93.993 p99=97.629 max=99.324
+    priority_load_test.go:242: group=L granted=38 rejected=0 cancelled=26 first48=16 wait_ms_p50=47.217 p95=85.936 p99=88.784 max=89.830
+    priority_load_test.go:244: throughput=996.3/s utilization_proxy=0.8770 idle_pending_proxy_ms=67.268 elapsed_ms=121.450
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed2/priority
+    priority_load_test.go:242: group=H granted=43 rejected=0 cancelled=21 first48=33 wait_ms_p50=24.076 p95=41.984 p99=46.782 max=47.383
+    priority_load_test.go:242: group=M granted=40 rejected=0 cancelled=24 first48=11 wait_ms_p50=60.641 p95=76.640 p99=77.042 max=77.408
+    priority_load_test.go:242: group=L granted=38 rejected=0 cancelled=26 first48=4 wait_ms_p50=94.433 p95=104.954 p99=105.457 max=106.918
+    priority_load_test.go:244: throughput=971.3/s utilization_proxy=0.8538 idle_pending_proxy_ms=70.239 elapsed_ms=124.569
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed3/fifo
+    priority_load_test.go:242: group=H granted=46 rejected=0 cancelled=18 first48=18 wait_ms_p50=61.424 p95=134.606 p99=137.331 max=139.340
+    priority_load_test.go:242: group=M granted=43 rejected=0 cancelled=21 first48=13 wait_ms_p50=75.597 p95=128.957 p99=139.508 max=141.190
+    priority_load_test.go:242: group=L granted=42 rejected=0 cancelled=22 first48=17 wait_ms_p50=68.539 p95=132.180 p99=139.445 max=141.146
+    priority_load_test.go:244: throughput=797.2/s utilization_proxy=0.8928 idle_pending_proxy_ms=80.500 elapsed_ms=164.317
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed3/nested
+    priority_load_test.go:242: group=H granted=46 rejected=0 cancelled=18 first48=15 wait_ms_p50=75.378 p95=134.134 p99=140.244 max=143.900
+    priority_load_test.go:242: group=M granted=43 rejected=0 cancelled=21 first48=13 wait_ms_p50=84.341 p95=146.083 p99=147.079 max=148.862
+    priority_load_test.go:242: group=L granted=42 rejected=0 cancelled=22 first48=20 wait_ms_p50=49.446 p95=102.972 p99=112.198 max=119.366
+    priority_load_test.go:244: throughput=772.3/s utilization_proxy=0.8645 idle_pending_proxy_ms=106.862 elapsed_ms=169.626
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed3/airlock
+    priority_load_test.go:242: group=H granted=46 rejected=0 cancelled=18 first48=16 wait_ms_p50=79.026 p95=141.415 p99=144.108 max=146.648
+    priority_load_test.go:242: group=M granted=43 rejected=0 cancelled=21 first48=16 wait_ms_p50=76.335 p95=141.055 p99=146.811 max=149.441
+    priority_load_test.go:242: group=L granted=43 rejected=0 cancelled=21 first48=16 wait_ms_p50=75.533 p95=147.962 p99=150.581 max=151.433
+    priority_load_test.go:244: throughput=765.1/s utilization_proxy=0.8573 idle_pending_proxy_ms=109.803 elapsed_ms=172.537
+=== RUN   TestPriorityLoadComparison/cancel-mixed/seed3/priority
+    priority_load_test.go:242: group=H granted=47 rejected=0 cancelled=17 first48=33 wait_ms_p50=34.800 p95=66.482 p99=67.566 max=69.239
+    priority_load_test.go:242: group=M granted=42 rejected=0 cancelled=22 first48=11 wait_ms_p50=83.719 p95=111.080 p99=112.622 max=113.005
+    priority_load_test.go:242: group=L granted=41 rejected=0 cancelled=23 first48=4 wait_ms_p50=131.280 p95=143.560 p99=144.765 max=144.928
+    priority_load_test.go:244: throughput=778.5/s utilization_proxy=0.8624 idle_pending_proxy_ms=100.960 elapsed_ms=166.988
+--- PASS: TestPriorityLoadComparison (10.75s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed1/fifo (0.07s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed1/nested (0.07s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed1/airlock (0.07s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed1/priority (0.07s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed2/fifo (0.08s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed2/nested (0.08s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed2/airlock (0.08s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed2/priority (0.08s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed3/fifo (0.08s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed3/nested (0.08s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed3/airlock (0.08s)
+    --- PASS: TestPriorityLoadComparison/saturated/seed3/priority (0.08s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed1/fifo (0.07s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed1/nested (0.07s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed1/airlock (0.07s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed1/priority (0.07s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed2/fifo (0.08s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed2/nested (0.08s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed2/airlock (0.08s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed2/priority (0.08s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed3/fifo (0.08s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed3/nested (0.08s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed3/airlock (0.08s)
+    --- PASS: TestPriorityLoadComparison/sparse-low/seed3/priority (0.08s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed1/fifo (0.66s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed1/nested (0.54s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed1/airlock (0.66s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed1/priority (0.54s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed2/fifo (0.66s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed2/nested (0.54s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed2/airlock (0.66s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed2/priority (0.54s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed3/fifo (0.67s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed3/nested (0.54s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed3/airlock (0.67s)
+    --- PASS: TestPriorityLoadComparison/low-large/seed3/priority (0.55s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed1/fifo (0.13s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed1/nested (0.13s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed1/airlock (0.13s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed1/priority (0.13s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed2/fifo (0.12s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed2/nested (0.12s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed2/airlock (0.12s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed2/priority (0.12s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed3/fifo (0.16s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed3/nested (0.17s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed3/airlock (0.17s)
+    --- PASS: TestPriorityLoadComparison/cancel-mixed/seed3/priority (0.17s)
+=== RUN   TestPriorityStrictStarvationCounterexample
+    priority_load_test.go:301: model=strict slots=1200 grants(H/M/L)=[1200 0 0] max_intervening_selections=[0 0 0] (gap undefined for never-selected groups)
+    priority_load_test.go:301: model=8:3:1 slots=1200 grants(H/M/L)=[800 300 100] max_intervening_selections=[4 9 11] (gap undefined for never-selected groups)
+--- PASS: TestPriorityStrictStarvationCounterexample (0.00s)
+PASS
+ok  	github.com/tr1v3r/airlock/internal/comparison	11.176s

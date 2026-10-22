@@ -1,6 +1,6 @@
 # 决策 002：按次选择立即获取
 
-状态：本分支实现的本地接口，尚不代表已合入或发布。适用于 `TryAcquire`、`TryAcquireFor`、`TryAcquireN` 和 `TryAcquireNFor`。优先级分组、分布式 driver 仍未实现。
+状态：本分支实现的本地接口，尚不代表已合入或发布。适用于 `TryAcquire`、`TryAcquireFor`、`TryAcquireN` 和 `TryAcquireNFor`。本地优先级扩展见[优先级决定](003-local-priority.md)；分布式 driver 仍未实现。
 
 ## 问题与选择
 
