@@ -3,6 +3,7 @@ package airlock
 import (
 	"context"
 	"errors"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -296,6 +297,17 @@ func TestDistributedDeadlinePropagatedAndNoAutomaticRenewal(t *testing.T) {
 	}
 }
 
+// clientExhaustRemaining waits for an observable clock tick so coarse clocks
+// cannot return a result before the injected one-nanosecond lifetime has elapsed.
+func clientExhaustRemaining(r Result) Result {
+	r.Remaining = time.Nanosecond
+	deadline := time.Now().Add(r.Remaining)
+	for time.Now().Before(deadline) {
+		runtime.Gosched()
+	}
+	return r
+}
+
 func TestDistributedAcquireRejectsInvalidOrLateResults(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -306,7 +318,7 @@ func TestDistributedAcquireRejectsInvalidOrLateResults(t *testing.T) {
 		{"zero duration", func(r Result) Result { r.Remaining = 0; return r }},
 		{"too long", func(r Result) Result { r.Remaining = time.Hour; return r }},
 		{"terminal", func(r Result) Result { r.Status = Released; return r }},
-		{"roundtrip exhausted", func(r Result) Result { r.Remaining = time.Nanosecond; return r }},
+		{"roundtrip exhausted", clientExhaustRemaining},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -423,7 +435,7 @@ func TestDistributedRenewErrorsPermanentlyInvalidate(t *testing.T) {
 		{"wrong weight", func(_ context.Context, r Result) (Result, error) { r.Weight++; return r, nil }},
 		{"zero ttl", func(_ context.Context, r Result) (Result, error) { r.Remaining = 0; return r, nil }},
 		{"excess ttl", func(_ context.Context, r Result) (Result, error) { r.Remaining = time.Hour; return r, nil }},
-		{"elapsed ttl", func(_ context.Context, r Result) (Result, error) { r.Remaining = time.Nanosecond; return r, nil }},
+		{"elapsed ttl", func(_ context.Context, r Result) (Result, error) { return clientExhaustRemaining(r), nil }},
 		{"timeout", func(ctx context.Context, r Result) (Result, error) { <-ctx.Done(); return r, nil }},
 	}
 	for _, tt := range tests {
