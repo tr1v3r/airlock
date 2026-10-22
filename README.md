@@ -15,6 +15,26 @@ each acquisition holds one token. Weighted acquisition is planned, not implement
 The `main` branch contains the baseline; ongoing development takes place on `dev`.
 The breaking-change section below describes the history inherited from pools.
 
+## Experimental development
+
+[RFC 001: tenant-fair admission (Chinese)](docs/proposals/001-tenant-fair-admission.md)
+proposes a separate single-token Gate with per-tenant round-robin waiting queues
+and bounded queue sizes. A prototype lives in `internal/fairgate`; it is not a
+supported public API. Existing Pool behavior is unchanged. Runtime dependencies
+remain standard-library-only; `x/sync` is a test dependency.
+
+`internal/comparison` includes deterministic policy models, real cancellation
+tests, and an opt-in goroutine workload comparing Pool, Weighted, tenant-first
+nested semaphores, and Gate. See [experiment results](docs/proposals/001-experiment-results.md)
+for measurements and limitations: the prototype has not demonstrated an advantage
+over the strongest nested baseline in the measured workloads.
+
+```sh
+GOWORK=off go test -race ./...
+GOWORK=off AIRLOCK_LOAD=1 go test -v ./internal/comparison -run '^TestLoadComparison$' -count=1
+GOWORK=off go test ./internal/comparison -run '^$' -bench BenchmarkAdmission -benchmem -count=3
+```
+
 ## Installation
 
 ```sh

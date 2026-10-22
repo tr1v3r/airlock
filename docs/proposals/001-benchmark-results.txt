@@ -1,0 +1,24 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/tr1v3r/airlock/internal/comparison
+cpu: Apple M3 Pro
+BenchmarkAdmission/nested-2-12         	33135549	        36.52 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAdmission/nested-2-12         	31315443	        36.64 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAdmission/nested-2-12         	32595482	        36.63 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAdmission/nested-4-12         	32927757	        36.38 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAdmission/nested-4-12         	31968279	        36.69 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAdmission/nested-4-12         	33227266	        36.57 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAdmission/pool-12             	23342139	        51.60 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAdmission/pool-12             	22914319	        51.82 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAdmission/pool-12             	23071893	        51.79 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAdmission/weighted-12         	55929714	        21.49 ns/op	      16 B/op	       1 allocs/op
+BenchmarkAdmission/weighted-12         	55053868	        21.55 ns/op	      16 B/op	       1 allocs/op
+BenchmarkAdmission/weighted-12         	55549768	        21.51 ns/op	      16 B/op	       1 allocs/op
+BenchmarkAdmission/gate-12             	32461346	        37.27 ns/op	      40 B/op	       2 allocs/op
+BenchmarkAdmission/gate-12             	32332050	        37.58 ns/op	      40 B/op	       2 allocs/op
+BenchmarkAdmission/gate-12             	32362713	        37.20 ns/op	      40 B/op	       2 allocs/op
+BenchmarkAdmission/nested-1-12         	32822719	        36.15 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAdmission/nested-1-12         	32906500	        36.53 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAdmission/nested-1-12         	32836491	        36.41 ns/op	      24 B/op	       1 allocs/op
+PASS
+ok  	github.com/tr1v3r/airlock/internal/comparison	23.307s
