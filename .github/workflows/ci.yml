@@ -110,6 +110,54 @@ jobs:
           go-version: stable
       - run: bash scripts/driver-check.sh
 
+  postgres:
+    name: PostgreSQL ${{ matrix.postgres }} integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['16', '18']
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: airlock
+          POSTGRES_PASSWORD: airlock
+          POSTGRES_DB: airlock
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U airlock -d airlock"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - name: Real database protocol and fault tests
+        working-directory: driver/postgres
+        env:
+          AIRLOCK_POSTGRES_DSN: postgres://airlock:airlock@127.0.0.1:5432/airlock?sslmode=disable
+        run: go test -race -shuffle=on -count=1 -timeout=5m ./...
+
+  postgres-failover:
+    name: PostgreSQL synchronous failover
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - run: bash scripts/postgres-failover.sh
+
   security:
     name: Vulnerabilities
     runs-on: ubuntu-latest
@@ -127,7 +175,7 @@ jobs:
   gate:
     name: CI Gate
     if: always()
-    needs: [quality, test, race, security, drivers]
+    needs: [quality, test, race, security, drivers, postgres, postgres-failover]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
