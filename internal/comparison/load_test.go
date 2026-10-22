@@ -28,7 +28,7 @@ func adapters(capacity, queue int) map[string]admission {
 			return func() { s.Release(1) }, err
 		},
 		"airlock": func(ctx context.Context, tenant string) (func(), error) {
-			p, err := g.Acquire(ctx, tenant)
+			p, err := g.AcquireFor(ctx, tenant)
 			if err != nil {
 				return nil, err
 			}

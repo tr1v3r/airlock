@@ -14,6 +14,38 @@ go get github.com/tr1v3r/airlock
 
 此 API 正在面向 `dev` 的功能分支开发，尚无包含该 API 的标签版本。
 
+## Hello world
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/tr1v3r/airlock"
+)
+
+func main() {
+	lock, err := airlock.New(airlock.Config{Capacity: 2})
+	if err != nil {
+		log.Fatal(err)
+	}
+	permit, err := lock.Acquire(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer permit.Release()
+	fmt.Println("hello, airlock")
+}
+```
+
+`Acquire(ctx)` 使用一个共享的默认租户。只配置 `Capacity` 时，容量满了立即返回
+`ErrQueueFull`。需要等待时，必须设置**两个**队列上限，例如
+`Config{Capacity: 2, MaxQueued: 8, MaxQueuedPerTenant: 8}`。
+默认租户遵循相同的排队上限、FIFO 和取消规则，不会与任何显式租户 ID 冲突。
+
 ## 用法与契约
 
 ```go
@@ -25,7 +57,7 @@ lock, err := airlock.New(airlock.Config{
 if err != nil {
     return err
 }
-permit, err := lock.Acquire(ctx, tenantID)
+permit, err := lock.AcquireFor(ctx, tenantID)
 if err != nil {
     return err
 }
@@ -37,7 +69,8 @@ defer permit.Release()
 
 - 容量必须为正数，队列上限非负，单租户上限不能超过全局上限；否则 `New` 返回
   `ErrInvalidConfig`。队列上限为零表示不允许等待。所有上限创建后固定。
-- 租户 ID 为精确匹配的非空字符串。nil context 会 panic；空 ID 在检查取消之前返回
+- `Acquire(ctx)` 使用默认租户，`AcquireFor(ctx, "tenant-a")`
+  使用精确匹配的非空字符串。nil context 会 panic；`AcquireFor` 的空 ID 在检查取消之前返回
   `ErrInvalidTenant`。调用方应提供可信且长度受限的 ID，Airlock 不负责身份验证或字符串长度限制。
 - 无法立即获取时，队列已满分别返回 `ErrQueueFull` 或 `ErrTenantQueueFull`；同时触发时优先返回
   全局错误。已取消的 context 在检查容量和队列之前返回其错误。支持 `errors.Is`，失败时不返回 Permit。
@@ -65,6 +98,7 @@ GOWORK=off go test ./internal/comparison -run '^$' -bench BenchmarkAdmission -be
 
 | 示例 | 命令 |
 | --- | --- |
+| [Hello world](examples/hello/example.go) | `go run ./examples/hello` |
 | [有界批量处理与有序结果](examples/batch/example.go) | `go run ./examples/batch` |
 | [获取令牌超时](examples/cancellation/example.go) | `go run ./examples/cancellation` |
 | [调用方管理完成通知](examples/completion/example.go) | `go run ./examples/completion` |
@@ -78,13 +112,17 @@ GOWORK=off go vet ./...
 ## 迁移
 
 唯一的准入类型为 `Airlock`，通过 `New(Config)` 构造。
-每次 `Acquire(ctx, tenantID)` **仅获取一个令牌**，通过 `Permit.Release()` 归还。
+每次 `AcquireFor(ctx, tenantID)` **仅获取一个令牌**，通过 `Permit.Release()` 归还。
 多权重请求、无限模式和动态容量尚未实现。
 
 这是开发阶段的破坏性变更：移除 `Pool`/`NewPool` 和先前的 `Gate`/`NewGate` 名称。
-原调用方需要显式配置队列上限和租户 ID，保存返回的 Permit 并释放它。
+原调用方需要显式配置队列上限，可选择传入租户 ID，保存返回的 Permit 并释放它。
 `Stats().InUse`、`Stats().Capacity` 分别替代 `Num()`、`Size()` 的快照用途。
 仅需要简单总并发上限、不需要租户准入时，可直接使用 `x/sync/semaphore`。不提供兼容别名。
+
+默认租户使用 `Acquire(ctx)`，指定租户使用 `AcquireFor(ctx, tenantID)`。
+原来的 `Acquire(ctx, tenantID)` 调用需迁移到 `AcquireFor`；接口、mock 和方法值类型
+也需使用对应的固定参数签名。两个入口均不使用可变参数。
 
 原 channel 策略只保留为测试基线。初始代码迁自 `tr1v3r/pkg` 提交
 `b3e47bdfd27a149ecb4da01580b91be277b905f6` 的 `pools/`，Git 历史保留原实现。

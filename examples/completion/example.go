@@ -18,7 +18,7 @@ func main() {
 	var wg sync.WaitGroup
 	results := make([]int, 3)
 	for i := range results {
-		permit, err := lock.Acquire(context.Background(), "batch")
+		permit, err := lock.AcquireFor(context.Background(), "batch")
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -10,7 +10,7 @@ import (
 var (
 	// ErrInvalidConfig reports an invalid capacity or queue limit.
 	ErrInvalidConfig = errors.New("airlock: invalid configuration")
-	// ErrInvalidTenant reports an empty tenant ID.
+	// ErrInvalidTenant reports an empty tenant ID passed to AcquireFor.
 	ErrInvalidTenant = errors.New("airlock: empty tenant")
 	// ErrQueueFull reports that the global waiting queue is full.
 	ErrQueueFull = errors.New("airlock: queue full")
@@ -84,24 +84,41 @@ func New(cfg Config) (*Airlock, error) {
 	return &Airlock{cfg: cfg, tenants: make(map[string]*tenantQueue)}, nil
 }
 
-// Acquire atomically acquires one slot or returns an error without holding any.
-// The first state transition under the lock wins cancellation/grant races.
-// A grant that wins may return success even after ctx is cancelled; the caller
-// must release every successful permit. Cancellation does not stop running work.
+// Acquire atomically acquires one slot for a shared default tenant, distinct
+// from every named tenant. It obeys the same queue limits and scheduling rules
+// as AcquireFor. A nil context panics.
 //
-// A nil context panics. Empty tenant IDs return ErrInvalidTenant. Next, an
-// already-cancelled context returns ctx.Err(). If capacity cannot be granted,
+// An already-cancelled context returns ctx.Err(). If capacity cannot be granted,
 // global and then per-tenant queue limits are checked; a full global queue takes
 // precedence over a full tenant queue. Queue rejection does not wait for ctx.
 //
-// Tenant IDs are exact strings supplied by the caller. Use trusted, bounded IDs:
+// The first state transition under the lock wins cancellation/grant races.
+// A grant that wins may return success even after ctx is cancelled; the caller
+// must release every successful permit. An error retains no token.
+// Cancellation does not stop admitted work.
+func (g *Airlock) Acquire(ctx context.Context) (*Permit, error) {
+	return g.acquire(ctx, "")
+}
+
+// AcquireFor acquires one slot for tenantID, using the same cancellation,
+// queue-limit and release rules as Acquire. A nil context panics. An empty ID
+// returns ErrInvalidTenant before cancellation or capacity is checked.
+// IDs are exact strings supplied by the caller. Use trusted, bounded IDs:
 // this package neither authenticates tenants nor limits their string length.
-func (g *Airlock) Acquire(ctx context.Context, tenant string) (*Permit, error) {
+func (g *Airlock) AcquireFor(ctx context.Context, tenantID string) (*Permit, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
 	}
-	if tenant == "" {
+	if tenantID == "" {
 		return nil, ErrInvalidTenant
+	}
+	return g.acquire(ctx, tenantID)
+}
+
+// Empty is reserved internally for the default tenant.
+func (g *Airlock) acquire(ctx context.Context, tenant string) (*Permit, error) {
+	if ctx == nil {
+		panic("airlock: nil context")
 	}
 	g.mu.Lock()
 	if err := ctx.Err(); err != nil {
