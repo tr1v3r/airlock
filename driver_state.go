@@ -8,7 +8,9 @@ import (
 	"time"
 )
 
-type durableRecord struct {
+// DriverRecord is one request and its lifecycle state in the reference scheduler.
+// Request.Config is omitted in persisted state; DriverState.Config is authoritative.
+type DriverRecord struct {
 	Request  Request
 	Status   Status
 	LeaseID  string
@@ -16,11 +18,15 @@ type durableRecord struct {
 	Finished time.Time
 	Failure  string
 }
-type durableSnapshot struct {
+
+// DriverState is the structured state of the reference durable scheduler.
+// It is an optional implementation helper, not a storage format required by Driver.
+// Version 1 uses per-tenant FIFO queues, group rotations and a protected head.
+type DriverState struct {
 	Version   int
 	Resource  string
 	Config    ResourceConfig
-	Records   map[string]*durableRecord
+	Records   map[string]*DriverRecord
 	Rotations [][]string
 	Queues    map[string][]string
 	Protected string
@@ -28,6 +34,9 @@ type durableSnapshot struct {
 	Revision  uint64
 	Time      time.Time
 }
+
+type durableRecord = DriverRecord
+type durableSnapshot = DriverState
 
 // Transition is the reference durable state machine. snapshot is nil for a new
 // resource; otherwise it must be the last committed output for this resource.
@@ -38,6 +47,35 @@ type durableSnapshot struct {
 // closed. State/expiry work is bounded by ResourceConfig.MaxRecords (<=10000).
 // Existing local Airlocks and this machine share enqueue/remove/dispatch logic.
 func Transition(snapshot []byte, now time.Time, cmd Command) ([]byte, Result, error) {
+	if err := ValidateCommand(cmd); err != nil {
+		return nil, Result{}, err
+	}
+	var state *DriverState
+	if len(snapshot) != 0 {
+		state = new(DriverState)
+		if json.Unmarshal(snapshot, state) != nil {
+			return nil, Result{}, ErrCorruptState
+		}
+	}
+	next, result, err := TransitionState(state, now, cmd)
+	if next == nil {
+		return nil, result, err
+	}
+	data, e := json.Marshal(next)
+	if e != nil {
+		return nil, Result{}, ErrCorruptState
+	}
+	return data, result, err
+}
+
+// TransitionState advances structured state without serializing it. A nil state
+// initializes a resource. The caller transfers exclusive ownership of state and
+// its maps/records; input may be modified even on error and must not be reused.
+// Persist every nonnil returned state atomically, including on business errors.
+// A nil return must not be persisted. Backend time and atomicity requirements are
+// identical to Transition. SQL drivers may store records separately and write
+// only changed rows; Driver implementations need not use either helper.
+func TransitionState(state *DriverState, now time.Time, cmd Command) (*DriverState, Result, error) {
 	r := cmd.Request
 	r.SubmitUntil = r.SubmitUntil.UTC()
 	r.WaitUntil = r.WaitUntil.UTC()
@@ -47,10 +85,13 @@ func Transition(snapshot []byte, now time.Time, cmd Command) ([]byte, Result, er
 	}
 	observedNow := now.UTC()
 	now = observedNow.Truncate(time.Millisecond)
-	var s durableSnapshot
-	if len(snapshot) == 0 {
-		s = durableSnapshot{Version: 1, Resource: r.Resource, Config: r.Config, Records: make(map[string]*durableRecord), Queues: make(map[string][]string)}
-	} else if json.Unmarshal(snapshot, &s) != nil || s.Version != 1 || s.Records == nil || s.Revision == 0 || s.Revision == ^uint64(0) || s.Time.IsZero() || now.Before(s.Time) {
+	var s DriverState
+	if state == nil {
+		s = DriverState{Version: 1, Resource: r.Resource, Config: r.Config, Records: make(map[string]*durableRecord), Queues: make(map[string][]string)}
+	} else {
+		s = *state
+	}
+	if state != nil && (s.Version != 1 || s.Records == nil || s.Revision == 0 || s.Revision == ^uint64(0) || s.Time.IsZero() || now.Before(s.Time)) {
 		return nil, Result{}, ErrCorruptState
 	}
 	if s.Resource != r.Resource || !reflect.DeepEqual(s.Config, r.Config) {
@@ -180,11 +221,7 @@ func Transition(snapshot []byte, now time.Time, cmd Command) ([]byte, Result, er
 	for _, rec := range s.Records {
 		rec.Request.Config = ResourceConfig{}
 	}
-	data, e := json.Marshal(s)
-	if e != nil {
-		return nil, Result{}, ErrCorruptState
-	}
-	return data, out, opErr
+	return &s, out, opErr
 }
 func admissionError(s string) error {
 	for _, e := range []error{ErrQueueFull, ErrGroupQueueFull, ErrTenantQueueFull} {
