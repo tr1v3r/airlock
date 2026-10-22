@@ -11,17 +11,21 @@ import (
 )
 
 func main() {
-	p := airlock.NewPool(2)
+	lock, err := airlock.New(airlock.Config{Capacity: 2, MaxQueued: 1, MaxQueuedPerTenant: 1})
+	if err != nil {
+		log.Fatal(err)
+	}
 	var wg sync.WaitGroup
 	results := make([]int, 3)
 	for i := range results {
-		if err := p.Acquire(context.Background()); err != nil {
+		permit, err := lock.AcquireFor(context.Background(), "batch")
+		if err != nil {
 			log.Fatal(err)
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			defer p.Release()
+			defer permit.Release()
 			results[i] = i + 10
 		}()
 	}

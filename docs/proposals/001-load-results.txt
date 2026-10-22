@@ -1,0 +1,364 @@
+=== RUN   TestLoadComparison
+=== RUN   TestLoadComparison/single/seed1/pool
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=6.912542ms wait_p95=14.844917ms wait_p99=15.583291ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3688.4/s allocs=574 allocated_bytes=68112 heap_delta=68112
+=== RUN   TestLoadComparison/single/seed1/weighted
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=6.866167ms wait_p95=14.813084ms wait_p99=15.535375ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3693.0/s allocs=700 allocated_bytes=50064 heap_delta=50064
+=== RUN   TestLoadComparison/single/seed1/nested-1
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=47.384084ms wait_p95=92.402917ms wait_p99=96.644791ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=885.7/s allocs=727 allocated_bytes=55520 heap_delta=55520
+=== RUN   TestLoadComparison/single/seed1/nested-2
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=20.554167ms wait_p95=41.329959ms wait_p99=43.127875ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=1784.5/s allocs=719 allocated_bytes=54512 heap_delta=54512
+=== RUN   TestLoadComparison/single/seed1/nested-4
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=6.927667ms wait_p95=14.966167ms wait_p99=15.708667ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3665.6/s allocs=700 allocated_bytes=50448 heap_delta=50448
+=== RUN   TestLoadComparison/single/seed1/gate
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=6.883667ms wait_p95=14.802917ms wait_p99=15.513166ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3701.5/s allocs=916 allocated_bytes=81920 heap_delta=81920
+=== RUN   TestLoadComparison/single/seed2/pool
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=6.905792ms wait_p95=14.970084ms wait_p99=15.729833ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3663.4/s allocs=405 allocated_bytes=30352 heap_delta=30352
+=== RUN   TestLoadComparison/single/seed2/weighted
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=6.952125ms wait_p95=15.0225ms wait_p99=15.803709ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3653.3/s allocs=690 allocated_bytes=45200 heap_delta=45200
+=== RUN   TestLoadComparison/single/seed2/nested-1
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=48.303125ms wait_p95=93.569458ms wait_p99=97.783125ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=876.4/s allocs=696 allocated_bytes=46208 heap_delta=46208
+=== RUN   TestLoadComparison/single/seed2/nested-2
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=20.386875ms wait_p95=41.13ms wait_p99=42.989833ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=1788.1/s allocs=686 allocated_bytes=45360 heap_delta=45360
+=== RUN   TestLoadComparison/single/seed2/nested-4
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=6.971292ms wait_p95=14.985292ms wait_p99=15.729666ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3664.7/s allocs=674 allocated_bytes=44432 heap_delta=44432
+=== RUN   TestLoadComparison/single/seed2/gate
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=7.062584ms wait_p95=15.419375ms wait_p99=16.165042ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3601.1/s allocs=809 allocated_bytes=51232 heap_delta=51232
+=== RUN   TestLoadComparison/single/seed3/pool
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=6.96125ms wait_p95=15.076958ms wait_p99=15.862625ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3642.4/s allocs=393 allocated_bytes=28464 heap_delta=28464
+=== RUN   TestLoadComparison/single/seed3/weighted
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=6.906125ms wait_p95=14.87225ms wait_p99=15.618959ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3681.9/s allocs=697 allocated_bytes=49392 heap_delta=49392
+=== RUN   TestLoadComparison/single/seed3/nested-1
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=47.837ms wait_p95=92.874584ms wait_p99=97.102625ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=882.0/s allocs=711 allocated_bytes=51168 heap_delta=51168
+=== RUN   TestLoadComparison/single/seed3/nested-2
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=20.609583ms wait_p95=42.16125ms wait_p99=44.08775ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=1753.0/s allocs=668 allocated_bytes=43632 heap_delta=43632
+=== RUN   TestLoadComparison/single/seed3/nested-4
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=7.073583ms wait_p95=15.051125ms wait_p99=15.783666ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3659.7/s allocs=662 allocated_bytes=43280 heap_delta=43280
+=== RUN   TestLoadComparison/single/seed3/gate
+    load_test.go:156: tenant=A completed=96 rejected=0 cancelled=0 wait_p50=6.827084ms wait_p95=14.752791ms wait_p99=15.48075ms
+    load_test.go:156: tenant=B completed=0 rejected=0 cancelled=0 wait_p50=0s wait_p95=0s wait_p99=0s
+    load_test.go:158: throughput=3700.8/s allocs=771 allocated_bytes=47584 heap_delta=47584
+=== RUN   TestLoadComparison/flood/seed1/pool
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=6.826417ms wait_p95=14.611833ms wait_p99=15.454875ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=6.705709ms wait_p95=13.060708ms wait_p99=13.060708ms
+    load_test.go:158: throughput=3707.9/s allocs=446 allocated_bytes=38480 heap_delta=38480
+=== RUN   TestLoadComparison/flood/seed1/weighted
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=6.820083ms wait_p95=14.645125ms wait_p99=15.486209ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=6.666416ms wait_p95=13.089583ms wait_p99=13.089583ms
+    load_test.go:158: throughput=3703.4/s allocs=680 allocated_bytes=44240 heap_delta=44240
+=== RUN   TestLoadComparison/flood/seed1/nested-1
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=42.794542ms wait_p95=82.853875ms wait_p99=87.069125ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=209ns wait_p95=250ns wait_p99=250ns
+    load_test.go:158: throughput=972.7/s allocs=673 allocated_bytes=44896 heap_delta=44896
+=== RUN   TestLoadComparison/flood/seed1/nested-2
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=18.806541ms wait_p95=36.304333ms wait_p99=38.22175ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=500ns wait_p95=875ns wait_p99=875ns
+    load_test.go:158: throughput=1930.4/s allocs=664 allocated_bytes=44144 heap_delta=44144
+=== RUN   TestLoadComparison/flood/seed1/nested-4
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=8.143834ms wait_p95=15.031292ms wait_p99=15.80175ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=115.291µs wait_p95=565.667µs wait_p99=565.667µs
+    load_test.go:158: throughput=3668.8/s allocs=786 allocated_bytes=51824 heap_delta=51824
+=== RUN   TestLoadComparison/flood/seed1/gate
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=8.09325ms wait_p95=14.883417ms wait_p99=15.616042ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=275.75µs wait_p95=723.375µs wait_p99=723.375µs
+    load_test.go:158: throughput=3696.7/s allocs=801 allocated_bytes=49952 heap_delta=49952
+=== RUN   TestLoadComparison/flood/seed2/pool
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=6.832208ms wait_p95=14.541834ms wait_p99=15.374833ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=6.707959ms wait_p95=12.990791ms wait_p99=12.990791ms
+    load_test.go:158: throughput=3717.9/s allocs=419 allocated_bytes=30256 heap_delta=30256
+=== RUN   TestLoadComparison/flood/seed2/weighted
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=6.820917ms wait_p95=14.509208ms wait_p99=15.353042ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=6.69625ms wait_p95=12.957375ms wait_p99=12.957375ms
+    load_test.go:158: throughput=3721.8/s allocs=707 allocated_bytes=46832 heap_delta=46832
+=== RUN   TestLoadComparison/flood/seed2/nested-1
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=42.774917ms wait_p95=83.129166ms wait_p99=87.336958ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=208ns wait_p95=291ns wait_p99=291ns
+    load_test.go:158: throughput=970.2/s allocs=678 allocated_bytes=46432 heap_delta=46432
+=== RUN   TestLoadComparison/flood/seed2/nested-2
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=18.066917ms wait_p95=36.615542ms wait_p99=38.435916ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=250ns wait_p95=792ns wait_p99=792ns
+    load_test.go:158: throughput=1959.5/s allocs=693 allocated_bytes=46928 heap_delta=46928
+=== RUN   TestLoadComparison/flood/seed2/nested-4
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=8.267708ms wait_p95=15.088458ms wait_p99=15.834834ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=206.916µs wait_p95=534.083µs wait_p99=534.083µs
+    load_test.go:158: throughput=3664.7/s allocs=765 allocated_bytes=49584 heap_delta=49584
+=== RUN   TestLoadComparison/flood/seed2/gate
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=8.200709ms wait_p95=15.073792ms wait_p99=15.817792ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=285.583µs wait_p95=722.708µs wait_p99=722.708µs
+    load_test.go:158: throughput=3663.9/s allocs=809 allocated_bytes=50720 heap_delta=50720
+=== RUN   TestLoadComparison/flood/seed3/pool
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=7.1635ms wait_p95=14.146166ms wait_p99=14.800333ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=7.08225ms wait_p95=13.147292ms wait_p99=13.147292ms
+    load_test.go:158: throughput=3719.1/s allocs=389 allocated_bytes=27376 heap_delta=27376
+=== RUN   TestLoadComparison/flood/seed3/weighted
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=6.855875ms wait_p95=14.636042ms wait_p99=15.455208ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=6.668792ms wait_p95=13.086583ms wait_p99=13.086583ms
+    load_test.go:158: throughput=3713.2/s allocs=702 allocated_bytes=46352 heap_delta=46352
+=== RUN   TestLoadComparison/flood/seed3/nested-1
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=42.768625ms wait_p95=83.374833ms wait_p99=87.603792ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=209ns wait_p95=250ns wait_p99=250ns
+    load_test.go:158: throughput=968.1/s allocs=741 allocated_bytes=52384 heap_delta=52384
+=== RUN   TestLoadComparison/flood/seed3/nested-2
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=18.596917ms wait_p95=37.312917ms wait_p99=39.243334ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=1µs wait_p95=1.458µs wait_p99=1.458µs
+    load_test.go:158: throughput=1927.1/s allocs=644 allocated_bytes=42224 heap_delta=42224
+=== RUN   TestLoadComparison/flood/seed3/nested-4
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=8.197542ms wait_p95=15.224834ms wait_p99=15.999791ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=268.25µs wait_p95=630.834µs wait_p99=630.834µs
+    load_test.go:158: throughput=3636.7/s allocs=771 allocated_bytes=50272 heap_delta=50272
+=== RUN   TestLoadComparison/flood/seed3/gate
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=8.23575ms wait_p95=15.270708ms wait_p99=16.014709ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=411.708µs wait_p95=775.291µs wait_p99=775.291µs
+    load_test.go:158: throughput=3639.8/s allocs=777 allocated_bytes=47648 heap_delta=47648
+=== RUN   TestLoadComparison/mixed/seed1/pool
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=25.030875ms wait_p95=49.941916ms wait_p99=51.735458ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=25.15425ms wait_p95=47.176583ms wait_p99=47.176583ms
+    load_test.go:158: throughput=1348.5/s allocs=386 allocated_bytes=27088 heap_delta=27088
+=== RUN   TestLoadComparison/mixed/seed1/weighted
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=25.524583ms wait_p95=50.009333ms wait_p99=51.956ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=25.511375ms wait_p95=47.260916ms wait_p99=47.260916ms
+    load_test.go:158: throughput=1343.1/s allocs=662 allocated_bytes=42512 heap_delta=42512
+=== RUN   TestLoadComparison/mixed/seed1/nested-1
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=110.673792ms wait_p95=210.104709ms wait_p99=223.548083ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=9.31775ms wait_p95=28.577917ms wait_p99=28.577917ms
+    load_test.go:158: throughput=391.8/s allocs=675 allocated_bytes=49104 heap_delta=49104
+=== RUN   TestLoadComparison/mixed/seed1/nested-2
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=50.752458ms wait_p95=96.451833ms wait_p99=98.416875ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=833ns wait_p95=7.558083ms wait_p99=7.558083ms
+    load_test.go:158: throughput=806.3/s allocs=667 allocated_bytes=44688 heap_delta=44688
+=== RUN   TestLoadComparison/mixed/seed1/nested-4
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=31.433542ms wait_p95=49.21275ms wait_p99=51.185042ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=6.2205ms wait_p95=7.494417ms wait_p99=7.494417ms
+    load_test.go:158: throughput=1336.0/s allocs=767 allocated_bytes=51120 heap_delta=51120
+=== RUN   TestLoadComparison/mixed/seed1/gate
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=31.28175ms wait_p95=49.14875ms wait_p99=51.135708ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=7.558042ms wait_p95=8.356916ms wait_p99=8.356916ms
+    load_test.go:158: throughput=1336.0/s allocs=767 allocated_bytes=47008 heap_delta=47008
+=== RUN   TestLoadComparison/mixed/seed2/pool
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=36.545875ms wait_p95=62.864625ms wait_p99=66.940042ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=36.825834ms wait_p95=60.043209ms wait_p99=60.043209ms
+    load_test.go:158: throughput=1112.0/s allocs=531 allocated_bytes=41008 heap_delta=41008
+=== RUN   TestLoadComparison/mixed/seed2/weighted
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=36.516417ms wait_p95=62.77725ms wait_p99=67.390709ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=37.244833ms wait_p95=59.787959ms wait_p99=59.787959ms
+    load_test.go:158: throughput=1105.3/s allocs=665 allocated_bytes=42800 heap_delta=42800
+=== RUN   TestLoadComparison/mixed/seed2/nested-1
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=169.667292ms wait_p95=297.802542ms wait_p99=311.808458ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=8.58925ms wait_p95=8.794167ms wait_p99=8.794167ms
+    load_test.go:158: throughput=288.0/s allocs=695 allocated_bytes=46448 heap_delta=46448
+=== RUN   TestLoadComparison/mixed/seed2/nested-2
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=77.280834ms wait_p95=134.656667ms wait_p99=144.862166ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=583ns wait_p95=1.125µs wait_p99=1.125µs
+    load_test.go:158: throughput=582.0/s allocs=644 allocated_bytes=42224 heap_delta=42224
+=== RUN   TestLoadComparison/mixed/seed2/nested-4
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=38.718875ms wait_p95=62.404084ms wait_p99=67.992792ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=4.239584ms wait_p95=5.802375ms wait_p99=5.802375ms
+    load_test.go:158: throughput=1095.6/s allocs=753 allocated_bytes=50896 heap_delta=50896
+=== RUN   TestLoadComparison/mixed/seed2/gate
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=39.274916ms wait_p95=62.088417ms wait_p99=67.79425ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=6.402542ms wait_p95=7.160125ms wait_p99=7.160125ms
+    load_test.go:158: throughput=1098.2/s allocs=769 allocated_bytes=47264 heap_delta=47264
+=== RUN   TestLoadComparison/mixed/seed3/pool
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=28.820125ms wait_p95=56.988875ms wait_p99=64.778959ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=29.852083ms wait_p95=53.345ms wait_p99=53.345ms
+    load_test.go:158: throughput=1221.1/s allocs=449 allocated_bytes=33136 heap_delta=33136
+=== RUN   TestLoadComparison/mixed/seed3/weighted
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=29.011083ms wait_p95=56.229208ms wait_p99=64.248584ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=30.057292ms wait_p95=52.316167ms wait_p99=52.316167ms
+    load_test.go:158: throughput=1223.5/s allocs=685 allocated_bytes=44720 heap_delta=44720
+=== RUN   TestLoadComparison/mixed/seed3/nested-1
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=141.942667ms wait_p95=257.807542ms wait_p99=281.910958ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=8.998833ms wait_p95=17.763875ms wait_p99=17.763875ms
+    load_test.go:158: throughput=327.0/s allocs=712 allocated_bytes=49488 heap_delta=49488
+=== RUN   TestLoadComparison/mixed/seed3/nested-2
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=65.552125ms wait_p95=119.54625ms wait_p99=129.795208ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=1µs wait_p95=6.370834ms wait_p99=6.370834ms
+    load_test.go:158: throughput=667.5/s allocs=653 allocated_bytes=42752 heap_delta=42752
+=== RUN   TestLoadComparison/mixed/seed3/nested-4
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=32.258667ms wait_p95=56.04075ms wait_p99=64.775792ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=5.478917ms wait_p95=7.269875ms wait_p99=7.269875ms
+    load_test.go:158: throughput=1180.2/s allocs=768 allocated_bytes=50992 heap_delta=50992
+=== RUN   TestLoadComparison/mixed/seed3/gate
+    load_test.go:156: tenant=A completed=88 rejected=0 cancelled=0 wait_p50=32.041958ms wait_p95=55.889708ms wait_p99=64.800958ms
+    load_test.go:156: tenant=B completed=8 rejected=0 cancelled=0 wait_p50=5.534792ms wait_p95=6.754ms wait_p99=6.754ms
+    load_test.go:158: throughput=1208.7/s allocs=839 allocated_bytes=53920 heap_delta=53920
+=== RUN   TestLoadComparison/overload/seed1/pool
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.927833ms wait_p95=3.045583ms wait_p99=3.154792ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=2.939584ms wait_p95=2.974667ms wait_p99=2.974667ms
+    load_test.go:158: throughput=3826.5/s allocs=298 allocated_bytes=21808 heap_delta=21808
+=== RUN   TestLoadComparison/overload/seed1/weighted
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.931042ms wait_p95=3.060041ms wait_p99=3.146541ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=2.934333ms wait_p95=3.019542ms wait_p99=3.019542ms
+    load_test.go:158: throughput=3872.1/s allocs=458 allocated_bytes=31376 heap_delta=31376
+=== RUN   TestLoadComparison/overload/seed1/nested-1
+    load_test.go:156: tenant=A completed=25 rejected=63 cancelled=0 wait_p50=11.100125ms wait_p95=16.49925ms wait_p99=16.632042ms
+    load_test.go:156: tenant=B completed=2 rejected=6 cancelled=0 wait_p50=209ns wait_p95=209ns wait_p99=209ns
+    load_test.go:158: throughput=1000.2/s allocs=331 allocated_bytes=24088 heap_delta=24088
+=== RUN   TestLoadComparison/overload/seed1/nested-2
+    load_test.go:156: tenant=A completed=34 rejected=54 cancelled=0 wait_p50=6.048209ms wait_p95=7.466959ms wait_p99=7.560583ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=250ns wait_p95=292ns wait_p99=292ns
+    load_test.go:158: throughput=2109.9/s allocs=385 allocated_bytes=27584 heap_delta=27584
+=== RUN   TestLoadComparison/overload/seed1/nested-4
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.947916ms wait_p95=3.777ms wait_p99=3.829958ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=14.917µs wait_p95=51.917µs wait_p99=51.917µs
+    load_test.go:158: throughput=3860.4/s allocs=490 allocated_bytes=33072 heap_delta=33072
+=== RUN   TestLoadComparison/overload/seed1/gate
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.9405ms wait_p95=3.774041ms wait_p99=3.83275ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=149.542µs wait_p95=705µs wait_p99=705µs
+    load_test.go:158: throughput=3858.4/s allocs=505 allocated_bytes=32704 heap_delta=32704
+=== RUN   TestLoadComparison/overload/seed2/pool
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.930083ms wait_p95=3.03975ms wait_p99=3.139708ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=2.919042ms wait_p95=2.982666ms wait_p99=2.982666ms
+    load_test.go:158: throughput=3862.9/s allocs=298 allocated_bytes=21808 heap_delta=21808
+=== RUN   TestLoadComparison/overload/seed2/weighted
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.93425ms wait_p95=3.05375ms wait_p99=3.153667ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=2.945042ms wait_p95=3.037875ms wait_p99=3.037875ms
+    load_test.go:158: throughput=3855.4/s allocs=442 allocated_bytes=29840 heap_delta=29840
+=== RUN   TestLoadComparison/overload/seed2/nested-1
+    load_test.go:156: tenant=A completed=25 rejected=63 cancelled=0 wait_p50=11.087584ms wait_p95=16.46075ms wait_p99=16.624958ms
+    load_test.go:156: tenant=B completed=2 rejected=6 cancelled=0 wait_p50=208ns wait_p95=208ns wait_p99=208ns
+    load_test.go:158: throughput=996.1/s allocs=320 allocated_bytes=23032 heap_delta=23032
+=== RUN   TestLoadComparison/overload/seed2/nested-2
+    load_test.go:156: tenant=A completed=34 rejected=54 cancelled=0 wait_p50=6.053666ms wait_p95=7.413291ms wait_p99=7.488833ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=209ns wait_p95=250ns wait_p99=250ns
+    load_test.go:158: throughput=2114.6/s allocs=378 allocated_bytes=26912 heap_delta=26912
+=== RUN   TestLoadComparison/overload/seed2/nested-4
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.953375ms wait_p95=3.773208ms wait_p99=3.849ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=21.708µs wait_p95=51.375µs wait_p99=51.375µs
+    load_test.go:158: throughput=3854.6/s allocs=530 allocated_bytes=37968 heap_delta=37968
+=== RUN   TestLoadComparison/overload/seed2/gate
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.942292ms wait_p95=3.761583ms wait_p99=3.840709ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=203.542µs wait_p95=712.875µs wait_p99=712.875µs
+    load_test.go:158: throughput=3857.7/s allocs=505 allocated_bytes=32704 heap_delta=32704
+=== RUN   TestLoadComparison/overload/seed3/pool
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.938958ms wait_p95=3.072542ms wait_p99=3.168708ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=2.932458ms wait_p95=3.005208ms wait_p99=3.005208ms
+    load_test.go:158: throughput=3852.2/s allocs=299 allocated_bytes=21904 heap_delta=21904
+=== RUN   TestLoadComparison/overload/seed3/weighted
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.931708ms wait_p95=3.041ms wait_p99=3.138833ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=2.921458ms wait_p95=2.989583ms wait_p99=2.989583ms
+    load_test.go:158: throughput=3861.0/s allocs=463 allocated_bytes=31856 heap_delta=31856
+=== RUN   TestLoadComparison/overload/seed3/nested-1
+    load_test.go:156: tenant=A completed=25 rejected=63 cancelled=0 wait_p50=11.09675ms wait_p95=16.448833ms wait_p99=16.53475ms
+    load_test.go:156: tenant=B completed=2 rejected=6 cancelled=0 wait_p50=208ns wait_p95=208ns wait_p99=208ns
+    load_test.go:158: throughput=999.3/s allocs=320 allocated_bytes=23032 heap_delta=23032
+=== RUN   TestLoadComparison/overload/seed3/nested-2
+    load_test.go:156: tenant=A completed=34 rejected=54 cancelled=0 wait_p50=6.08175ms wait_p95=7.461709ms wait_p99=7.540291ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=292ns wait_p95=333ns wait_p99=333ns
+    load_test.go:158: throughput=2110.3/s allocs=366 allocated_bytes=25760 heap_delta=25760
+=== RUN   TestLoadComparison/overload/seed3/nested-4
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.938667ms wait_p95=3.77025ms wait_p99=3.777791ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=10.375µs wait_p95=48.875µs wait_p99=48.875µs
+    load_test.go:158: throughput=3866.5/s allocs=490 allocated_bytes=33072 heap_delta=33072
+=== RUN   TestLoadComparison/overload/seed3/gate
+    load_test.go:156: tenant=A completed=48 rejected=40 cancelled=0 wait_p50=2.940458ms wait_p95=3.763959ms wait_p99=3.821709ms
+    load_test.go:156: tenant=B completed=4 rejected=4 cancelled=0 wait_p50=157.959µs wait_p95=708.208µs wait_p99=708.208µs
+    load_test.go:158: throughput=3862.6/s allocs=505 allocated_bytes=32704 heap_delta=32704
+--- PASS: TestLoadComparison (4.15s)
+    --- PASS: TestLoadComparison/single/seed1/pool (0.03s)
+    --- PASS: TestLoadComparison/single/seed1/weighted (0.03s)
+    --- PASS: TestLoadComparison/single/seed1/nested-1 (0.11s)
+    --- PASS: TestLoadComparison/single/seed1/nested-2 (0.05s)
+    --- PASS: TestLoadComparison/single/seed1/nested-4 (0.03s)
+    --- PASS: TestLoadComparison/single/seed1/gate (0.03s)
+    --- PASS: TestLoadComparison/single/seed2/pool (0.03s)
+    --- PASS: TestLoadComparison/single/seed2/weighted (0.03s)
+    --- PASS: TestLoadComparison/single/seed2/nested-1 (0.11s)
+    --- PASS: TestLoadComparison/single/seed2/nested-2 (0.05s)
+    --- PASS: TestLoadComparison/single/seed2/nested-4 (0.03s)
+    --- PASS: TestLoadComparison/single/seed2/gate (0.03s)
+    --- PASS: TestLoadComparison/single/seed3/pool (0.03s)
+    --- PASS: TestLoadComparison/single/seed3/weighted (0.03s)
+    --- PASS: TestLoadComparison/single/seed3/nested-1 (0.11s)
+    --- PASS: TestLoadComparison/single/seed3/nested-2 (0.06s)
+    --- PASS: TestLoadComparison/single/seed3/nested-4 (0.03s)
+    --- PASS: TestLoadComparison/single/seed3/gate (0.03s)
+    --- PASS: TestLoadComparison/flood/seed1/pool (0.03s)
+    --- PASS: TestLoadComparison/flood/seed1/weighted (0.03s)
+    --- PASS: TestLoadComparison/flood/seed1/nested-1 (0.10s)
+    --- PASS: TestLoadComparison/flood/seed1/nested-2 (0.05s)
+    --- PASS: TestLoadComparison/flood/seed1/nested-4 (0.03s)
+    --- PASS: TestLoadComparison/flood/seed1/gate (0.03s)
+    --- PASS: TestLoadComparison/flood/seed2/pool (0.03s)
+    --- PASS: TestLoadComparison/flood/seed2/weighted (0.03s)
+    --- PASS: TestLoadComparison/flood/seed2/nested-1 (0.10s)
+    --- PASS: TestLoadComparison/flood/seed2/nested-2 (0.05s)
+    --- PASS: TestLoadComparison/flood/seed2/nested-4 (0.03s)
+    --- PASS: TestLoadComparison/flood/seed2/gate (0.03s)
+    --- PASS: TestLoadComparison/flood/seed3/pool (0.03s)
+    --- PASS: TestLoadComparison/flood/seed3/weighted (0.03s)
+    --- PASS: TestLoadComparison/flood/seed3/nested-1 (0.10s)
+    --- PASS: TestLoadComparison/flood/seed3/nested-2 (0.05s)
+    --- PASS: TestLoadComparison/flood/seed3/nested-4 (0.03s)
+    --- PASS: TestLoadComparison/flood/seed3/gate (0.03s)
+    --- PASS: TestLoadComparison/mixed/seed1/pool (0.07s)
+    --- PASS: TestLoadComparison/mixed/seed1/weighted (0.07s)
+    --- PASS: TestLoadComparison/mixed/seed1/nested-1 (0.25s)
+    --- PASS: TestLoadComparison/mixed/seed1/nested-2 (0.12s)
+    --- PASS: TestLoadComparison/mixed/seed1/nested-4 (0.07s)
+    --- PASS: TestLoadComparison/mixed/seed1/gate (0.07s)
+    --- PASS: TestLoadComparison/mixed/seed2/pool (0.09s)
+    --- PASS: TestLoadComparison/mixed/seed2/weighted (0.09s)
+    --- PASS: TestLoadComparison/mixed/seed2/nested-1 (0.33s)
+    --- PASS: TestLoadComparison/mixed/seed2/nested-2 (0.17s)
+    --- PASS: TestLoadComparison/mixed/seed2/nested-4 (0.09s)
+    --- PASS: TestLoadComparison/mixed/seed2/gate (0.09s)
+    --- PASS: TestLoadComparison/mixed/seed3/pool (0.08s)
+    --- PASS: TestLoadComparison/mixed/seed3/weighted (0.08s)
+    --- PASS: TestLoadComparison/mixed/seed3/nested-1 (0.29s)
+    --- PASS: TestLoadComparison/mixed/seed3/nested-2 (0.14s)
+    --- PASS: TestLoadComparison/mixed/seed3/nested-4 (0.08s)
+    --- PASS: TestLoadComparison/mixed/seed3/gate (0.08s)
+    --- PASS: TestLoadComparison/overload/seed1/pool (0.01s)
+    --- PASS: TestLoadComparison/overload/seed1/weighted (0.01s)
+    --- PASS: TestLoadComparison/overload/seed1/nested-1 (0.03s)
+    --- PASS: TestLoadComparison/overload/seed1/nested-2 (0.02s)
+    --- PASS: TestLoadComparison/overload/seed1/nested-4 (0.01s)
+    --- PASS: TestLoadComparison/overload/seed1/gate (0.01s)
+    --- PASS: TestLoadComparison/overload/seed2/pool (0.01s)
+    --- PASS: TestLoadComparison/overload/seed2/weighted (0.01s)
+    --- PASS: TestLoadComparison/overload/seed2/nested-1 (0.03s)
+    --- PASS: TestLoadComparison/overload/seed2/nested-2 (0.02s)
+    --- PASS: TestLoadComparison/overload/seed2/nested-4 (0.01s)
+    --- PASS: TestLoadComparison/overload/seed2/gate (0.01s)
+    --- PASS: TestLoadComparison/overload/seed3/pool (0.01s)
+    --- PASS: TestLoadComparison/overload/seed3/weighted (0.01s)
+    --- PASS: TestLoadComparison/overload/seed3/nested-1 (0.03s)
+    --- PASS: TestLoadComparison/overload/seed3/nested-2 (0.02s)
+    --- PASS: TestLoadComparison/overload/seed3/nested-4 (0.01s)
+    --- PASS: TestLoadComparison/overload/seed3/gate (0.01s)
+PASS
+ok  	github.com/tr1v3r/airlock/internal/comparison	4.317s
