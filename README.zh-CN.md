@@ -15,6 +15,24 @@
 `main` 分支保留基础实现，后续开发在 `dev` 分支进行。
 下方 breaking change 部分为继承自 pools 的历史说明。
 
+## 实验开发
+
+[RFC 001：按租户公平的准入](docs/proposals/001-tenant-fair-admission.md)
+提议新增独立的单令牌 Gate，提供按租户轮转的等待队列和队列人数上限。
+原型位于 `internal/fairgate`，不是受支持的公开 API；现有 Pool 行为不变。
+运行时仍仅依赖标准库，`x/sync` 仅用于测试。
+
+`internal/comparison` 包含确定性策略模型、真实取消测试和可选的 goroutine 负载测试，
+比较 Pool、Weighted、租户优先的两级 semaphore 和 Gate。
+[实验结果](docs/proposals/001-experiment-results.md) 记录测量与局限：在当前负载下，
+原型尚未证明优于表现最好的两级基线。
+
+```sh
+GOWORK=off go test -race ./...
+GOWORK=off AIRLOCK_LOAD=1 go test -v ./internal/comparison -run '^TestLoadComparison$' -count=1
+GOWORK=off go test ./internal/comparison -run '^$' -bench BenchmarkAdmission -benchmem -count=3
+```
+
 ## 安装
 
 ```sh
