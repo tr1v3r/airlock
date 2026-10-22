@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -256,7 +257,17 @@ func TestCASConflictRetryAndDeadline(t *testing.T) {
 	for _, permanent := range []bool{false, true} {
 		t.Run(fmt.Sprint(permanent), func(t *testing.T) {
 			d, client, _ := fixture(t)
-			d.timeout = 50 * time.Millisecond
+			// Connection setup is not the CAS retry under test. Warm it before
+			// applying the short deadline to the permanent-conflict case.
+			warmup, cancelWarmup := context.WithTimeout(context.Background(), time.Second)
+			if err := client.Ping(warmup).Err(); err != nil {
+				cancelWarmup()
+				t.Fatal(err)
+			}
+			cancelWarmup()
+			if permanent {
+				d.timeout = 50 * time.Millisecond
+			}
 			var calls int
 			client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
 				if isCAS(cmd) {
@@ -268,10 +279,16 @@ func TestCASConflictRetryAndDeadline(t *testing.T) {
 				}
 				return next(ctx, cmd)
 			}})
+			started := time.Now()
 			got, err := d.Submit(context.Background(), request())
 			if permanent {
-				if !errors.Is(err, context.DeadlineExceeded) || got != (airlock.Result{}) {
+				// The operation context also sets the socket deadline. Either
+				// timeout can win, including during the read after a CAS miss.
+				if (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded)) || got != (airlock.Result{}) {
 					t.Fatal(got, err)
+				}
+				if time.Since(started) > time.Second {
+					t.Fatal("permanent conflicts escaped the operation deadline")
 				}
 			} else if err != nil || got.Status != airlock.Granted {
 				t.Fatal(got, err)
