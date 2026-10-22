@@ -28,8 +28,10 @@ func fixture(t *testing.T) (*Driver, *goredis.Client, *miniredis.Miniredis) {
 	}
 	return d, client, server
 }
-func request() airlock.Request {
-	now := time.Now().UTC().Truncate(time.Millisecond)
+func request() airlock.Request { return requestAt(time.Now()) }
+
+func requestAt(now time.Time) airlock.Request {
+	now = now.UTC().Truncate(time.Millisecond)
 	r := airlock.NewRequest(now.Add(10 * time.Second))
 	r.Resource = "resource"
 	r.Weight = 1
