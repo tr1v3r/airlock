@@ -141,7 +141,7 @@ func TestZeroQueueAndValidation(t *testing.T) {
 			t.Error("nil context did not panic")
 		}
 	}()
-	g.AcquireFor(nil, "A")
+	_, _ = g.AcquireFor(nil, "A") //nolint:staticcheck // SA1012: verify the documented nil-context panic.
 }
 
 func TestCancelGrantRaceAndDuplicateRelease(t *testing.T) {

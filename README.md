@@ -127,6 +127,60 @@ GOWORK=off go test -race ./...
 GOWORK=off go vet ./...
 ```
 
+## CI quality gates
+
+Pull requests, pushes to `dev`/`main`, merge queues, manual runs, and a weekly
+scan run [CI](.github/workflows/ci.yml). All jobs must pass the final **CI Gate**:
+
+- `gofmt`, `go vet`, and pinned golangci-lint check correctness, error handling,
+  exported API comments, naming, spelling, and explained lint suppressions.
+- Module tidiness/checksums and standard-library-only runtime dependencies are enforced.
+- Tests run without cache and in shuffled order on Linux (Go 1.24, 1.25,
+  previous stable, and stable), plus macOS and Windows (stable). `GOTOOLCHAIN=local`
+  prevents automatic toolchain upgrades from hiding minimum-version failures.
+  All documented examples execute on every matrix entry.
+- Race detection, ten shuffled repetitions at CPU counts 1/2/4, and atomic
+  statement coverage run on Linux. Every production file and the total must
+  reach **95%** (current core baseline: **100%**). Examples and comparison-only
+  code are excluded from coverage; new production packages are included automatically.
+  Coverage profiles are retained for 14 days, including on failure.
+- Pinned `govulncheck -test` rejects reachable known vulnerabilities in the SDK
+  and tests. This does not certify the absence of all vulnerabilities.
+- Workflow syntax and coverage-checker regression tests are checked. Actions
+  use full commit pins, read-only permissions, job timeouts, and no PR secrets.
+  Dependabot proposes weekly Action/module updates; review pinned CLI versions
+  in the workflow separately.
+
+Local equivalents (Go, Python 3, Bash, and the pinned tools are required):
+
+```sh
+bash scripts/check.sh format
+bash scripts/check.sh modules
+GOWORK=off go vet ./...
+golangci-lint config verify && golangci-lint run
+actionlint
+python3 -m unittest discover -s scripts -p 'test_*.py'
+GOWORK=off go test -shuffle=on -count=1 -timeout=5m ./...
+bash scripts/check.sh coverage
+GOWORK=off go test -race -shuffle=on -count=10 -cpu=1,2,4 -timeout=5m ./...
+bash scripts/check.sh examples
+GOWORK=off govulncheck -test ./...
+```
+
+`modules` runs `go mod tidy` and fails on manifest drift; it may update your
+local manifests for review. Tool installation commands and versions are in the workflow.
+Coverage is measured on executable statements, not branches or correctness;
+do not lower the threshold or suppress findings simply to make CI green.
+Performance comparisons remain opt-in because shared runners cannot provide a
+stable regression baseline. API compatibility checks need an agreed released
+API baseline and are not yet enforced.
+
+**Repository setup:** after the workflow is pushed and runs, configure the
+`dev`/`main` branch ruleset to require **CI Gate**, require pull requests and
+review approval, and disallow bypasses/force pushes as appropriate. Workflow files
+alone cannot prevent merging. This change does not alter remote repository rules.
+Weekly schedules run from the repository's default branch.
+
 ## Migration
 
 The sole admission type is `Airlock`, constructed with `New(Config)`. Every

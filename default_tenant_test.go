@@ -49,7 +49,7 @@ func TestAcquireForValidation(t *testing.T) {
 			t.Error("nil context did not panic")
 		}
 	}()
-	a.Acquire(nil)
+	_, _ = a.Acquire(nil) //nolint:staticcheck // SA1012: verify the documented nil-context panic.
 }
 
 func TestDefaultTenantQueueLimitAndCancellation(t *testing.T) {
