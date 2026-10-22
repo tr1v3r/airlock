@@ -23,7 +23,7 @@ func newAirlock(t *testing.T, capacity, total, tenant int) *airlock.Airlock {
 
 func acquire(t *testing.T, g *airlock.Airlock, tenant string) *airlock.Permit {
 	t.Helper()
-	p, err := g.Acquire(context.Background(), tenant)
+	p, err := g.AcquireFor(context.Background(), tenant)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestRoundRobinFIFOAndNoBarging(t *testing.T) {
 	defer cancel()
 	ch := make(chan result, 10)
 	for i, id := range []string{"A1", "A2", "A3", "B1", "B2", "C1"} {
-		go func(id string) { p, err := g.Acquire(ctx, id[:1]); ch <- result{id, p, err} }(id)
+		go func(id string) { p, err := g.AcquireFor(ctx, id[:1]); ch <- result{id, p, err} }(id)
 		queued(t, g, i+1)
 	}
 	for _, want := range []string{"A1", "B1", "C1", "A2", "B2", "A3"} {
@@ -91,15 +91,15 @@ func TestLimitsCancellationAndReuse(t *testing.T) {
 	defer cancel()
 	ch := make(chan result, 3)
 	for i, tenant := range []string{"A", "A", "B"} {
-		go func(tenant string) { p, err := g.Acquire(ctx, tenant); ch <- result{tenant, p, err} }(tenant)
+		go func(tenant string) { p, err := g.AcquireFor(ctx, tenant); ch <- result{tenant, p, err} }(tenant)
 		queued(t, g, i+1)
 		if i == 1 {
-			if _, err := g.Acquire(ctx, "A"); !errors.Is(err, airlock.ErrTenantQueueFull) {
+			if _, err := g.AcquireFor(ctx, "A"); !errors.Is(err, airlock.ErrTenantQueueFull) {
 				t.Fatal(err)
 			}
 		}
 	}
-	if _, err := g.Acquire(ctx, "A"); !errors.Is(err, airlock.ErrQueueFull) {
+	if _, err := g.AcquireFor(ctx, "A"); !errors.Is(err, airlock.ErrQueueFull) {
 		t.Fatal(err)
 	}
 	cancel()
@@ -123,16 +123,16 @@ func TestZeroQueueAndValidation(t *testing.T) {
 		}
 	}
 	g := newAirlock(t, 1, 0, 0)
-	if _, err := g.Acquire(context.Background(), ""); !errors.Is(err, airlock.ErrInvalidTenant) {
+	if _, err := g.AcquireFor(context.Background(), ""); !errors.Is(err, airlock.ErrInvalidTenant) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := g.Acquire(ctx, "A"); !errors.Is(err, context.Canceled) {
+	if _, err := g.AcquireFor(ctx, "A"); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	p := acquire(t, g, "A")
-	if _, err := g.Acquire(context.Background(), "B"); !errors.Is(err, airlock.ErrQueueFull) {
+	if _, err := g.AcquireFor(context.Background(), "B"); !errors.Is(err, airlock.ErrQueueFull) {
 		t.Fatal(err)
 	}
 	p.Release()
@@ -141,7 +141,7 @@ func TestZeroQueueAndValidation(t *testing.T) {
 			t.Error("nil context did not panic")
 		}
 	}()
-	g.Acquire(nil, "A")
+	g.AcquireFor(nil, "A")
 }
 
 func TestCancelGrantRaceAndDuplicateRelease(t *testing.T) {
@@ -150,7 +150,7 @@ func TestCancelGrantRaceAndDuplicateRelease(t *testing.T) {
 		held := acquire(t, g, "holder")
 		ctx, cancel := context.WithCancel(context.Background())
 		ch := make(chan result, 1)
-		go func() { p, err := g.Acquire(ctx, "A"); ch <- result{p: p, err: err} }()
+		go func() { p, err := g.AcquireFor(ctx, "A"); ch <- result{p: p, err: err} }()
 		queued(t, g, 1)
 		var wg sync.WaitGroup
 		wg.Add(2)
@@ -180,7 +180,7 @@ func TestConcurrentCapacityAndTenantReclamation(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			p, err := g.Acquire(context.Background(), fmt.Sprint(i))
+			p, err := g.AcquireFor(context.Background(), fmt.Sprint(i))
 			if err != nil {
 				t.Error(err)
 				return
@@ -215,7 +215,7 @@ func TestGrantedSlotCannotBeStolen(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ch := make(chan result, 1)
-	go func() { p, err := g.Acquire(ctx, "A"); ch <- result{p: p, err: err} }()
+	go func() { p, err := g.AcquireFor(ctx, "A"); ch <- result{p: p, err: err} }()
 	queued(t, g, 1)
 	held.Release() // reserves the slot for A before waking its goroutine
 	cancel()       // cancellation cannot revoke that reservation
@@ -225,7 +225,7 @@ func TestGrantedSlotCannotBeStolen(t *testing.T) {
 	}
 	t.Cleanup(r.p.Release)
 	ctxB, cancelB := context.WithCancel(context.Background())
-	go func() { p, err := g.Acquire(ctxB, "B"); ch <- result{p: p, err: err} }()
+	go func() { p, err := g.AcquireFor(ctxB, "B"); ch <- result{p: p, err: err} }()
 	queued(t, g, 1)
 	cancelB()
 	if r := receive(t, ch); !errors.Is(r.err, context.Canceled) {

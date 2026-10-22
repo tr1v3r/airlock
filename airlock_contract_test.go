@@ -17,7 +17,7 @@ func TestAirlockErrorPrecedence(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	ch := make(chan result, 1)
-	go func() { p, err := g.Acquire(ctx, "A"); ch <- result{p: p, err: err} }()
+	go func() { p, err := g.AcquireFor(ctx, "A"); ch <- result{p: p, err: err} }()
 	queued(t, g, 1)
 	cancelled, stop := context.WithCancel(context.Background())
 	stop()
@@ -31,7 +31,7 @@ func TestAirlockErrorPrecedence(t *testing.T) {
 		{context.Background(), "A", airlock.ErrQueueFull},
 		{context.Background(), "B", airlock.ErrQueueFull},
 	} {
-		p, err := g.Acquire(tc.ctx, tc.tenant)
+		p, err := g.AcquireFor(tc.ctx, tc.tenant)
 		if p != nil || !errors.Is(err, tc.want) {
 			t.Fatalf("permit=%v error=%v want=%v", p, err, tc.want)
 		}
@@ -45,7 +45,7 @@ func TestAirlockErrorPrecedence(t *testing.T) {
 func TestAirlockZeroTenantQueueAndInvalidConfig(t *testing.T) {
 	g := newAirlock(t, 1, 10, 0)
 	p := acquire(t, g, "A")
-	if _, err := g.Acquire(context.Background(), "B"); !errors.Is(err, airlock.ErrTenantQueueFull) {
+	if _, err := g.AcquireFor(context.Background(), "B"); !errors.Is(err, airlock.ErrTenantQueueFull) {
 		t.Fatal(err)
 	}
 	p.Release()
@@ -67,7 +67,7 @@ func TestAirlockCancelledTenantRejoinsAtTail(t *testing.T) {
 			requestCtx = ctx
 		}
 		go func(id string, requestCtx context.Context) {
-			p, err := g.Acquire(requestCtx, id[:1])
+			p, err := g.AcquireFor(requestCtx, id[:1])
 			ch <- result{id, p, err}
 		}(id, requestCtx)
 		queued(t, g, i+1)
@@ -80,7 +80,7 @@ func TestAirlockCancelledTenantRejoinsAtTail(t *testing.T) {
 		}
 	}
 	queued(t, g, 2)
-	go func() { p, err := g.Acquire(context.Background(), "A"); ch <- result{"A3", p, err} }()
+	go func() { p, err := g.AcquireFor(context.Background(), "A"); ch <- result{"A3", p, err} }()
 	queued(t, g, 3)
 	for _, want := range []string{"B1", "C1", "A3"} {
 		held.Release()
@@ -106,7 +106,7 @@ func TestAirlockCancelMiddleRequest(t *testing.T) {
 			requestCtx = ctx
 		}
 		go func(id string, requestCtx context.Context) {
-			p, err := g.Acquire(requestCtx, id[:1])
+			p, err := g.AcquireFor(requestCtx, id[:1])
 			ch <- result{id, p, err}
 		}(id, requestCtx)
 		queued(t, g, i+1)
@@ -139,7 +139,7 @@ func TestAirlockMultipleSlotsAndChurn(t *testing.T) {
 		ch := make(chan result, 16)
 		for i := 0; i < 16; i++ {
 			id := fmt.Sprintf("%d/%d", wave, i)
-			go func() { p, err := g.Acquire(ctx, id); ch <- result{id, p, err} }()
+			go func() { p, err := g.AcquireFor(ctx, id); ch <- result{id, p, err} }()
 			queued(t, g, i+1)
 		}
 		var wg sync.WaitGroup
@@ -180,7 +180,7 @@ func TestAirlockDeadlineAndPermitZeroValue(t *testing.T) {
 	held := acquire(t, g, "A")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
-	if p, err := g.Acquire(ctx, "B"); p != nil || !errors.Is(err, context.DeadlineExceeded) {
+	if p, err := g.AcquireFor(ctx, "B"); p != nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("%v %v", p, err)
 	}
 	if s := g.Stats(); s.InUse != 1 || s.Queued != 0 || s.WaitingTenants != 0 {
@@ -199,7 +199,7 @@ func ExampleAirlock() {
 	if err != nil {
 		panic(err)
 	}
-	p, err := g.Acquire(context.Background(), "tenant-a")
+	p, err := g.AcquireFor(context.Background(), "tenant-a")
 	if err != nil {
 		panic(err)
 	}

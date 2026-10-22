@@ -20,7 +20,7 @@ func squares(ctx context.Context, inputs []int) ([]int, error) {
 	// Also join already-started workers if a later acquisition is cancelled.
 	defer wg.Wait()
 	for i, value := range inputs {
-		permit, err := lock.Acquire(ctx, "batch")
+		permit, err := lock.AcquireFor(ctx, "batch")
 		if err != nil {
 			return nil, err
 		}

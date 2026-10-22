@@ -15,7 +15,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	held, err := lock.Acquire(context.Background(), "A")
+	held, err := lock.AcquireFor(context.Background(), "A")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func main() {
 	// Capacity is held above, so this acquisition waits until its deadline.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
-	permit, err := lock.Acquire(ctx, "B")
+	permit, err := lock.AcquireFor(ctx, "B")
 	if err != nil {
 		fmt.Println(err)                                      // context deadline exceeded
 		fmt.Println("tokens still held:", lock.Stats().InUse) // 1; failure did not take a token.

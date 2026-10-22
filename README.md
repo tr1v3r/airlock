@@ -60,7 +60,7 @@ lock, err := airlock.New(airlock.Config{
 if err != nil {
     return err
 }
-permit, err := lock.Acquire(ctx, tenantID)
+permit, err := lock.AcquireFor(ctx, tenantID)
 if err != nil {
     return err
 }
@@ -74,9 +74,9 @@ This snippet belongs in an error-returning function. See the runnable
 - Capacity must be positive. Queue limits must be nonnegative, and the per-tenant
   limit cannot exceed the global limit; otherwise `New` returns
   `ErrInvalidConfig`. Zero queue limits disable waiting. Limits are fixed.
-- Pass zero or one tenant ID: `Acquire(ctx)` uses the default tenant, while
-  `Acquire(ctx, "tenant-a")` selects an exact, nonempty string. A nil context
-  panics; an explicit empty ID or multiple IDs returns `ErrInvalidTenant` before
+- `Acquire(ctx)` uses the default tenant, while
+  `AcquireFor(ctx, "tenant-a")` selects an exact, nonempty string. A nil context
+  panics; `AcquireFor` with an empty ID returns `ErrInvalidTenant` before
   cancellation is checked. Use trusted, bounded IDs:
   Airlock does not authenticate callers or bound string lengths.
 - If no immediate slot is available, full queues return `ErrQueueFull` or
@@ -130,7 +130,7 @@ GOWORK=off go vet ./...
 ## Migration
 
 The sole admission type is `Airlock`, constructed with `New(Config)`. Every
-`Acquire(ctx, tenantID)` acquires **one token**, returned by `Permit.Release()`.
+`AcquireFor(ctx, tenantID)` acquires **one token**, returned by `Permit.Release()`.
 Weighted requests, unlimited mode, and dynamic capacity are not implemented.
 
 This is a breaking development change: `Pool`/`NewPool` and the earlier
@@ -140,10 +140,10 @@ limits, optionally supply a tenant ID, retain the returned permit, and release i
 For a simple concurrency cap without tenant admission, use `x/sync/semaphore`.
 No compatibility aliases are provided.
 
-`Acquire` now has signature `Acquire(context.Context, ...string) (*Permit, error)`.
-Existing direct calls with one tenant ID still work, but interfaces, mocks, and
-method-value function types declaring the former fixed string parameter must
-change to the variadic signature.
+Use `Acquire(ctx)` for the default tenant and `AcquireFor(ctx, tenantID)` for
+named tenants. Migrate former `Acquire(ctx, tenantID)` calls to `AcquireFor`;
+interfaces, mocks, and method-value types must declare the corresponding fixed
+signature. Neither entry point accepts variadic arguments.
 
 The original channel strategy is retained only as a test baseline. The initial
 code migrated from `tr1v3r/pkg` commit

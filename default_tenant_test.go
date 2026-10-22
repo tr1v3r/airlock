@@ -20,9 +20,8 @@ func TestDefaultTenantFastPathAndNoWaiting(t *testing.T) {
 		t.Fatalf("%v %v", p, err)
 	}
 	p.Release()
-	// An expanded empty slice also means no explicit tenant.
-	var ids []string
-	p, err = a.Acquire(context.Background(), ids...)
+	// The released default slot can be acquired again.
+	p, err = a.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,16 +31,14 @@ func TestDefaultTenantFastPathAndNoWaiting(t *testing.T) {
 	}
 }
 
-func TestOptionalTenantValidation(t *testing.T) {
+func TestAcquireForValidation(t *testing.T) {
 	a := newAirlock(t, 1, 1, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	for _, ids := range [][]string{{""}, {"A", "B"}, {"", "A"}, {"A", "A"}} {
-		for _, c := range []context.Context{context.Background(), ctx} {
-			p, err := a.Acquire(c, ids...)
-			if p != nil || !errors.Is(err, airlock.ErrInvalidTenant) {
-				t.Fatalf("ids=%v: %v %v", ids, p, err)
-			}
+	for _, c := range []context.Context{context.Background(), ctx} {
+		p, err := a.AcquireFor(c, "")
+		if p != nil || !errors.Is(err, airlock.ErrInvalidTenant) {
+			t.Fatalf("%v %v", p, err)
 		}
 	}
 	if p, err := a.Acquire(ctx); p != nil || !errors.Is(err, context.Canceled) {
@@ -67,7 +64,7 @@ func TestDefaultTenantQueueLimitAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A named "default" tenant cannot collide with the internal default tenant.
-	go func() { p, err := a.Acquire(ctx, "default"); ch <- result{p: p, err: err} }()
+	go func() { p, err := a.AcquireFor(ctx, "default"); ch <- result{p: p, err: err} }()
 	queued(t, a, 2)
 	if s := a.Stats(); s.WaitingTenants != 2 {
 		t.Fatal(s)
@@ -92,11 +89,13 @@ func TestDefaultTenantParticipatesInRotation(t *testing.T) {
 	ch := make(chan result, 4)
 	for i, id := range []string{"D1", "D2", "A1", "A2"} {
 		go func(id string) {
-			var ids []string
+			var p *airlock.Permit
+			var err error
 			if id[0] == 'A' {
-				ids = []string{"A"}
+				p, err = a.AcquireFor(ctx, "A")
+			} else {
+				p, err = a.Acquire(ctx)
 			}
-			p, err := a.Acquire(ctx, ids...)
 			ch <- result{id, p, err}
 		}(id)
 		queued(t, a, i+1)
@@ -126,3 +125,9 @@ func ExampleAirlock_Acquire() {
 	fmt.Println("hello, airlock")
 	// Output: hello, airlock
 }
+
+// Keep the two entry points usable through explicit, non-variadic interfaces.
+var _ interface {
+	Acquire(context.Context) (*airlock.Permit, error)
+	AcquireFor(context.Context, string) (*airlock.Permit, error)
+} = (*airlock.Airlock)(nil)
