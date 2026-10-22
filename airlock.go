@@ -10,8 +10,12 @@ import (
 var (
 	// ErrInvalidConfig reports an invalid capacity or queue limit.
 	ErrInvalidConfig = errors.New("airlock: invalid configuration")
-	// ErrInvalidTenant reports an empty tenant ID passed to AcquireFor.
+	// ErrInvalidTenant reports an empty explicitly supplied tenant ID.
 	ErrInvalidTenant = errors.New("airlock: empty tenant")
+	// ErrInvalidWeight reports a nonpositive requested token count.
+	ErrInvalidWeight = errors.New("airlock: invalid weight")
+	// ErrWeightExceedsCapacity reports a request larger than the fixed capacity.
+	ErrWeightExceedsCapacity = errors.New("airlock: weight exceeds capacity")
 	// ErrQueueFull reports that the global waiting queue is full.
 	ErrQueueFull = errors.New("airlock: queue full")
 	// ErrTenantQueueFull reports that the tenant's waiting queue is full.
@@ -21,35 +25,43 @@ var (
 // Config defines fixed limits for an Airlock. Queue limits count pending
 // requests, not granted permits. Zero queue limits disable waiting.
 type Config struct {
-	// Capacity is the positive maximum number of held permits.
+	// Capacity is the positive maximum number of held tokens.
 	Capacity int
 	// MaxQueued is the nonnegative maximum number of pending requests.
 	MaxQueued int
 	// MaxQueuedPerTenant is nonnegative and must not exceed MaxQueued.
-	// It does not limit a tenant's number of held permits.
+	// It does not limit a tenant's number of held tokens or permits.
 	MaxQueuedPerTenant int
 }
 
-// Stats is a consistent snapshot, not a completion barrier.
+// Stats is a consistent snapshot, not a completion barrier. Capacity and InUse
+// count tokens; ActivePermits counts granted, unreleased permits, and Queued
+// counts pending requests, including a protected head request.
 type Stats struct {
 	Capacity       int
 	InUse          int
+	ActivePermits  int
 	Queued         int
 	WaitingTenants int
 }
 
-// Airlock controls single-token admission with FIFO waiting within each tenant
-// and round-robin admission across nonempty tenant queues. New waiting tenants
+// Airlock controls weighted admission with FIFO waiting within each tenant
+// and round-robin selection across nonempty tenant queues. New waiting tenants
 // join the end of the rotation. It does not start workers or track completion.
 //
-// Fairness applies to queued requests, not execution time or requests rejected
-// before queueing. Running work is never preempted. One tenant may hold every
-// slot when others are idle. Use New; the zero value is not usable.
+// A selected request waits for all its tokens before any later request can be
+// granted. This prevents starvation of large requests, but can leave capacity
+// idle. Progress requires holders to eventually release their permits.
+// Fairness applies to request selection, not token counts, execution time or
+// requests rejected before queueing. Running work is never preempted. One tenant
+// may hold every token when others are idle. Use New; the zero value is not usable.
 // An Airlock is safe for concurrent use and must not be copied.
 type Airlock struct {
 	mu           sync.Mutex
 	cfg          Config
 	used, queued int
+	active       int
+	protected    *waiter
 	tenants      map[string]*tenantQueue
 	rotation     list.List
 }
@@ -63,6 +75,7 @@ type tenantQueue struct {
 type waiter struct {
 	ready   chan struct{}
 	granted bool
+	weight  int
 	node    *list.Element
 	tenant  *tenantQueue
 }
@@ -71,8 +84,9 @@ type waiter struct {
 // Cancellation after a successful Acquire does not release it automatically.
 // Obtain permits from Airlock.Acquire; a zero-value Permit holds no capacity.
 type Permit struct {
-	once  sync.Once
-	owner *Airlock
+	once   sync.Once
+	owner  *Airlock
+	weight int
 }
 
 // New constructs an Airlock, or returns ErrInvalidConfig for invalid limits.
@@ -97,7 +111,7 @@ func New(cfg Config) (*Airlock, error) {
 // must release every successful permit. An error retains no token.
 // Cancellation does not stop admitted work.
 func (g *Airlock) Acquire(ctx context.Context) (*Permit, error) {
-	return g.acquire(ctx, "")
+	return g.AcquireN(ctx, 1)
 }
 
 // AcquireFor acquires one slot for tenantID, using the same cancellation,
@@ -106,29 +120,53 @@ func (g *Airlock) Acquire(ctx context.Context) (*Permit, error) {
 // IDs are exact strings supplied by the caller. Use trusted, bounded IDs:
 // this package neither authenticates tenants nor limits their string length.
 func (g *Airlock) AcquireFor(ctx context.Context, tenantID string) (*Permit, error) {
+	return g.AcquireNFor(ctx, tenantID, 1)
+}
+
+// AcquireN atomically acquires n tokens for the default tenant. A nil context
+// panics. Nonpositive n returns ErrInvalidWeight; n greater than Capacity returns
+// ErrWeightExceedsCapacity. Weight validation precedes cancellation checks.
+// It never holds a partial allocation. The queue and cancellation rules of
+// Acquire apply, and the returned Permit releases all n tokens at once.
+func (g *Airlock) AcquireN(ctx context.Context, n int) (*Permit, error) {
+	return g.acquire(ctx, "", n)
+}
+
+// AcquireNFor atomically acquires n tokens for tenantID. Validation checks nil
+// context, then tenant ID, then weight, before cancellation or capacity.
+// Tenant identity rules are the same as AcquireFor; all other rules are those
+// of AcquireN.
+func (g *Airlock) AcquireNFor(ctx context.Context, tenantID string, n int) (*Permit, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
 	}
 	if tenantID == "" {
 		return nil, ErrInvalidTenant
 	}
-	return g.acquire(ctx, tenantID)
+	return g.acquire(ctx, tenantID, n)
 }
 
 // Empty is reserved internally for the default tenant.
-func (g *Airlock) acquire(ctx context.Context, tenant string) (*Permit, error) {
+func (g *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
+	}
+	if n <= 0 {
+		return nil, ErrInvalidWeight
+	}
+	if n > g.cfg.Capacity {
+		return nil, ErrWeightExceedsCapacity
 	}
 	g.mu.Lock()
 	if err := ctx.Err(); err != nil {
 		g.mu.Unlock()
 		return nil, err
 	}
-	if g.used < g.cfg.Capacity && g.queued == 0 {
-		g.used++
+	if n <= g.cfg.Capacity-g.used && g.queued == 0 {
+		g.used += n
+		g.active++
 		g.mu.Unlock()
-		return &Permit{owner: g}, nil
+		return &Permit{owner: g, weight: n}, nil
 	}
 	if g.queued >= g.cfg.MaxQueued {
 		g.mu.Unlock()
@@ -144,18 +182,19 @@ func (g *Airlock) acquire(ctx context.Context, tenant string) (*Permit, error) {
 		tq.turn = g.rotation.PushBack(tq)
 		g.tenants[tenant] = tq
 	}
-	w := &waiter{ready: make(chan struct{}), tenant: tq}
+	w := &waiter{ready: make(chan struct{}), tenant: tq, weight: n}
 	w.node = tq.requests.PushBack(w)
 	g.queued++
+	g.dispatch()
 	g.mu.Unlock()
 	select {
 	case <-w.ready:
-		return &Permit{owner: g}, nil
+		return &Permit{owner: g, weight: n}, nil
 	case <-ctx.Done():
 		g.mu.Lock()
 		if w.granted {
 			g.mu.Unlock()
-			return &Permit{owner: g}, nil
+			return &Permit{owner: g, weight: n}, nil
 		}
 		g.remove(w)
 		g.dispatch()
@@ -166,6 +205,9 @@ func (g *Airlock) acquire(ctx context.Context, tenant string) (*Permit, error) {
 
 // remove requires mu. Empty tenant indexes are reclaimed immediately.
 func (g *Airlock) remove(w *waiter) {
+	if g.protected == w {
+		g.protected = nil
+	}
 	tq := w.tenant
 	tq.requests.Remove(w.node)
 	g.queued--
@@ -177,20 +219,28 @@ func (g *Airlock) remove(w *waiter) {
 
 func (g *Airlock) dispatch() {
 	for g.used < g.cfg.Capacity && g.queued > 0 {
-		tq := g.rotation.Front().Value.(*tenantQueue)
-		w := tq.requests.Front().Value.(*waiter)
-		g.remove(w)
-		if tq.requests.Len() > 0 {
+		if g.protected == nil {
+			tq := g.rotation.Front().Value.(*tenantQueue)
+			g.protected = tq.requests.Front().Value.(*waiter)
+			// Selection consumes this tenant's turn, even if it later cancels.
+			// Keep its queue indexed until the selected request is removed.
 			g.rotation.MoveToBack(tq.turn)
 		}
-		g.used++
+		w := g.protected
+		if w.weight > g.cfg.Capacity-g.used {
+			return
+		}
+		g.remove(w)
+		g.used += w.weight
+		g.active++
 		w.granted = true
 		close(w.ready)
 	}
 }
 
-// Release returns the permit once and dispatches waiting requests. Subsequent
-// calls, including concurrent calls, are no-ops. A nil or zero Permit is a no-op.
+// Release returns all tokens held by the permit and dispatches waiting requests.
+// Subsequent calls, including concurrent calls, are no-ops. A nil or zero Permit
+// is a no-op.
 func (p *Permit) Release() {
 	if p == nil {
 		return
@@ -201,7 +251,8 @@ func (p *Permit) Release() {
 			return
 		}
 		g.mu.Lock()
-		g.used--
+		g.used -= p.weight
+		g.active--
 		g.dispatch()
 		g.mu.Unlock()
 		p.owner = nil // a released permit need not retain the Airlock and its queues
@@ -212,5 +263,5 @@ func (p *Permit) Release() {
 func (g *Airlock) Stats() Stats {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return Stats{Capacity: g.cfg.Capacity, InUse: g.used, Queued: g.queued, WaitingTenants: len(g.tenants)}
+	return Stats{Capacity: g.cfg.Capacity, InUse: g.used, ActivePermits: g.active, Queued: g.queued, WaitingTenants: len(g.tenants)}
 }
