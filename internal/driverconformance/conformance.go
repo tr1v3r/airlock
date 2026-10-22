@@ -38,6 +38,11 @@ func Run(t *testing.T, factory func(*testing.T) airlock.Driver) {
 		{"lease_expiry_and_renew", leaseExpiry},
 		{"live_history_and_terminal_gc", historyGC},
 		{"concurrent_weighted_admission", concurrentAdmission},
+		{"concurrent_same_identity_and_release", concurrentIdentity},
+		{"concurrent_owner_conflicts", concurrentOwnerConflict},
+		{"concurrent_cancel_and_submit", concurrentCancellation},
+		{"concurrent_renew_and_release", concurrentRenewRelease},
+		{"pre_cancelled_operations_do_not_mutate", cancelledOperations},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
