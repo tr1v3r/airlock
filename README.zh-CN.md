@@ -128,3 +128,7 @@ GOWORK=off go vet ./...
 `b3e47bdfd27a149ecb4da01580b91be277b905f6` 的 `pools/`，Git 历史保留原实现。
 任务完成由调用方通过 `sync.WaitGroup` 等待；后续获取失败时也应等待之前启动的任务。
 Airlock 不执行任务或跟踪完成状态。
+
+## 设计提案
+
+[多令牌、优先级准入与可选 driver 提案](docs/proposals/002-weighted-priority-drivers.md)描述本地、Redis 和 PostgreSQL 方案。目前仅为提案；当前实现仍为进程内单令牌准入。
