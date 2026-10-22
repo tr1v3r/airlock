@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/redis/go-redis/v9 v9.22.0
-	github.com/tr1v3r/airlock v0.0.0-20261022171021-97e7bcd5bbe5
+	github.com/tr1v3r/airlock v0.0.0-20261022180358-0f5a47c0c7fa
 )
 
 require (

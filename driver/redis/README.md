@@ -12,7 +12,7 @@ client := redis.NewClient(&redis.Options{
 })
 defer client.Close()
 driver, err := redisdriver.New(client, "my-service")
-// Handle err, then pass driver to airlock.NewDistributed.
+// Handle err, then pass driver to airlock.NewShared.
 ```
 
 See [the runnable example](examples/basic/main.go):
@@ -103,3 +103,7 @@ set `AIRLOCK_REDIS_CLUSTER_MAPPING=containerIP:6379=127.0.0.1:port,...`. This is
 test-only dial mapping. Tests exercise the shared conformance suite, CAS races,
 expiry guards, cache reload, lost write responses, and client lease lifecycle.
 Default tests use miniredis; real standalone and Cluster tests are opt-in.
+
+The public operations are `Submit`, `Observe`, `Cancel`, `Renew`, and `Release`.
+The first three accept an immutable `airlock.Request`; renewal and release use
+`airlock.LeaseRef{Request: original, ID: result.LeaseID}`. All return `(airlock.Result, error)`.

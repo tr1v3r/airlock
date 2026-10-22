@@ -11,7 +11,7 @@ client := redis.NewClient(&redis.Options{
 })
 defer client.Close()
 driver, err := redisdriver.New(client, "my-service")
-// 处理 err，然后将 driver 传入 airlock.NewDistributed。
+// 处理 err，然后将 driver 传入 airlock.NewShared。
 ```
 
 [可运行示例](examples/basic/main.go)：
@@ -86,3 +86,7 @@ AIRLOCK_REDIS_CLUSTER_ADDRS=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002 GOWORK=
 `AIRLOCK_REDIS_CLUSTER_MAPPING=containerIP:6379=127.0.0.1:port,...`。
 测试覆盖公共契约、CAS 竞争、过期保护、脚本重载、丢写响应和客户端租约生命周期。
 默认测试使用 miniredis；真实 standalone 和 Cluster 集成测试通过环境变量开启。
+
+公开操作为 `Submit`、`Observe`、`Cancel`、`Renew` 和 `Release`。前三者接收不可变
+`airlock.Request`；续租与释放接收 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`，
+均返回 `(airlock.Result, error)`。

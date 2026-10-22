@@ -9,6 +9,7 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 // Move server time between read and CAS. A Renew derived from the old live lease
@@ -35,7 +36,7 @@ func TestExpiryBetweenReadAndCommit(t *testing.T) {
 				}
 				return err
 			}})
-			result, err := d.Execute(context.Background(), airlock.Command{Kind: operation, Request: r, LeaseID: grant.LeaseID})
+			result, err := driverconformance.Invoke(context.Background(), d, airlock.Command{Kind: operation, Request: r, LeaseID: grant.LeaseID})
 			if operation == airlock.Renew {
 				if !errors.Is(err, airlock.ErrLeaseLost) {
 					t.Fatal(result, err)

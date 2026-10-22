@@ -53,7 +53,7 @@ func TestConstructorSocketDeadlines(t *testing.T) {
 
 // No configured socket timeout (-1) must still respect the operation deadline
 // for both black-hole reads and writes. Pipe closure is a bounded test escape,
-// not the mechanism expected to complete Execute.
+// not the mechanism expected to complete Submit.
 func TestContextOnlySocketDeadlineBoundsBlackHole(t *testing.T) {
 	for _, configured := range []time.Duration{0, -1} {
 		for _, drain := range []bool{false, true} {
@@ -82,7 +82,7 @@ func TestContextOnlySocketDeadlineBoundsBlackHole(t *testing.T) {
 				}
 				done := make(chan outcome, 1)
 				go func() {
-					result, err := d.Execute(context.Background(), submit(request()))
+					result, err := d.Submit(context.Background(), request())
 					done <- outcome{result, err}
 				}()
 				select {

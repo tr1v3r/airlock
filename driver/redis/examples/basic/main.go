@@ -30,7 +30,7 @@ func run(address string) error {
 	if err != nil {
 		return err
 	}
-	limiter, err := airlock.NewDistributed(driver, airlock.DistributedOptions{
+	limiter, err := airlock.NewShared(driver, airlock.SharedOptions{
 		Resource: "jobs", OperationTimeout: time.Second, PollInterval: 20 * time.Millisecond,
 		Config: airlock.ResourceConfig{Admission: airlock.Config{Capacity: 8, MaxQueued: 32, MaxQueuedPerTenant: 8}, LeaseTTL: 30 * time.Second, MaxWait: 10 * time.Second, SubmitWindow: 5 * time.Second, Retention: time.Minute, MaxRecords: 256},
 	})

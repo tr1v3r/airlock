@@ -41,7 +41,7 @@ func submit(r airlock.Request) airlock.Command {
 }
 func mustExecute(t *testing.T, d *Driver, c airlock.Command) airlock.Result {
 	t.Helper()
-	result, err := d.Execute(context.Background(), c)
+	result, err := driverconformance.Invoke(context.Background(), d, c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,25 +93,25 @@ func TestValidationAndCorrupt(t *testing.T) {
 	ctx := context.Background()
 	r := request()
 	for _, invalid := range []*Driver{nil, {}} {
-		if _, err := invalid.Execute(ctx, submit(r)); err == nil {
+		if _, err := invalid.Submit(ctx, r); err == nil {
 			t.Fatal("zero driver")
 		}
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := d.Execute(cancelled, submit(r)); !errors.Is(err, context.Canceled) {
+	if _, err := d.Submit(cancelled, r); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	bad := r
 	bad.Weight = 0
-	if _, err := d.Execute(ctx, submit(bad)); !errors.Is(err, airlock.ErrInvalidWeight) {
+	if _, err := d.Submit(ctx, bad); !errors.Is(err, airlock.ErrInvalidWeight) {
 		t.Fatal(err)
 	}
 	for _, value := range []string{"", "corrupt", "{}"} {
 		if err := client.Set(ctx, d.key(r.Resource), value, 0).Err(); err != nil {
 			t.Fatal(err)
 		}
-		if result, err := d.Execute(ctx, submit(r)); !errors.Is(err, airlock.ErrCorruptState) || result != (airlock.Result{}) {
+		if result, err := d.Submit(ctx, r); !errors.Is(err, airlock.ErrCorruptState) || result != (airlock.Result{}) {
 			t.Fatal(result, err)
 		}
 	}
@@ -121,7 +121,7 @@ func TestValidationAndCorrupt(t *testing.T) {
 	if err := client.LPush(ctx, d.key(r.Resource), "x").Err(); err != nil {
 		t.Fatal(err)
 	}
-	if result, err := d.Execute(ctx, submit(r)); err == nil || result != (airlock.Result{}) {
+	if result, err := d.Submit(ctx, r); err == nil || result != (airlock.Result{}) {
 		t.Fatal(result, err)
 	}
 }
@@ -198,7 +198,7 @@ func TestLostWriteResponseNeverRetries(t *testing.T) {
 				}
 				return err
 			}})
-			result, err := d.Execute(context.Background(), command)
+			result, err := driverconformance.Invoke(context.Background(), d, command)
 			if !errors.Is(err, io.ErrUnexpectedEOF) || result != (airlock.Result{}) || commits.Load() != 1 {
 				t.Fatal(result, err, commits.Load())
 			}
@@ -245,7 +245,7 @@ func TestScriptFailureAndMalformedResponse(t *testing.T) {
 				}
 				return next(ctx, cmd)
 			}})
-			got, err := d.Execute(context.Background(), submit(request()))
+			got, err := d.Submit(context.Background(), request())
 			if err == nil || got != (airlock.Result{}) || calls != 1 {
 				t.Fatal(got, err, calls)
 			}
@@ -268,7 +268,7 @@ func TestCASConflictRetryAndDeadline(t *testing.T) {
 				}
 				return next(ctx, cmd)
 			}})
-			got, err := d.Execute(context.Background(), submit(request()))
+			got, err := d.Submit(context.Background(), request())
 			if permanent {
 				if !errors.Is(err, context.DeadlineExceeded) || got != (airlock.Result{}) {
 					t.Fatal(got, err)
@@ -293,7 +293,7 @@ func TestCancelledAfterCommit(t *testing.T) {
 		}
 		return err
 	}})
-	got, err := d.Execute(ctx, submit(request()))
+	got, err := d.Submit(ctx, request())
 	if !errors.Is(err, context.Canceled) || got != (airlock.Result{}) {
 		t.Fatal(got, err)
 	}

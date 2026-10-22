@@ -12,11 +12,11 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
-func distributed(t *testing.T, d *Driver, resource string) *airlock.Distributed {
+func distributed(t *testing.T, d *Driver, resource string) *airlock.Shared {
 	t.Helper()
 	cfg := request().Config
 	cfg.LeaseTTL = 2 * time.Second
-	client, err := airlock.NewDistributed(d, airlock.DistributedOptions{Resource: resource, Config: cfg, OperationTimeout: time.Second, PollInterval: time.Millisecond})
+	client, err := airlock.NewShared(d, airlock.SharedOptions{Resource: resource, Config: cfg, OperationTimeout: time.Second, PollInterval: time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}

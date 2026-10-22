@@ -44,7 +44,7 @@ func TestAsynchronousFailoverLosesAcknowledgedGrant(t *testing.T) {
 		r.Config = airlock.ResourceConfig{Admission: airlock.Config{Capacity: 1, MaxQueued: 4, MaxQueuedPerTenant: 4}, LeaseTTL: 2 * time.Minute, MaxWait: time.Minute, SubmitWindow: time.Minute, Retention: time.Minute, MaxRecords: 20}
 		r.Resource, r.Weight, r.WaitUntil = "resource", 1, r.SubmitUntil
 		start := time.Now()
-		got, err := d.Execute(ctx, airlock.Command{Kind: airlock.Submit, Request: r})
+		got, err := d.Submit(ctx, r)
 		if err != nil || got.Status != airlock.Granted {
 			t.Fatalf("seed: %+v %v", got, err)
 		}
@@ -68,13 +68,13 @@ func TestAsynchronousFailoverLosesAcknowledgedGrant(t *testing.T) {
 		if !time.Now().Before(fixture.Deadline) {
 			t.Fatal("fault took longer than old lease; overlap was not demonstrated")
 		}
-		got, err := d.Execute(ctx, airlock.Command{Kind: airlock.Observe, Request: fixture.Request})
+		got, err := d.Observe(ctx, fixture.Request)
 		if !errors.Is(err, airlock.ErrNotFound) || got.Status != "" || got.LeaseID != "" || got.Weight != 0 {
 			t.Fatalf("expected lost grant: %+v %v", got, err)
 		}
 		fresh := airlock.NewRequest(time.Now().Add(30 * time.Second))
 		fresh.Config, fresh.Resource, fresh.Weight, fresh.WaitUntil = fixture.Request.Config, fixture.Request.Resource, 1, fresh.SubmitUntil
-		got, err = d.Execute(ctx, airlock.Command{Kind: airlock.Submit, Request: fresh})
+		got, err = d.Submit(ctx, fresh)
 		if err != nil || got.Status != airlock.Granted || got.LeaseID == fixture.LeaseID {
 			t.Fatalf("new grant: %+v %v", got, err)
 		}

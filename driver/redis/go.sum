@@ -16,8 +16,8 @@ github.com/redis/go-redis/v9 v9.22.0 h1:laDvpYXTJtZLloinw1fA5Kqd6HAEH2XKxOkG/PDq
 github.com/redis/go-redis/v9 v9.22.0/go.mod h1:y2g0Wj8rQvuK0ELM+oxSudcLtC09JScs98I/X9gRWY4=
 github.com/stretchr/testify v1.3.0 h1:TivCn/peBQ7UY8ooIcPgZFpTNSz0Q2U6UrFlUfqbe0Q=
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
-github.com/tr1v3r/airlock v0.0.0-20261022171021-97e7bcd5bbe5 h1:LU5sE1Pcx05dFS6cb6Lao/khU8ErXHwMDUwuljoLKOg=
-github.com/tr1v3r/airlock v0.0.0-20261022171021-97e7bcd5bbe5/go.mod h1:wjMZi/HUHpwwbwBuEM/UtR0+KSR8i42+O0MB95VKjZ8=
+github.com/tr1v3r/airlock v0.0.0-20261022180358-0f5a47c0c7fa h1:5uYj13wYoQVSU7B8XYulAXeHKfkm0qYonXI0tJPYk3c=
+github.com/tr1v3r/airlock v0.0.0-20261022180358-0f5a47c0c7fa/go.mod h1:wjMZi/HUHpwwbwBuEM/UtR0+KSR8i42+O0MB95VKjZ8=
 github.com/yuin/gopher-lua v1.1.1 h1:kYKnWBjvbNP4XLT3+bPEwAXJx262OhaHDWDVOPjL46M=
 github.com/yuin/gopher-lua v1.1.1/go.mod h1:GBR0iDaNXjAgGg9zfCvksxSRnQx76gclCIb7kdAd1Pw=
 github.com/zeebo/xxh3 v1.1.0 h1:s7DLGDK45Dyfg7++yxI0khrfwq9661w9EN78eP/UZVs=
