@@ -20,7 +20,7 @@ type clientStateDriver struct {
 	after func(context.Context, Command, Result, error) (Result, error)
 }
 
-func (d *clientStateDriver) Execute(ctx context.Context, cmd Command) (Result, error) {
+func (d *clientStateDriver) execute(ctx context.Context, cmd Command) (Result, error) {
 	d.mu.Lock()
 	data, result, err := Transition(d.state, time.Now(), cmd)
 	if data != nil {
@@ -589,4 +589,29 @@ func TestSharedConcurrentLeaseOperations(t *testing.T) {
 	}
 	wg.Wait()
 	clientClosed(t, l)
+}
+
+// Submit atomically submits the whole request without refreshing an existing lease.
+func (d *clientStateDriver) Submit(ctx context.Context, request Request) (Result, error) {
+	return d.execute(ctx, Command{Kind: Submit, Request: request})
+}
+
+// Observe returns the request outcome after advancing expiry and scheduling.
+func (d *clientStateDriver) Observe(ctx context.Context, request Request) (Result, error) {
+	return d.execute(ctx, Command{Kind: Observe, Request: request})
+}
+
+// Cancel cancels the request, including a grant or a cancellation before submission.
+func (d *clientStateDriver) Cancel(ctx context.Context, request Request) (Result, error) {
+	return d.execute(ctx, Command{Kind: Cancel, Request: request})
+}
+
+// Renew extends a live lease matching the original request and lease ID.
+func (d *clientStateDriver) Renew(ctx context.Context, lease LeaseRef) (Result, error) {
+	return d.execute(ctx, Command{Kind: Renew, Request: lease.Request, LeaseID: lease.ID})
+}
+
+// Release ends a matching lease and returns its whole weight at most once.
+func (d *clientStateDriver) Release(ctx context.Context, lease LeaseRef) (Result, error) {
+	return d.execute(ctx, Command{Kind: Release, Request: lease.Request, LeaseID: lease.ID})
 }

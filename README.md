@@ -405,6 +405,13 @@ remain deprecated compatibility aliases/entry points.
 Use the independent [memory module](driver/memory) to exercise the same protocol
 in one process. It does not provide durable storage or cross-process capacity.
 
+The driver exposes `Submit(ctx, Request)`, `Observe(ctx, Request)`, and
+`Cancel(ctx, Request)`, plus `Renew(ctx, LeaseRef)` and `Release(ctx, LeaseRef)`.
+Each returns `(Result, error)`. `LeaseRef{Request: original, ID: result.LeaseID}`
+identifies the grant. Custom drivers must implement these five methods; the
+earlier `Execute(ctx, Command)` interface has been removed. `Command` remains
+a state-machine helper for driver implementations.
+
 `Shared.AcquireNFor(ctx, tenant, n)` returns `(*Lease, error)`. Waiting uses
 bounded persistent queues and periodic Observe; a lease requires explicit
 `Renew(ctx)` and `Release(ctx) error`. Stop work when `Done()` closes or `Valid()`

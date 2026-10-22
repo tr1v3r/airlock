@@ -17,7 +17,7 @@ func TestCancellation(t *testing.T) {
 	d := New()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := d.Execute(ctx, airlock.Command{}); !errors.Is(err, context.Canceled) {
+	if _, err := d.Submit(ctx, airlock.Request{}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	d.resources = map[string]*resource{"locked": {gate: make(chan struct{}, 1)}}
@@ -25,14 +25,14 @@ func TestCancellation(t *testing.T) {
 	r.gate <- struct{}{}
 	ctx, cancel = context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
-	if _, err := d.Execute(ctx, memoryCommand("locked")); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := d.Submit(ctx, memoryRequest("locked")); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
 	}
 	<-r.gate
 }
 func TestInvalidRequestDoesNotPersist(t *testing.T) {
 	d := New()
-	if _, err := d.Execute(context.Background(), airlock.Command{}); err == nil {
+	if _, err := d.Submit(context.Background(), airlock.Request{}); err == nil {
 		t.Fatal("invalid accepted")
 	}
 	if d.resources[""] != nil {
@@ -40,14 +40,14 @@ func TestInvalidRequestDoesNotPersist(t *testing.T) {
 	}
 }
 
-func memoryCommand(resource string) airlock.Command {
+func memoryRequest(resource string) airlock.Request {
 	now := time.Now()
 	r := airlock.NewRequest(now.Add(time.Second))
 	r.Resource = resource
 	r.WaitUntil = now.Add(time.Second).UTC().Truncate(time.Millisecond)
 	r.Weight = 1
 	r.Config = airlock.ResourceConfig{Admission: airlock.Config{Capacity: 1}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 10}
-	return airlock.Command{Kind: airlock.Submit, Request: r}
+	return r
 }
 
 // stagedCancellation models cancellation after lock acquisition or after commit.
@@ -67,11 +67,11 @@ func TestCancellationAtAtomicBoundary(t *testing.T) {
 	for _, at := range []int{2, 3} {
 		d := New()
 		ctx := &stagedCancellation{Context: context.Background(), at: at}
-		cmd := memoryCommand("cancel-boundary")
-		if _, err := d.Execute(ctx, cmd); !errors.Is(err, context.Canceled) {
+		request := memoryRequest("cancel-boundary")
+		if _, err := d.Submit(ctx, request); !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
-		stored := d.resources[cmd.Request.Resource].snapshot
+		stored := d.resources[request.Resource].snapshot
 		if (len(stored) > 0) != (at == 3) {
 			t.Fatalf("commit state at boundary %d", at)
 		}

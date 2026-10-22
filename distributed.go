@@ -66,14 +66,14 @@ func (d *Shared) AcquireNFor(ctx context.Context, tenant string, n int) (*Lease,
 	}
 	return d.acquire(ctx, tenant, n)
 }
-func (d *Shared) execute(ctx context.Context, cmd Command) (Result, time.Time, error) {
+func (d *Shared) execute(ctx context.Context, operation func(context.Context) (Result, error)) (Result, time.Time, error) {
 	op, cancel := context.WithTimeout(ctx, d.options.OperationTimeout)
 	defer cancel()
 	start := time.Now()
 	if err := op.Err(); err != nil {
 		return Result{}, start, err
 	}
-	result, err := d.driver.Execute(op, cmd)
+	result, err := operation(op)
 	// Even a driver that reports success after its I/O deadline cannot authorize work.
 	if err == nil {
 		err = op.Err()
@@ -106,9 +106,9 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 	if err := validRequest(r); err != nil {
 		return nil, err
 	}
-	cmd := Command{Kind: Submit, Request: r}
+	operation := func(ctx context.Context) (Result, error) { return d.driver.Submit(ctx, r) }
 	for {
-		result, start, err := d.execute(ctx, cmd)
+		result, start, err := d.execute(ctx, operation)
 		if err == nil {
 			err = ctx.Err()
 		}
@@ -132,7 +132,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 					timer.Stop()
 					err = ctx.Err()
 				case <-timer.C:
-					cmd.Kind = Observe
+					operation = func(ctx context.Context) (Result, error) { return d.driver.Observe(ctx, r) }
 					continue
 				}
 			default:
@@ -140,7 +140,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 			}
 		}
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.options.OperationTimeout)
-		_, _, cleanupErr := d.execute(cleanup, Command{Kind: Cancel, Request: r})
+		_, _, cleanupErr := d.execute(cleanup, func(ctx context.Context) (Result, error) { return d.driver.Cancel(ctx, r) })
 		cancel()
 		return nil, errors.Join(err, cleanupErr)
 	}
@@ -196,7 +196,9 @@ func (l *Lease) Renew(ctx context.Context) error {
 	if !l.Valid() {
 		return ErrLeaseLost
 	}
-	result, start, err := l.client.execute(ctx, Command{Kind: Renew, Request: l.request, LeaseID: l.id})
+	result, start, err := l.client.execute(ctx, func(ctx context.Context) (Result, error) {
+		return l.client.driver.Renew(ctx, LeaseRef{Request: l.request, ID: l.id})
+	})
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	deadline := start.Add(result.Remaining)
@@ -221,7 +223,9 @@ func (l *Lease) Release(ctx context.Context) error {
 	l.mu.Lock()
 	l.invalidateLocked()
 	l.mu.Unlock()
-	result, _, err := l.client.execute(ctx, Command{Kind: Release, Request: l.request, LeaseID: l.id})
+	result, _, err := l.client.execute(ctx, func(ctx context.Context) (Result, error) {
+		return l.client.driver.Release(ctx, LeaseRef{Request: l.request, ID: l.id})
+	})
 	if err == nil && result.Status != Released && result.Status != Expired && result.Status != Cancelled {
 		return ErrLeaseLost
 	}

@@ -47,7 +47,7 @@ func integrationDriver(t *testing.T, db *sql.DB, prefix string, options ...Optio
 func uniquePrefix() string { return "test-" + airlock.NewRequest(time.Now()).Owner }
 func executeStatus(t *testing.T, d *Driver, kind airlock.Operation, r airlock.Request, lease string, status airlock.Status) airlock.Result {
 	t.Helper()
-	got, err := d.Execute(context.Background(), airlock.Command{Kind: kind, Request: r, LeaseID: lease})
+	got, err := driverconformance.Invoke(context.Background(), d, airlock.Command{Kind: kind, Request: r, LeaseID: lease})
 	if err != nil || got.Status != status {
 		t.Fatalf("%s got=%+v err=%v want=%s", kind, got, err, status)
 	}
@@ -80,7 +80,7 @@ func TestIntegrationFirstCreationAndIsolation(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			got, err := d.Execute(context.Background(), airlock.Command{Kind: airlock.Submit, Request: req})
+			got, err := d.Submit(context.Background(), req)
 			if err != nil && !errors.Is(err, airlock.ErrQueueFull) && !errors.Is(err, airlock.ErrTenantQueueFull) {
 				failures <- err
 			}
@@ -171,7 +171,7 @@ func TestIntegrationLockWaitDoesNotReviveLease(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		got, err := d.Execute(context.Background(), airlock.Command{Kind: airlock.Renew, Request: r, LeaseID: grant.LeaseID})
+		got, err := d.Renew(context.Background(), airlock.LeaseRef{Request: r, ID: grant.LeaseID})
 		if got.Status == airlock.Granted {
 			err = fmt.Errorf("expired lease revived: %+v", got)
 		}
@@ -217,7 +217,7 @@ func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-	got, err := d.Execute(ctx, airlock.Command{Kind: airlock.Observe, Request: r})
+	got, err := d.Observe(ctx, r)
 	cancel()
 	if err == nil || got != (airlock.Result{}) {
 		t.Fatalf("cancel: %+v %v", got, err)
@@ -229,7 +229,7 @@ func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := d.Execute(context.Background(), airlock.Command{Kind: airlock.Observe, Request: r}); err == nil || got != (airlock.Result{}) {
+	if got, err := d.Observe(context.Background(), r); err == nil || got != (airlock.Result{}) {
 		t.Fatalf("closed connection: %+v %v", got, err)
 	}
 }
@@ -284,7 +284,7 @@ func TestIntegrationTerminatedConnectionFailsClosed(t *testing.T) {
 	}
 	done := make(chan response, 1)
 	go func() {
-		got, err := d.Execute(context.Background(), airlock.Command{Kind: airlock.Renew, Request: r, LeaseID: held.LeaseID})
+		got, err := d.Renew(context.Background(), airlock.LeaseRef{Request: r, ID: held.LeaseID})
 		done <- response{got, err}
 	}()
 	var target int

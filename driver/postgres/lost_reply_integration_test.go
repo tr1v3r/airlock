@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 // The database really commits; only its driver-level acknowledgement is dropped.
@@ -82,7 +83,7 @@ func TestIntegrationCommittedResponseLoss(t *testing.T) {
 	unknown := func(kind airlock.Operation, lease string) {
 		t.Helper()
 		connector.armed.Store(true)
-		result, e := faulty.Execute(context.Background(), airlock.Command{Kind: kind, Request: r, LeaseID: lease})
+		result, e := driverconformance.Invoke(context.Background(), faulty, airlock.Command{Kind: kind, Request: r, LeaseID: lease})
 		if !errors.Is(e, io.ErrUnexpectedEOF) || result != (airlock.Result{}) {
 			t.Fatalf("unknown %s exposed result: %+v %v", kind, result, e)
 		}
