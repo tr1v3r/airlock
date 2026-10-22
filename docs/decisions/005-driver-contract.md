@@ -1,6 +1,6 @@
 # Driver 契约与 memory 参考实现
 
-状态：本 PR 实现 core 协议、客户端和 memory；PostgreSQL、Redis 后续独立 PR。不创建 release。
+状态：core 协议、Shared 客户端、memory 及后续独立 PostgreSQL、Redis driver 均已在 `dev` 实现。本文保留最初 driver 契约的决策背景；部署边界分别见[决策 006](006-postgres-driver.md)与[决策 007](007-redis-driver.md)。不代表已有标签版本。
 
 ## API 与原子边界
 
