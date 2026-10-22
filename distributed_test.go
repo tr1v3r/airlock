@@ -38,18 +38,18 @@ func (d *clientStateDriver) commands() []Command {
 	defer d.mu.Unlock()
 	return append([]Command(nil), d.calls...)
 }
-func clientOptions() DistributedOptions {
-	return DistributedOptions{Resource: "test", Config: ResourceConfig{Admission: Config{Capacity: 2, MaxQueued: 16, MaxQueuedPerTenant: 16}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 100}, OperationTimeout: 500 * time.Millisecond, PollInterval: time.Millisecond}
+func clientOptions() SharedOptions {
+	return SharedOptions{Resource: "test", Config: ResourceConfig{Admission: Config{Capacity: 2, MaxQueued: 16, MaxQueuedPerTenant: 16}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 100}, OperationTimeout: 500 * time.Millisecond, PollInterval: time.Millisecond}
 }
-func clientNew(t *testing.T, d Driver, options DistributedOptions) *Distributed {
+func clientNew(t *testing.T, d Driver, options SharedOptions) *Shared {
 	t.Helper()
-	c, err := NewDistributed(d, options)
+	c, err := NewShared(d, options)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return c
 }
-func clientAcquire(t *testing.T, c *Distributed) *Lease {
+func clientAcquire(t *testing.T, c *Shared) *Lease {
 	t.Helper()
 	l, err := c.Acquire(context.Background())
 	if err != nil {
@@ -78,29 +78,29 @@ func clientClosed(t *testing.T, l *Lease) {
 	}
 }
 
-func TestDistributedOptionsValidationAndSnapshot(t *testing.T) {
+func TestSharedOptionsValidationAndSnapshot(t *testing.T) {
 	tests := []struct {
 		name   string
-		change func(*DistributedOptions)
+		change func(*SharedOptions)
 	}{
-		{"empty resource", func(o *DistributedOptions) { o.Resource = "" }},
-		{"long resource", func(o *DistributedOptions) { o.Resource = strings.Repeat("x", 257) }},
-		{"zero timeout", func(o *DistributedOptions) { o.OperationTimeout = 0 }},
-		{"long timeout", func(o *DistributedOptions) { o.OperationTimeout = time.Minute + 1 }},
-		{"zero interval", func(o *DistributedOptions) { o.PollInterval = 0 }},
-		{"long interval", func(o *DistributedOptions) { o.PollInterval = time.Minute + 1 }},
-		{"invalid admission", func(o *DistributedOptions) { o.Config.Admission.Capacity = 0 }},
+		{"empty resource", func(o *SharedOptions) { o.Resource = "" }},
+		{"long resource", func(o *SharedOptions) { o.Resource = strings.Repeat("x", 257) }},
+		{"zero timeout", func(o *SharedOptions) { o.OperationTimeout = 0 }},
+		{"long timeout", func(o *SharedOptions) { o.OperationTimeout = time.Minute + 1 }},
+		{"zero interval", func(o *SharedOptions) { o.PollInterval = 0 }},
+		{"long interval", func(o *SharedOptions) { o.PollInterval = time.Minute + 1 }},
+		{"invalid admission", func(o *SharedOptions) { o.Config.Admission.Capacity = 0 }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			o := clientOptions()
 			tt.change(&o)
-			if _, err := NewDistributed(&clientStateDriver{}, o); !errors.Is(err, ErrInvalidConfig) {
+			if _, err := NewShared(&clientStateDriver{}, o); !errors.Is(err, ErrInvalidConfig) {
 				t.Fatalf("error %v", err)
 			}
 		})
 	}
-	if _, err := NewDistributed(nil, clientOptions()); !errors.Is(err, ErrInvalidConfig) {
+	if _, err := NewShared(nil, clientOptions()); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatal(err)
 	}
 	o := clientOptions()
@@ -113,7 +113,7 @@ func TestDistributedOptionsValidationAndSnapshot(t *testing.T) {
 	}
 }
 
-func TestDistributedAcquireArguments(t *testing.T) {
+func TestSharedAcquireArguments(t *testing.T) {
 	d := &clientStateDriver{}
 	c := clientNew(t, d, clientOptions())
 	for _, tc := range []struct {
@@ -147,7 +147,7 @@ func TestDistributedAcquireArguments(t *testing.T) {
 	}
 }
 
-func TestDistributedLeaseLifecycle(t *testing.T) {
+func TestSharedLeaseLifecycle(t *testing.T) {
 	d := &clientStateDriver{}
 	c := clientNew(t, d, clientOptions())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -191,7 +191,7 @@ func TestDistributedLeaseLifecycle(t *testing.T) {
 	}
 }
 
-func TestDistributedQueuePollAndGrant(t *testing.T) {
+func TestSharedQueuePollAndGrant(t *testing.T) {
 	submitted := make(chan struct{})
 	var once sync.Once
 	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
@@ -230,7 +230,7 @@ func TestDistributedQueuePollAndGrant(t *testing.T) {
 	}
 }
 
-func TestDistributedQueuedCancellationCleanupIndependentContext(t *testing.T) {
+func TestSharedQueuedCancellationCleanupIndependentContext(t *testing.T) {
 	queued := make(chan struct{})
 	var once sync.Once
 	var cleanupLive atomic.Bool
@@ -272,7 +272,7 @@ func TestDistributedQueuedCancellationCleanupIndependentContext(t *testing.T) {
 	}
 }
 
-func TestDistributedDeadlinePropagatedAndNoAutomaticRenewal(t *testing.T) {
+func TestSharedDeadlinePropagatedAndNoAutomaticRenewal(t *testing.T) {
 	d := &clientStateDriver{}
 	o := clientOptions()
 	o.Config.LeaseTTL = 40 * time.Millisecond
@@ -308,7 +308,7 @@ func clientExhaustRemaining(r Result) Result {
 	return r
 }
 
-func TestDistributedAcquireRejectsInvalidOrLateResults(t *testing.T) {
+func TestSharedAcquireRejectsInvalidOrLateResults(t *testing.T) {
 	tests := []struct {
 		name   string
 		change func(Result) Result
@@ -340,7 +340,7 @@ func TestDistributedAcquireRejectsInvalidOrLateResults(t *testing.T) {
 	}
 }
 
-func TestDistributedAmbiguousSubmitAndCleanupErrors(t *testing.T) {
+func TestSharedAmbiguousSubmitAndCleanupErrors(t *testing.T) {
 	lost := errors.New("lost submit response")
 	cleanup := errors.New("lost cleanup response")
 	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
@@ -369,7 +369,7 @@ func TestDistributedAmbiguousSubmitAndCleanupErrors(t *testing.T) {
 	}
 }
 
-func TestDistributedAcquireLateSuccessFailsClosed(t *testing.T) {
+func TestSharedAcquireLateSuccessFailsClosed(t *testing.T) {
 	d := &clientStateDriver{after: func(ctx context.Context, c Command, r Result, e error) (Result, error) {
 		if c.Kind == Submit {
 			<-ctx.Done()
@@ -384,7 +384,7 @@ func TestDistributedAcquireLateSuccessFailsClosed(t *testing.T) {
 	}
 }
 
-func TestDistributedAcquisitionCancellationDuringGrant(t *testing.T) {
+func TestSharedAcquisitionCancellationDuringGrant(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
@@ -399,7 +399,7 @@ func TestDistributedAcquisitionCancellationDuringGrant(t *testing.T) {
 	}
 }
 
-func TestDistributedConservativeRoundTripDeadline(t *testing.T) {
+func TestSharedConservativeRoundTripDeadline(t *testing.T) {
 	var completed time.Time
 	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
 		if c.Kind == Submit || c.Kind == Renew {
@@ -423,7 +423,7 @@ func TestDistributedConservativeRoundTripDeadline(t *testing.T) {
 	}
 }
 
-func TestDistributedRenewErrorsPermanentlyInvalidate(t *testing.T) {
+func TestSharedRenewErrorsPermanentlyInvalidate(t *testing.T) {
 	lost := errors.New("renew response lost")
 	tests := []struct {
 		name   string
@@ -466,7 +466,7 @@ func TestDistributedRenewErrorsPermanentlyInvalidate(t *testing.T) {
 	}
 }
 
-func TestDistributedRenewCannotResurrectExpiredLease(t *testing.T) {
+func TestSharedRenewCannotResurrectExpiredLease(t *testing.T) {
 	entered := make(chan struct{})
 	respond := make(chan struct{})
 	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
@@ -493,7 +493,7 @@ func TestDistributedRenewCannotResurrectExpiredLease(t *testing.T) {
 	clientClosed(t, l)
 }
 
-func TestDistributedReleaseInvalidatesBeforeIOAndRetries(t *testing.T) {
+func TestSharedReleaseInvalidatesBeforeIOAndRetries(t *testing.T) {
 	entered := make(chan struct{})
 	respond := make(chan struct{})
 	lost := errors.New("release response lost")
@@ -524,7 +524,7 @@ func TestDistributedReleaseInvalidatesBeforeIOAndRetries(t *testing.T) {
 	clientClosed(t, l)
 }
 
-func TestDistributedReleaseRejectsWrongStatus(t *testing.T) {
+func TestSharedReleaseRejectsWrongStatus(t *testing.T) {
 	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
 		if c.Kind == Release {
 			r.Status = Granted
@@ -539,7 +539,7 @@ func TestDistributedReleaseRejectsWrongStatus(t *testing.T) {
 	clientClosed(t, l)
 }
 
-func TestDistributedCancelledRenewAndReleaseDoNotCallDriver(t *testing.T) {
+func TestSharedCancelledRenewAndReleaseDoNotCallDriver(t *testing.T) {
 	d := &clientStateDriver{}
 	c := clientNew(t, d, clientOptions())
 	l := clientAcquire(t, c)
@@ -560,7 +560,7 @@ func TestDistributedCancelledRenewAndReleaseDoNotCallDriver(t *testing.T) {
 	}
 }
 
-func TestDistributedConcurrentLeaseOperations(t *testing.T) {
+func TestSharedConcurrentLeaseOperations(t *testing.T) {
 	d := &clientStateDriver{}
 	c := clientNew(t, d, clientOptions())
 	l := clientAcquire(t, c)

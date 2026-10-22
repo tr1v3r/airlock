@@ -9,7 +9,7 @@
 容量约束是同一资源中有效授权的权重总和不超过 Capacity，不能把申请 n 个令牌实现成 n 次单令牌申请。
 
 本地 `New(Config)` 保持零外部服务、标准库运行时依赖；已有 `Permit.Release()` 保留。
-远端拟提供独立 `NewDistributed(driver, ...)` 和 `Lease.Release(ctx) error`，使用者明确选择网络生命周期。
+远端拟提供独立 `NewShared(driver, ...)` 和 `Lease.Release(ctx) error`，使用者明确选择网络生命周期。
 这是接口方向，不是已实现 API；本次不改变现有方法。
 
 ## 借鉴 anylock 的范围

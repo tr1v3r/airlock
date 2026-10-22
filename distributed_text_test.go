@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestDistributedRejectsNonPortableTextBeforeBackend(t *testing.T) {
+func TestSharedRejectsNonPortableTextBeforeBackend(t *testing.T) {
 	for _, tc := range []struct{ name, value string }{{"invalid UTF-8", string([]byte{0xff})}, {"embedded NUL", "a\x00b"}, {"oversized", strings.Repeat("x", 257)}} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &clientStateDriver{}
@@ -34,7 +34,7 @@ func TestDistributedRejectsNonPortableTextBeforeBackend(t *testing.T) {
 					case "mapping value":
 						o.Config.Admission.Priority.TenantGroups["tenant"] = tc.value
 					}
-					if _, err := NewDistributed(d, o); !errors.Is(err, ErrInvalidConfig) {
+					if _, err := NewShared(d, o); !errors.Is(err, ErrInvalidConfig) {
 						t.Fatalf("invalid %s accepted: %v", field, err)
 					}
 				})
@@ -43,7 +43,7 @@ func TestDistributedRejectsNonPortableTextBeforeBackend(t *testing.T) {
 	}
 }
 
-func TestDistributedUnicodeNamesSurviveSnapshotRoundTrip(t *testing.T) {
+func TestSharedUnicodeNamesSurviveSnapshotRoundTrip(t *testing.T) {
 	d := &clientStateDriver{}
 	o := clientOptions()
 	o.Resource = "资源🔑"

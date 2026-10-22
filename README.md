@@ -394,12 +394,18 @@ PostgreSQL is provided separately; Redis follows next. This does not indicate a 
 
 ## Distributed leases (driver contract and memory)
 
-This branch implements the driver protocol, `NewDistributed`, and the independent
+This branch implements the driver protocol, `NewShared`, and the independent
 [memory](driver/memory) and [PostgreSQL](driver/postgres) drivers. Redis remains planned. Local `New(Config)` and `Permit` are unchanged.
+`NewShared(driver, SharedOptions)` returns a `*Shared` for admission coordinated
+through the chosen driver. The driver determines the sharing scope. Construction
+validates and copies configuration without backend I/O or acquiring tokens.
+The previous `NewDistributed`, `Distributed`, and `DistributedOptions` names
+remain deprecated compatibility aliases/entry points.
+
 Use the independent [memory module](driver/memory) to exercise the same protocol
 in one process. It does not provide durable storage or cross-process capacity.
 
-`Distributed.AcquireNFor(ctx, tenant, n)` returns `(*Lease, error)`. Waiting uses
+`Shared.AcquireNFor(ctx, tenant, n)` returns `(*Lease, error)`. Waiting uses
 bounded persistent queues and periodic Observe; a lease requires explicit
 `Renew(ctx)` and `Release(ctx) error`. Stop work when `Done()` closes or `Valid()`
 is false. The acquisition context does not revoke a delivered lease. There is

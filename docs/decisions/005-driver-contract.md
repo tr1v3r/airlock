@@ -39,7 +39,11 @@ Cancel 可以先于 Submit 到达：创建 Cancelled tombstone，迟到 Submit �
 
 ## 客户端生命周期
 
-`NewDistributed(driver, options)` 返回独立的 lease API，提供 Acquire/AcquireFor/AcquireN/AcquireNFor。
+公开命名统一为 `NewShared`、`Shared`、`SharedOptions`，强调通过后端共享并发额度与排队状态；Lease 继续表达授权有效期。
+构造时不做后端 I/O、不申请令牌、不接管连接。旧 Distributed 系列名称保留为已弃用的兼容入口，
+不维护第二份实现；本地 `New(Config)` 不变。
+
+`NewShared(driver, options)` 返回独立的 lease API，提供 Acquire/AcquireFor/AcquireN/AcquireNFor。
 每次 I/O 受 OperationTimeout 限制；等待使用 PollInterval 定时 Observe，查询先后不决定授予顺序。
 提交或查询遇到错误时不执行工作，以独立短 ctx Cancel，返回原错误及可能的清理错误。
 第一版不隐式重试网络错误；需要手动恢复原请求的高级使用者保留 Request 并直接调用 Driver。
