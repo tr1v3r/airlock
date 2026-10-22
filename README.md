@@ -49,6 +49,52 @@ limits, for example `Config{Capacity: 2, MaxQueued: 8, MaxQueuedPerTenant: 8}`.
 The default tenant uses the same queue limits, FIFO and cancellation rules as
 named tenants; it does not collide with any explicit tenant ID.
 
+## Immediate acquisition
+
+Use `TryAcquire` to decide per call whether to wait on the **same** Airlock:
+`Acquire` calls may join its bounded queues, while `TryAcquire` calls never queue
+or wait for capacity. All methods return `(*Permit, error)`:
+
+| Default tenant | Named tenant | Tokens |
+| --- | --- | --- |
+| `TryAcquire()` | `TryAcquireFor(tenantID)` | 1 |
+| `TryAcquireN(n)` | `TryAcquireNFor(tenantID, n)` | n |
+
+```go
+permit, err := lock.TryAcquireNFor("online", 2)
+if errors.Is(err, airlock.ErrWouldBlock) {
+    // Reject or fall back without waiting for capacity.
+    return nil
+}
+if err != nil {
+    return err
+}
+defer permit.Release()
+// Execute work.
+```
+
+This snippet belongs in an error-returning function and uses the `errors` package.
+See the runnable [immediate acquisition example](examples/tryacquire/example.go).
+
+- A successful call atomically acquires the full weight and uses the same
+  `Permit.Release()` as `Acquire`. It requires enough capacity **and no waiting
+  requests**; it cannot bypass a protected large request even if smaller work fits.
+- Otherwise it returns `ErrWouldBlock` with no permit and no changes to capacity,
+  queues, or tenant rotation. Queue allowances do not affect this decision.
+  `ErrWouldBlock` means immediate admission is unavailable; `ErrQueueFull` and
+  `ErrTenantQueueFull` instead describe rejected attempts to join an `Acquire` queue.
+- Explicit tenant IDs are validated before weights. Empty IDs return
+  `ErrInvalidTenant`; nonpositive weights return `ErrInvalidWeight`, and weights
+  above capacity return `ErrWeightExceedsCapacity`. Use `errors.Is` to distinguish
+  these invalid requests from temporary unavailability.
+- These local calls take no context. They still acquire the internal mutex;
+  “immediate” means no capacity wait, not a wait-free or bounded-latency guarantee.
+  Do not loop over `TryAcquire` to implement waiting: it creates contention and
+  obtains no place in the fair queue. Use `Acquire` with queue limits and a context.
+
+The [TryAcquire design decision](docs/decisions/002-try-acquire.md) records the
+fairness boundary and API alternatives (document in Chinese).
+
 ## Usage and contract
 
 ```go
@@ -82,7 +128,7 @@ the same `permit.Release()` returns all three. Without a tenant ID, use
   for a named tenant to acquire all `n` tokens atomically; requests never hold
   partial capacity while waiting. Explicit tenant IDs must be nonempty strings.
   Use trusted, bounded IDs: Airlock does not authenticate callers or bound lengths.
-- A nil context panics. Explicit tenant ID validation comes next
+- For `Acquire` methods, a nil context panics. Explicit tenant ID validation comes next
   (`ErrInvalidTenant`), then weight validation: `n <= 0` returns
   `ErrInvalidWeight`; `n > Capacity` returns `ErrWeightExceedsCapacity`.
   Invalid weights fail immediately without queuing, even with a cancelled context.
@@ -149,6 +195,7 @@ Run from `airlock/`:
 | [Caller-owned completion notification](examples/completion/example.go) | `go run ./examples/completion` |
 | [Tenant-aware single-token admission](examples/tenants/example.go) | `go run ./examples/tenants` |
 | [Multi-tenant weighted admission](examples/weighted/example.go) | `go run ./examples/weighted` |
+| [Immediate acquisition and fallback](examples/tryacquire/example.go) | `go run ./examples/tryacquire` |
 
 ```sh
 GOWORK=off go test -race ./...
@@ -230,7 +277,7 @@ No compatibility aliases are provided.
 Use `Acquire(ctx)` for the default tenant and `AcquireFor(ctx, tenantID)` for
 named tenants. Migrate former `Acquire(ctx, tenantID)` calls to `AcquireFor`;
 interfaces, mocks, and method-value types must declare the corresponding fixed
-signature. All four entry points use fixed arguments. `Stats.ActivePermits`
+signature. All acquisition entry points use fixed arguments. `Stats.ActivePermits`
 adds a distinct permit count; update unkeyed `Stats` literals to keyed literals
 when adopting the new field.
 
