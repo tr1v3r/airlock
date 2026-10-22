@@ -322,12 +322,17 @@ driver 契约、租约客户端和 memory 参考实现在本 PR 提供，Postgre
 
 ## 分布式租约（driver 契约与 memory）
 
-本分支实现 driver 协议、`NewDistributed`，以及独立 [memory](driver/memory) 和
+本分支实现 driver 协议、`NewShared`，以及独立 [memory](driver/memory) 和
 [PostgreSQL](driver/postgres) driver；Redis 待后续 PR。
+`NewShared(driver, SharedOptions)` 返回 `*Shared`，通过指定 driver 共享资源的容量与排队状态。
+共享范围由 driver 决定；构造时仅校验并复制配置，
+不访问后端，也不申请令牌。旧名称 `NewDistributed`、`Distributed`、`DistributedOptions`
+保留为已弃用的兼容入口或别名。
+
 本地 `New(Config)` 和 `Permit` 保持原有语义。独立的 [memory 模块](driver/memory)
 可在单进程演示同一协议，但不提供持久存储或跨进程容量。
 
-`Distributed.AcquireNFor(ctx, tenant, n)` 返回 `(*Lease, error)`。有界持久队列配合定期
+`Shared.AcquireNFor(ctx, tenant, n)` 返回 `(*Lease, error)`。有界持久队列配合定期
 Observe 实现等待，租约需要显式 `Renew(ctx)` 与 `Release(ctx) error`。
 `Done()` 关闭或 `Valid()` 为 false 时应停止工作。获取时的 ctx 不撤销已交付租约；
 没有自动续租、业务重试，网络错误不授权执行工作。

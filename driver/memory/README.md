@@ -4,7 +4,7 @@ An in-process reference for the Airlock distributed protocol. It uses the core
 state machine and supports weighted tenant/group scheduling, TTL, cancellation,
 idempotent recovery, and explicit renewal. It owns no workers or connections.
 
-Create `memory.New()` and pass it to `airlock.NewDistributed`. Share **one Driver
+Create `memory.New()` and pass it to `airlock.NewShared`. Share **one Driver
 instance** between clients that must share a capacity pool. See the runnable
 [example](example_test.go) and [contract](../../docs/decisions/005-driver-contract.md).
 

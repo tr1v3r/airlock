@@ -27,7 +27,7 @@ func ExampleNew() {
 	if err := driver.EnsureSchema(context.Background()); err != nil {
 		log.Fatal(err)
 	}
-	client, err := airlock.NewDistributed(driver, airlock.DistributedOptions{
+	client, err := airlock.NewShared(driver, airlock.SharedOptions{
 		Resource:         "workers",
 		Config:           airlock.ResourceConfig{Admission: airlock.Config{Capacity: 4, MaxQueued: 8, MaxQueuedPerTenant: 8}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Minute, MaxRecords: 100},
 		OperationTimeout: time.Second, PollInterval: 20 * time.Millisecond,

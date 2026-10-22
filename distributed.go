@@ -8,25 +8,29 @@ import (
 	"time"
 )
 
-// DistributedOptions specifies one resource and bounded network polling.
+// SharedOptions specifies one backend resource and bounded network polling.
 // There is no implicit renewal or background acquisition worker.
-type DistributedOptions struct {
+type SharedOptions struct {
 	Resource         string
 	Config           ResourceConfig
 	OperationTimeout time.Duration
 	PollInterval     time.Duration
 }
 
-// Distributed is a lease-based client. It never closes the injected Driver.
+// Shared coordinates admission to a resource through an injected Driver.
+// The driver determines the sharing scope. Grants are time-bounded leases.
+// Shared never closes the driver or its connections.
 // An acquisition context only controls waiting; delivered leases have their own
 // lifetime. Backend failures never fall back to local admission.
-type Distributed struct {
+type Shared struct {
 	driver  Driver
-	options DistributedOptions
+	options SharedOptions
 }
 
-// NewDistributed validates and snapshots all options without contacting a backend.
-func NewDistributed(d Driver, options DistributedOptions) (*Distributed, error) {
+// NewShared creates shared admission through a driver and snapshots its options.
+// Construction performs no backend I/O and acquires no tokens. The caller owns
+// the driver and its connections; Acquire starts admission.
+func NewShared(d Driver, options SharedOptions) (*Shared, error) {
 	if d == nil || options.Resource == "" || !validText(options.Resource) || len(options.Resource) > 256 || options.OperationTimeout <= 0 || options.OperationTimeout > time.Minute || options.PollInterval <= 0 || options.PollInterval > time.Minute {
 		return nil, ErrInvalidConfig
 	}
@@ -34,26 +38,26 @@ func NewDistributed(d Driver, options DistributedOptions) (*Distributed, error) 
 		return nil, err
 	}
 	data, _ := json.Marshal(options)
-	var copied DistributedOptions
+	var copied SharedOptions
 	_ = json.Unmarshal(data, &copied)
-	return &Distributed{driver: d, options: copied}, nil
+	return &Shared{driver: d, options: copied}, nil
 }
 
 // Acquire obtains one leased token for the default tenant.
-func (d *Distributed) Acquire(ctx context.Context) (*Lease, error) { return d.AcquireN(ctx, 1) }
+func (d *Shared) Acquire(ctx context.Context) (*Lease, error) { return d.AcquireN(ctx, 1) }
 
 // AcquireFor obtains one leased token for an explicitly named tenant.
-func (d *Distributed) AcquireFor(ctx context.Context, tenant string) (*Lease, error) {
+func (d *Shared) AcquireFor(ctx context.Context, tenant string) (*Lease, error) {
 	return d.AcquireNFor(ctx, tenant, 1)
 }
 
 // AcquireN obtains n leased tokens atomically for the default tenant.
-func (d *Distributed) AcquireN(ctx context.Context, n int) (*Lease, error) {
+func (d *Shared) AcquireN(ctx context.Context, n int) (*Lease, error) {
 	return d.acquire(ctx, "", n)
 }
 
 // AcquireNFor obtains n leased tokens atomically for an explicitly named tenant.
-func (d *Distributed) AcquireNFor(ctx context.Context, tenant string, n int) (*Lease, error) {
+func (d *Shared) AcquireNFor(ctx context.Context, tenant string, n int) (*Lease, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
 	}
@@ -62,7 +66,7 @@ func (d *Distributed) AcquireNFor(ctx context.Context, tenant string, n int) (*L
 	}
 	return d.acquire(ctx, tenant, n)
 }
-func (d *Distributed) execute(ctx context.Context, cmd Command) (Result, time.Time, error) {
+func (d *Shared) execute(ctx context.Context, cmd Command) (Result, time.Time, error) {
 	op, cancel := context.WithTimeout(ctx, d.options.OperationTimeout)
 	defer cancel()
 	start := time.Now()
@@ -76,7 +80,7 @@ func (d *Distributed) execute(ctx context.Context, cmd Command) (Result, time.Ti
 	}
 	return result, start, err
 }
-func (d *Distributed) acquire(ctx context.Context, tenant string, n int) (*Lease, error) {
+func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
 	}
@@ -149,7 +153,7 @@ func (d *Distributed) acquire(ctx context.Context, tenant string, n int) (*Lease
 type Lease struct {
 	opMu     sync.Mutex
 	mu       sync.Mutex
-	client   *Distributed
+	client   *Shared
 	request  Request
 	id       string
 	deadline time.Time
