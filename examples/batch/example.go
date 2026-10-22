@@ -11,19 +11,23 @@ import (
 )
 
 func squares(ctx context.Context, inputs []int) ([]int, error) {
-	p := airlock.NewPool(2)
+	lock, err := airlock.New(airlock.Config{Capacity: 2, MaxQueued: 1, MaxQueuedPerTenant: 1})
+	if err != nil {
+		return nil, err
+	}
 	results := make([]int, len(inputs))
 	var wg sync.WaitGroup
 	// Also join already-started workers if a later acquisition is cancelled.
 	defer wg.Wait()
 	for i, value := range inputs {
-		if err := p.Acquire(ctx); err != nil {
+		permit, err := lock.Acquire(ctx, "batch")
+		if err != nil {
 			return nil, err
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			defer p.Release()
+			defer permit.Release()
 			results[i] = value * value
 		}()
 	}

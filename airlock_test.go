@@ -1,4 +1,4 @@
-package fairgate_test
+package airlock_test
 
 import (
 	"context"
@@ -9,19 +9,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tr1v3r/airlock/internal/fairgate"
+	"github.com/tr1v3r/airlock"
 )
 
-func newGate(t *testing.T, capacity, total, tenant int) *fairgate.Gate {
+func newAirlock(t *testing.T, capacity, total, tenant int) *airlock.Airlock {
 	t.Helper()
-	g, err := fairgate.New(fairgate.Config{Capacity: capacity, MaxQueued: total, MaxQueuedPerTenant: tenant})
+	g, err := airlock.New(airlock.Config{Capacity: capacity, MaxQueued: total, MaxQueuedPerTenant: tenant})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return g
 }
 
-func acquire(t *testing.T, g *fairgate.Gate, tenant string) *fairgate.Permit {
+func acquire(t *testing.T, g *airlock.Airlock, tenant string) *airlock.Permit {
 	t.Helper()
 	p, err := g.Acquire(context.Background(), tenant)
 	if err != nil {
@@ -31,7 +31,7 @@ func acquire(t *testing.T, g *fairgate.Gate, tenant string) *fairgate.Permit {
 	return p
 }
 
-func queued(t *testing.T, g *fairgate.Gate, n int) {
+func queued(t *testing.T, g *airlock.Airlock, n int) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for g.Stats().Queued != n {
@@ -44,7 +44,7 @@ func queued(t *testing.T, g *fairgate.Gate, n int) {
 
 type result struct {
 	id  string
-	p   *fairgate.Permit
+	p   *airlock.Permit
 	err error
 }
 
@@ -60,7 +60,7 @@ func receive(t *testing.T, ch <-chan result) result {
 }
 
 func TestRoundRobinFIFOAndNoBarging(t *testing.T) {
-	g := newGate(t, 1, 20, 10)
+	g := newAirlock(t, 1, 20, 10)
 	held := acquire(t, g, "holder")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -85,7 +85,7 @@ func TestRoundRobinFIFOAndNoBarging(t *testing.T) {
 }
 
 func TestLimitsCancellationAndReuse(t *testing.T) {
-	g := newGate(t, 1, 3, 2)
+	g := newAirlock(t, 1, 3, 2)
 	held := acquire(t, g, "holder")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -94,12 +94,12 @@ func TestLimitsCancellationAndReuse(t *testing.T) {
 		go func(tenant string) { p, err := g.Acquire(ctx, tenant); ch <- result{tenant, p, err} }(tenant)
 		queued(t, g, i+1)
 		if i == 1 {
-			if _, err := g.Acquire(ctx, "A"); !errors.Is(err, fairgate.ErrTenantQueueFull) {
+			if _, err := g.Acquire(ctx, "A"); !errors.Is(err, airlock.ErrTenantQueueFull) {
 				t.Fatal(err)
 			}
 		}
 	}
-	if _, err := g.Acquire(ctx, "A"); !errors.Is(err, fairgate.ErrQueueFull) {
+	if _, err := g.Acquire(ctx, "A"); !errors.Is(err, airlock.ErrQueueFull) {
 		t.Fatal(err)
 	}
 	cancel()
@@ -117,13 +117,13 @@ func TestLimitsCancellationAndReuse(t *testing.T) {
 }
 
 func TestZeroQueueAndValidation(t *testing.T) {
-	for _, cfg := range []fairgate.Config{{}, {Capacity: -1}, {Capacity: 1, MaxQueued: -1}, {Capacity: 1, MaxQueuedPerTenant: -1}, {Capacity: 1, MaxQueued: 1, MaxQueuedPerTenant: 2}} {
-		if _, err := fairgate.New(cfg); err == nil {
+	for _, cfg := range []airlock.Config{{}, {Capacity: -1}, {Capacity: 1, MaxQueued: -1}, {Capacity: 1, MaxQueuedPerTenant: -1}, {Capacity: 1, MaxQueued: 1, MaxQueuedPerTenant: 2}} {
+		if _, err := airlock.New(cfg); err == nil {
 			t.Fatalf("accepted %+v", cfg)
 		}
 	}
-	g := newGate(t, 1, 0, 0)
-	if _, err := g.Acquire(context.Background(), ""); !errors.Is(err, fairgate.ErrInvalidTenant) {
+	g := newAirlock(t, 1, 0, 0)
+	if _, err := g.Acquire(context.Background(), ""); !errors.Is(err, airlock.ErrInvalidTenant) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -132,7 +132,7 @@ func TestZeroQueueAndValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := acquire(t, g, "A")
-	if _, err := g.Acquire(context.Background(), "B"); !errors.Is(err, fairgate.ErrQueueFull) {
+	if _, err := g.Acquire(context.Background(), "B"); !errors.Is(err, airlock.ErrQueueFull) {
 		t.Fatal(err)
 	}
 	p.Release()
@@ -146,7 +146,7 @@ func TestZeroQueueAndValidation(t *testing.T) {
 
 func TestCancelGrantRaceAndDuplicateRelease(t *testing.T) {
 	for i := 0; i < 200; i++ {
-		g := newGate(t, 1, 1, 1)
+		g := newAirlock(t, 1, 1, 1)
 		held := acquire(t, g, "holder")
 		ctx, cancel := context.WithCancel(context.Background())
 		ch := make(chan result, 1)
@@ -174,7 +174,7 @@ func TestCancelGrantRaceAndDuplicateRelease(t *testing.T) {
 }
 
 func TestConcurrentCapacityAndTenantReclamation(t *testing.T) {
-	g := newGate(t, 8, 512, 512)
+	g := newAirlock(t, 8, 512, 512)
 	var wg sync.WaitGroup
 	for i := 0; i < 500; i++ {
 		wg.Add(1)
@@ -200,7 +200,7 @@ func TestConcurrentCapacityAndTenantReclamation(t *testing.T) {
 }
 
 func TestSingleTenantUsesAllSlots(t *testing.T) {
-	g := newGate(t, 8, 0, 0)
+	g := newAirlock(t, 8, 0, 0)
 	for i := 0; i < 8; i++ {
 		acquire(t, g, "A")
 	}
@@ -210,7 +210,7 @@ func TestSingleTenantUsesAllSlots(t *testing.T) {
 }
 
 func TestGrantedSlotCannotBeStolen(t *testing.T) {
-	g := newGate(t, 1, 1, 1)
+	g := newAirlock(t, 1, 1, 1)
 	held := acquire(t, g, "holder")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
