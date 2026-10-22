@@ -46,6 +46,45 @@ func main() {
 `Config{Capacity: 2, MaxQueued: 8, MaxQueuedPerTenant: 8}`。
 默认租户遵循相同的排队上限、FIFO 和取消规则，不会与任何显式租户 ID 冲突。
 
+## 立即获取
+
+使用 `TryAcquire` 可以在**同一个** Airlock 上按次选择是否等待：`Acquire` 可以进入有界队列，
+`TryAcquire` 从不入队，也不等待容量释放。所有方法都返回 `(*Permit, error)`：
+
+| 默认租户 | 指定租户 | 令牌数 |
+| --- | --- | --- |
+| `TryAcquire()` | `TryAcquireFor(tenantID)` | 1 |
+| `TryAcquireN(n)` | `TryAcquireNFor(tenantID, n)` | n |
+
+```go
+permit, err := lock.TryAcquireNFor("online", 2)
+if errors.Is(err, airlock.ErrWouldBlock) {
+    // 不等待容量，直接拒绝或降级。
+    return nil
+}
+if err != nil {
+    return err
+}
+defer permit.Release()
+// 执行业务。
+```
+
+片段位于返回 error 的函数中，并使用 `errors` 包。完整代码见[立即获取示例](examples/tryacquire/example.go)。
+
+- 成功时原子获取完整权重，使用与 `Acquire` 相同的 `Permit.Release()`。
+  必须同时满足容量足够且**没有等待请求**；即使小请求放得下，也不能绕过受保护的大请求。
+- 否则返回 `ErrWouldBlock`，不返回 Permit，不改变容量、队列或租户轮转位置。
+  队列是否还有额度不影响此判断。`ErrWouldBlock` 表示当前无法立即准入；
+  `ErrQueueFull` 和 `ErrTenantQueueFull` 则表示 `Acquire` 尝试入队时被拒绝。
+- 先检查显式租户 ID，再检查权重。空 ID 返回 `ErrInvalidTenant`，非正权重返回
+  `ErrInvalidWeight`，超过容量返回 `ErrWeightExceedsCapacity`。用 `errors.Is`
+  区分非法请求和暂时无法准入。
+- 本地接口无需 context，但仍需获取内部互斥锁；“立即”表示不等待容量，
+  不代表 wait-free 或返回延迟有上界。不要通过循环 `TryAcquire` 实现等待，
+  这样会增加竞争，也不会获得公平队列中的位置；需要等待时使用配置了队列上限的 `Acquire` 和 context。
+
+[TryAcquire 设计决定](docs/decisions/002-try-acquire.md)记录公平性边界及接口方案取舍。
+
 ## 用法与契约
 
 ```go
@@ -76,7 +115,7 @@ defer permit.Release()
   默认租户通过 `AcquireN(ctx, n)`、指定租户通过 `AcquireNFor(ctx, tenantID, n)`
   原子申请全部 `n` 个令牌，等待时不会占有部分容量。显式租户 ID 必须为非空字符串。
   调用方应提供可信且长度受限的 ID，Airlock 不负责身份验证或字符串长度限制。
-- nil context 会 panic，然后检查显式租户 ID（`ErrInvalidTenant`），再检查权重：
+- 对于 `Acquire` 系列方法，nil context 会 panic，然后检查显式租户 ID（`ErrInvalidTenant`），再检查权重：
   `n <= 0` 返回 `ErrInvalidWeight`，`n > Capacity` 返回 `ErrWeightExceedsCapacity`。
   非法权重立即失败、不入队，即使 context 已取消也优先返回权重错误。
 - 无法立即获取时，队列已满分别返回 `ErrQueueFull` 或 `ErrTenantQueueFull`；同时触发时优先返回
@@ -125,6 +164,7 @@ GOWORK=off go test ./internal/comparison -run '^$' -bench BenchmarkAdmission -be
 | [调用方管理完成通知](examples/completion/example.go) | `go run ./examples/completion` |
 | [按租户的单令牌准入](examples/tenants/example.go) | `go run ./examples/tenants` |
 | [多租户多令牌准入](examples/weighted/example.go) | `go run ./examples/weighted` |
+| [立即获取与降级](examples/tryacquire/example.go) | `go run ./examples/tryacquire` |
 
 ```sh
 GOWORK=off go test -race ./...
@@ -192,7 +232,7 @@ GOWORK=off govulncheck -test ./...
 
 默认租户使用 `Acquire(ctx)`，指定租户使用 `AcquireFor(ctx, tenantID)`。
 原来的 `Acquire(ctx, tenantID)` 调用需迁移到 `AcquireFor`；接口、mock 和方法值类型
-也需使用对应的固定参数签名。四个入口都使用固定参数。
+也需使用对应的固定参数签名。所有申请入口都使用固定参数。
 `Stats.ActivePermits` 新增独立的凭证计数；升级时请将不带字段名的 `Stats` 字面量改为带字段名的写法。
 
 原 channel 策略只保留为测试基线。初始代码迁自 `tr1v3r/pkg` 提交

@@ -4,6 +4,9 @@ Airlock provides atomic weighted tenant admission through New(Config), Airlock,
 Permit, and Stats. Acquire/AcquireFor remain single-token; AcquireN/AcquireNFor
 request multiple tokens. It uses bounded waiting queues, tenant round-robin,
 and protected head requests that cannot be bypassed while awaiting capacity.
+TryAcquire/TryAcquireFor and TryAcquireN/TryAcquireNFor never queue or wait for
+capacity; they return ErrWouldBlock when immediate acquisition would bypass a
+waiter or exceed available capacity. They still acquire the internal mutex.
 Pool and Gate are no longer public APIs. Priority groups and distributed drivers
 remain proposals; the implemented permits are local and have no lease.
 

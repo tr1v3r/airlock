@@ -20,6 +20,9 @@ var (
 	ErrQueueFull = errors.New("airlock: queue full")
 	// ErrTenantQueueFull reports that the tenant's waiting queue is full.
 	ErrTenantQueueFull = errors.New("airlock: tenant queue full")
+	// ErrWouldBlock reports that TryAcquire cannot grant capacity immediately
+	// without bypassing a queued request. The attempt does not join the queue.
+	ErrWouldBlock = errors.New("airlock: acquisition would block")
 )
 
 // Config defines fixed limits for an Airlock. Queue limits count pending
@@ -82,7 +85,8 @@ type waiter struct {
 
 // Permit must not be copied. Release is idempotent, including concurrent calls.
 // Cancellation after a successful Acquire does not release it automatically.
-// Obtain permits from Airlock.Acquire; a zero-value Permit holds no capacity.
+// Obtain permits from an Acquire or TryAcquire method; a zero-value Permit
+// holds no capacity.
 type Permit struct {
 	once   sync.Once
 	owner  *Airlock
