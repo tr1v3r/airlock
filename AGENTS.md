@@ -1,9 +1,11 @@
 # AGENTS.md
 
-Airlock provides single-token tenant admission through New(Config), Airlock,
-Permit, and Stats. It uses bounded waiting queues and round-robin scheduling.
-Pool and Gate are no longer public APIs. Weighted acquisition is not implemented;
-preserve single-token semantics until explicitly changed.
+Airlock provides atomic weighted tenant admission through New(Config), Airlock,
+Permit, and Stats. Acquire/AcquireFor remain single-token; AcquireN/AcquireNFor
+request multiple tokens. It uses bounded waiting queues, tenant round-robin,
+and protected head requests that cannot be bypassed while awaiting capacity.
+Pool and Gate are no longer public APIs. Priority groups and distributed drivers
+remain proposals; the implemented permits are local and have no lease.
 
 - Keep runtime dependencies limited to the standard library unless justified.
 - Define atomic acquisition, cancellation, weight validation, release accounting,

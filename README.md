@@ -2,8 +2,8 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A Go 1.24+ library for single-token, tenant-aware concurrency admission.
-It provides FIFO waiting within each tenant, round-robin admission across waiting
+A Go 1.24+ library for weighted, tenant-aware concurrency admission.
+It provides FIFO waiting within each tenant, round-robin selection across waiting
 tenants, and global/per-tenant queue limits. Runtime dependencies are standard
 library only. Callers own goroutines, results, errors, and completion.
 
@@ -69,38 +69,60 @@ defer permit.Release()
 ```
 
 This snippet belongs in an error-returning function. See the runnable
-[tenant example](examples/tenants/example.go).
+[tenant example](examples/tenants/example.go). For weighted work, replace the
+acquisition with `lock.AcquireNFor(ctx, tenantID, 3)` to reserve three tokens;
+the same `permit.Release()` returns all three. Without a tenant ID, use
+`lock.AcquireN(ctx, 3)`. See the [weighted example](examples/weighted/example.go).
 
 - Capacity must be positive. Queue limits must be nonnegative, and the per-tenant
   limit cannot exceed the global limit; otherwise `New` returns
   `ErrInvalidConfig`. Zero queue limits disable waiting. Limits are fixed.
-- `Acquire(ctx)` uses the default tenant, while
-  `AcquireFor(ctx, "tenant-a")` selects an exact, nonempty string. A nil context
-  panics; `AcquireFor` with an empty ID returns `ErrInvalidTenant` before
-  cancellation is checked. Use trusted, bounded IDs:
-  Airlock does not authenticate callers or bound string lengths.
-- If no immediate slot is available, full queues return `ErrQueueFull` or
+- `Acquire(ctx)` and `AcquireFor(ctx, tenantID)` acquire one token. Use
+  `AcquireN(ctx, n)` for the default tenant or `AcquireNFor(ctx, tenantID, n)`
+  for a named tenant to acquire all `n` tokens atomically; requests never hold
+  partial capacity while waiting. Explicit tenant IDs must be nonempty strings.
+  Use trusted, bounded IDs: Airlock does not authenticate callers or bound lengths.
+- A nil context panics. Explicit tenant ID validation comes next
+  (`ErrInvalidTenant`), then weight validation: `n <= 0` returns
+  `ErrInvalidWeight`; `n > Capacity` returns `ErrWeightExceedsCapacity`.
+  Invalid weights fail immediately without queuing, even with a cancelled context.
+- If immediate acquisition is not possible, full queues return `ErrQueueFull` or
   `ErrTenantQueueFull`. Global rejection takes precedence when both are full.
-  An already-cancelled context returns its error before any capacity/queue check.
+  An already-cancelled context returns its error before available-capacity and queue checks.
   Errors are compatible with `errors.Is`; failed acquisitions return no permit.
-- Nonempty tenant queues take turns, with FIFO order inside each queue. New
-  waiting tenants join the end of the rotation. An empty tenant queue is removed;
-  when it becomes active again it rejoins at the end.
-- Queue limits count pending requests only. One tenant may use all execution
-  capacity when others are idle. Running work is never preempted. Fairness does
-  not guarantee equal execution time or bounded latency, and cannot protect a
+- Nonempty tenant queues take turns, with FIFO order inside each queue. When
+  capacity is available, the scheduler selects the next tenant's head request
+  and consumes that tenant's turn. If its full weight does not fit, it remains
+  protected: smaller or newly arriving requests cannot bypass it. Cancelling
+  this selected request does not restore its turn. No request is preselected
+  while capacity is completely full.
+- New waiting tenants join the end of the rotation. An empty tenant queue is
+  removed; when it becomes active again it rejoins at the end. Fairness counts
+  selection opportunities, not token counts or execution time. Protecting a
+  large request can leave tokens idle and delay other tenants; it prevents
+  endless bypass only if existing holders eventually release and scheduling
+  continues.
+- Queue limits count pending requests, not weights. One tenant may use all
+  token capacity when others are idle. Running work is never preempted.
+  Fairness does not guarantee equal execution time or bounded latency, or protect a
   new tenant from rejection when the global waiting queue is already full.
 - Cancellation and granting are serialized. If cancellation wins, no token is
   retained. If granting wins, Acquire succeeds even if cancellation follows:
   release every successful permit. Cancellation does not stop admitted work.
 - Use the returned `*Permit` without copying it. `Release` is concurrency-safe
-  and idempotent; nil/zero permits do nothing. No automatic release occurs.
+  and idempotent, returning the entire acquired weight exactly once; nil/zero
+  permits do nothing. Partial release and permit resizing are not supported.
+  This is an in-process permit, without a lease or automatic expiry/release.
 - `Stats()` returns one consistent `Stats` snapshot: `Capacity`, `InUse`,
-  `Queued`, and `WaitingTenants`. It is not a completion barrier. Airlock must be
-  constructed with `New` and must not be copied. It starts no goroutines.
+  `ActivePermits`, `Queued`, and `WaitingTenants`. `Capacity` and `InUse` count
+  tokens, `ActivePermits` counts unreleased permits, and `Queued` counts waiting
+  requests. With single-token calls, `InUse == ActivePermits`. This snapshot is
+  not a completion barrier. Airlock must be constructed with `New` and must not
+  be copied. It starts no goroutines.
 
-The [design record](docs/proposals/001-tenant-fair-admission.md) describes the
-contract. [Historical prototype measurements](docs/proposals/001-experiment-results.md)
+The [initial design record](docs/proposals/001-tenant-fair-admission.md) describes
+the single-token foundation. The [weighted contract](docs/proposals/002-weighted-scheduling.md)
+extends it; priority groups in that document remain proposed. [Historical prototype measurements](docs/proposals/001-experiment-results.md)
 do not establish superiority over the strongest nested semaphore baseline or
 production latency guarantees. The comparison workload now exercises the public
 Airlock API; `x/sync` remains a test-only dependency.
@@ -121,6 +143,7 @@ Run from `airlock/`:
 | [Acquisition timeout](examples/cancellation/example.go) | `go run ./examples/cancellation` |
 | [Caller-owned completion notification](examples/completion/example.go) | `go run ./examples/completion` |
 | [Tenant-aware single-token admission](examples/tenants/example.go) | `go run ./examples/tenants` |
+| [Multi-tenant weighted admission](examples/weighted/example.go) | `go run ./examples/weighted` |
 
 ```sh
 GOWORK=off go test -race ./...
@@ -187,8 +210,10 @@ Weekly schedules run from the repository's default branch.
 ## Migration
 
 The sole admission type is `Airlock`, constructed with `New(Config)`. Every
-`AcquireFor(ctx, tenantID)` acquires **one token**, returned by `Permit.Release()`.
-Weighted requests, unlimited mode, and dynamic capacity are not implemented.
+`Acquire(ctx)` or `AcquireFor(ctx, tenantID)` still acquires **one token**.
+The new `AcquireN(ctx, n)` and `AcquireNFor(ctx, tenantID, n)` acquire `n` tokens,
+returned together by `Permit.Release()`. Unlimited mode, dynamic capacity,
+priority groups, and distributed drivers are not implemented.
 
 This is a breaking development change: `Pool`/`NewPool` and the earlier
 `Gate`/`NewGate` names are removed. Existing callers must select explicit queue
@@ -200,7 +225,9 @@ No compatibility aliases are provided.
 Use `Acquire(ctx)` for the default tenant and `AcquireFor(ctx, tenantID)` for
 named tenants. Migrate former `Acquire(ctx, tenantID)` calls to `AcquireFor`;
 interfaces, mocks, and method-value types must declare the corresponding fixed
-signature. Neither entry point accepts variadic arguments.
+signature. All four entry points use fixed arguments. `Stats.ActivePermits`
+adds a distinct permit count; update unkeyed `Stats` literals to keyed literals
+when adopting the new field.
 
 The original channel strategy is retained only as a test baseline. The initial
 code migrated from `tr1v3r/pkg` commit
@@ -210,4 +237,6 @@ when a later acquisition fails. Airlock does not execute jobs or track completio
 
 ## Design proposal
 
-The [weighted, priority-aware admission and optional drivers proposal](docs/proposals/002-weighted-priority-drivers.md) describes local, Redis, and PostgreSQL support. It is a proposal only; the current implementation remains single-token and in-process.
+The [weighted, priority-aware admission and optional drivers proposal](docs/proposals/002-weighted-priority-drivers.md) describes local, Redis, and PostgreSQL support. This branch implements phase 1: local atomic multi-token acquisition with tenant
+round-robin and head-request protection. Priority groups and distributed drivers
+remain proposals. This does not indicate a merged or tagged release.
