@@ -356,12 +356,11 @@ Weekly schedules run from the repository's default branch.
 
 ## Migration
 
-The sole admission type is `Airlock`, constructed with `New(Config)`. Every
+The local admission type is `Airlock`, constructed with `New(Config)`. Every
 `Acquire(ctx)` or `AcquireFor(ctx, tenantID)` still acquires **one token**.
 The new `AcquireN(ctx, n)` and `AcquireNFor(ctx, tenantID, n)` acquire `n` tokens,
 returned together by `Permit.Release()`. `Config.Priority` optionally enables local
-priority groups without changing these signatures. Unlimited mode, dynamic capacity,
-are not implemented. Distributed leases and the memory driver use a separate API;
+priority groups without changing these signatures. Unlimited mode and dynamic capacity are not implemented. Distributed leases and the memory driver use a separate API;
 PostgreSQL and Redis remain planned. Existing keyed configurations with
 `Priority: nil` (or omitted) retain single-group behavior. The new `Config.Priority`
 field requires callers using unkeyed `Config` literals to migrate to keyed fields.
