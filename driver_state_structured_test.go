@@ -37,3 +37,9 @@ func TestTransitionStateStorageIndependence(t *testing.T) {
 		now = now.Add(time.Millisecond)
 	}
 }
+
+func TestTransitionStateRejectsInvalidInput(t *testing.T) {
+	if next, result, err := TransitionState(nil, time.Now(), Command{}); next != nil || result != (Result{}) || err != ErrInvalidConfig {
+		t.Fatalf("%+v %+v %v", next, result, err)
+	}
+}

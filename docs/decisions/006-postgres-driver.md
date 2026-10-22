@@ -1,5 +1,8 @@
 # PostgreSQL driver 的重要取舍
 
+更新：PG 的 snapshot 存储方案已由 [009 多表存储决策](009-postgres-relational.md) 取代；
+driver 契约不限定持久化布局，结构化状态入口与快照入口都是可选辅助函数。以下保留原决策背景。
+
 状态：本 PR 实现 PostgreSQL；依赖前一 PR 的 driver 契约与 memory。没有 tag/release。
 
 ## 每资源行锁与持久快照

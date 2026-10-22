@@ -16,7 +16,8 @@ driver for tests and demos; ordinary local admission uses New(Config).
 NewShared fills zero protocol settings with documented defaults, without changing
 capacity or queue limits. Shared user and custom-driver guides are separate under
 docs/guides; lifecycle supervision is application-owned example code.
-PostgreSQL provides transactional persistence; Redis uses guarded snapshot CAS
+PostgreSQL uses resource/request tables, structured transitions and delta writes;
+legacy snapshot tables require explicit offline migration. Redis uses guarded snapshot CAS
 with backend time. Both are independent modules with explicit deployment limits.
 
 - Keep runtime dependencies limited to the standard library unless justified.

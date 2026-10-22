@@ -35,6 +35,13 @@ authorizes work, even if the write may have committed.
 
 ## Reuse the state machine and preserve the atomic boundary
 
+Storage layout is a driver choice: SQL tables, snapshots, or another representation
+are all allowed when the same atomic contract holds. The reference helpers are optional.
+`TransitionState(state, backendNow, command)` accepts a structured `DriverState`
+with separate `DriverRecord` entries; PG maps these to relational rows. It takes
+exclusive ownership of the input maps/records, which must not be reused even on
+error. Persist every nonnil returned state, including on business errors.
+
 `Transition(snapshot, backendNow, command)` computes a new snapshot, Result and
 business error without I/O. Command/Operation/ValidateCommand are implementation
 helpers, not the public Driver call interface. Direct callers must provide a
