@@ -36,21 +36,36 @@ for lane in documented candidate; do
   (
     cd "$fixture_dir/$lane"
     go mod init example.com/airlock-install-smoke
-    modules=(github.com/tr1v3r/airlock github.com/tr1v3r/airlock/driver/memory
-             github.com/tr1v3r/airlock/driver/postgres github.com/tr1v3r/airlock/driver/redis)
-    requests=()
-    for module in "${modules[@]}"; do requests+=("$module@$revision"); done
-    go get "${requests[@]}"
-    # Verify MVS has not silently selected another core/driver version.
+    modules=(github.com/tr1v3r/airlock github.com/tr1v3r/airlock/driver/redis
+             github.com/tr1v3r/airlock/driver/postgres github.com/tr1v3r/airlock/driver/memory)
+    if [[ "$lane" == documented ]]; then
+      # Follow README order, not one simultaneous request for four branch refs.
+      # A proxy may cache core@dev behind driver@dev. Separate gets let Go's MVS
+      # raise core to the drivers' minimum requirements instead of demanding an
+      # inconsistent older exact core version in the same go get command.
+      for module in "${modules[@]}"; do go get "$module@dev"; done
+      echo 'documented: branch-ref proxy caches may lag; validating the selected MVS graph, not re-resolving @dev'
+    else
+      requests=()
+      for module in "${modules[@]}"; do requests+=("$module@$revision"); done
+      go get "${requests[@]}"
+    fi
     for module in "${modules[@]}"; do
-      expected=$(go list -m -f '{{.Version}}' "$module@$revision")
       selected=$(go list -m -f '{{.Version}}' "$module")
-      if [[ "$expected" != "$selected" ]]; then
-        printf 'Unexpected selected version for %s: wanted %s, got %s\n' "$module" "$expected" "$selected" >&2
-        exit 1
+      if [[ "$lane" == candidate ]]; then
+        # Immutable candidate versions must still match exactly, including core.
+        expected=$(go list -m -f '{{.Version}}' "$module@$revision")
+        if [[ "$expected" != "$selected" ]]; then
+          printf 'Unexpected selected version for %s: wanted %s, got %s\n' "$module" "$expected" "$selected" >&2
+          exit 1
+        fi
       fi
       printf '%s: %s %s\n' "$lane" "$module" "$selected"
     done
+    # Go's own module graph/MVS enforces every driver's core requirement. Record
+    # that selected graph and compile it read-only rather than implementing a
+    # second, potentially incorrect pseudo-version/semantic-version comparator.
+    go list -m -json all
     cat >main.go <<'GO'
 package main
 
@@ -92,7 +107,7 @@ import "github.com/tr1v3r/airlock"
 var _ = airlock.SharedOptions{ClockSkewAllowance: 0}
 GO
     fi
-    go run .
+    go run -mod=readonly .
     go mod verify
   )
 done

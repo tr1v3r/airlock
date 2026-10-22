@@ -54,11 +54,14 @@ GOWORK=off go test -race -shuffle=on -count=1 -timeout=5m ./...
 bash scripts/driver-check.sh
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
 
-# Normal PR budget: CPU 1/4, one root repetition, each fuzz target 5s / two workers.
+# Normal PR budget: concurrent cases at CPU 1/4, one serial 8-seed × 128-step model;
+# each fuzz target 5s / two workers.
 bash scripts/stress.sh quick
 
-# Larger opt-in workload: AIRLOCK_STRESS=1, CPU 1/2/4 × three root/nested repetitions;
-# each fuzz target 30s / two workers. Not part of the normal PR critical path.
+# Larger opt-in workload: AIRLOCK_STRESS=1; Local/clock and nested tests at
+# CPU 1/2/4 × three repetitions; heavy Shared once at CPU 1 (20-minute bound);
+# serial model once at 64 seeds × 250 steps; each fuzz target 30s / two workers.
+# Not part of the normal PR critical path.
 bash scripts/stress.sh extended
 
 # Isolate a failing model/concurrency case; preserve the printed shuffle/trace seed.
@@ -82,16 +85,33 @@ bash scripts/install-smoke.sh <pushed-commit>
 ```
 
 The install wrapper first checks both READMEs' literal `@dev` instruction (it never
-executes Markdown). The documented lane verifies existing local weighted/Shared
-default APIs. Only the candidate lane additionally compiles `ClockSkewAllowance`,
-which need not exist on `dev` before the PR merges. It prints the selected versions,
-fails if MVS chooses a different version, and runs in a fresh temporary consumer
-with `GOWORK=off` and no `replace`. Network/module-proxy failures are failures, not
-silently downgraded to a workspace build.
+executes Markdown). The documented lane follows their **separate** commands: core
+first, then each driver. Module proxies cache mutable branch queries independently;
+core `@dev` can lag a driver's `@dev`. Combining all four into a single `go get` can
+then demand an older exact core version and conflict with the driver's requirement.
+Separate commands let Go's MVS upgrade core to satisfy the selected drivers.
 
-安装脚本先核对中英文 README 的字面 `@dev` 命令；不执行 Markdown。文档 lane 与候选 lane
-分开，只有候选 lane 要求新增时钟余量字段。脚本输出实际选择版本，MVS 漂移即失败；
-网络或代理失败不能改用本地 replace 冒充成功。
+The documented lane therefore records the selected `go list -m -json all` graph,
+compiles/runs it with `-mod=readonly`, and verifies its module checksums. Go's MVS
+enforces driver requirements; this is an internally consistent dependency graph,
+not a guarantee that every proxy branch query reflects the newest remote commit.
+It does **not** re-query `@dev` and compare that potentially stale response to core
+after a legitimate MVS upgrade. A stale version lacking required APIs still fails
+compilation or execution; this is not a reason to bypass the smoke check.
+
+The candidate lane installs immutable commit versions together and **still requires
+exact equality** between resolved and selected versions. Only that lane additionally
+compiles `ClockSkewAllowance`, which need not exist on `dev` before the PR merges.
+Both lanes use a fresh consumer, `GOWORK=off`, and no `replace`. Network/proxy/build
+failures are failures, not silently downgraded to a workspace build.
+
+安装脚本先核对中英文 README 的字面 `@dev` 命令，不执行 Markdown，并按文档先装 core、再
+逐条安装 driver。代理分别缓存各模块的可变分支查询，core 缓存可能比 driver 旧；单条同时
+指定四个模块可能要求旧 core 精确版本，导致依赖冲突。分开安装允许 Go 的 MVS 根据 driver
+需求升级 core。文档 lane 记录已选择的完整图、只读编译执行并校验模块，不重新查询可能
+滞后的 `@dev` 来否定合法升级；这保证图内部一致，不保证代理已经看到远端最新提交。
+旧版本缺 API、网络或构建失败仍会报错。候选 lane 使用不可变提交，仍严格核对版本相等，
+且独自验证新增时钟余量字段；两条 lane 均不使用 workspace/replace。
 
 ## Scale and deterministic boundaries
 
@@ -101,9 +121,20 @@ silently downgraded to a workspace build.
 - Shared: concurrent acquire/renew/release/cancel and bounded client/backend clock
   offsets; lifecycle example checks cancellation while renewal blocks, join-before-
   release, and same-lease cleanup retries. The application must stop its actual work.
+  In extended mode, `TestSharedConcurrent*` runs once at CPU 1 with a 20-minute
+  bound: the 128-client/eight-round lifecycle workload already expands concurrency
+  internally. Local/clock and nested driver tests retain CPU 1/2/4 × three runs;
+  quick mode's combined Local/Shared/clock schedule remains unchanged.
+  扩展 Shared 高并发组单遍执行（CPU=1、20 分钟上限），不再把 128 客户端×8 轮乘 9；
+  Local/clock 与 nested driver 保持 CPU/重复矩阵，普通 quick 任务不改。
 - Durable protocol: deterministic operation traces, malformed snapshots/commands,
-  publication-window boundary fuzzing and restore allocation scaling. Fuzz inputs
-  are bounded, so this is not unbounded memory/resource exhaustion testing.
+  publication-window boundary fuzzing and restore allocation scaling. The serial
+  model runs once, without the CPU/repetition multiplier: 8 seeds × 128 steps in
+  quick mode, 64 × 250 in extended mode, alternating ungrouped/priority mode by
+  seed, with a three-minute test deadline. CPU schedules add no interleavings to this serial
+  model. Fuzz inputs are bounded; this is not unbounded exhaustion testing.
+  串行状态模型不参与并发 CPU/重复乘积；quick 为 8×128，extended 为 64×250，
+  均覆盖无分组/优先级两种模式。Local 保留 CPU/重复矩阵，Shared 的扩展规模按上文单独设限。
 - Driver conformance: concurrent same-identity calls, owner conflicts, cancel versus
   submit, renew versus release, and pre-cancelled operations. Normal fanout is 8;
   stress fanout is 16 where configured. These shared helpers are in the pinned core.
