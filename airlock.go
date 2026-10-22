@@ -188,29 +188,11 @@ func (g *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 		g.mu.Unlock()
 		return &Permit{owner: g, weight: n}, nil
 	}
-	if g.queued >= g.cfg.MaxQueued {
+	w, err := g.enqueue(tenant, n)
+	if err != nil {
 		g.mu.Unlock()
-		return nil, ErrQueueFull
+		return nil, err
 	}
-	group := g.priority.group(tenant)
-	if group.queued >= group.limit {
-		g.mu.Unlock()
-		return nil, ErrGroupQueueFull
-	}
-	tq := g.tenants[tenant]
-	if g.cfg.MaxQueuedPerTenant == 0 || (tq != nil && tq.requests.Len() >= g.cfg.MaxQueuedPerTenant) {
-		g.mu.Unlock()
-		return nil, ErrTenantQueueFull
-	}
-	if tq == nil {
-		tq = &tenantQueue{id: tenant, group: group}
-		tq.turn = group.rotation.PushBack(tq)
-		g.tenants[tenant] = tq
-	}
-	w := &waiter{ready: make(chan struct{}), tenant: tq, weight: n}
-	w.node = tq.requests.PushBack(w)
-	g.queued++
-	group.queued++
 	g.dispatch()
 	g.mu.Unlock()
 	select {
@@ -227,6 +209,32 @@ func (g *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 		g.mu.Unlock()
 		return nil, ctx.Err()
 	}
+}
+
+// enqueue shares admission and queue accounting with the durable state machine.
+// The caller serializes access and handles immediate admission first.
+func (g *Airlock) enqueue(tenant string, n int) (*waiter, error) {
+	if g.queued >= g.cfg.MaxQueued {
+		return nil, ErrQueueFull
+	}
+	group := g.priority.group(tenant)
+	if group.queued >= group.limit {
+		return nil, ErrGroupQueueFull
+	}
+	tq := g.tenants[tenant]
+	if g.cfg.MaxQueuedPerTenant == 0 || (tq != nil && tq.requests.Len() >= g.cfg.MaxQueuedPerTenant) {
+		return nil, ErrTenantQueueFull
+	}
+	if tq == nil {
+		tq = &tenantQueue{id: tenant, group: group}
+		tq.turn = group.rotation.PushBack(tq)
+		g.tenants[tenant] = tq
+	}
+	w := &waiter{ready: make(chan struct{}), tenant: tq, weight: n}
+	w.node = tq.requests.PushBack(w)
+	g.queued++
+	group.queued++
+	return w, nil
 }
 
 // remove requires mu. Empty tenant indexes are reclaimed immediately.
