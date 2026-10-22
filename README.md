@@ -207,3 +207,7 @@ code migrated from `tr1v3r/pkg` commit
 `b3e47bdfd27a149ecb4da01580b91be277b905f6` (`pools/`); Git history preserves it.
 Use a caller-owned `sync.WaitGroup` to join tasks, including already-started tasks
 when a later acquisition fails. Airlock does not execute jobs or track completion.
+
+## Design proposal
+
+The [weighted, priority-aware admission and optional drivers proposal](docs/proposals/002-weighted-priority-drivers.md) describes local, Redis, and PostgreSQL support. It is a proposal only; the current implementation remains single-token and in-process.
