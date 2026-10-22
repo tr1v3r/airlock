@@ -27,7 +27,7 @@ type Distributed struct {
 
 // NewDistributed validates and snapshots all options without contacting a backend.
 func NewDistributed(d Driver, options DistributedOptions) (*Distributed, error) {
-	if d == nil || options.Resource == "" || len(options.Resource) > 256 || options.OperationTimeout <= 0 || options.OperationTimeout > time.Minute || options.PollInterval <= 0 || options.PollInterval > time.Minute {
+	if d == nil || options.Resource == "" || !validText(options.Resource) || len(options.Resource) > 256 || options.OperationTimeout <= 0 || options.OperationTimeout > time.Minute || options.PollInterval <= 0 || options.PollInterval > time.Minute {
 		return nil, ErrInvalidConfig
 	}
 	if err := validConfig(options.Config); err != nil {
@@ -98,6 +98,9 @@ func (d *Distributed) acquire(ctx context.Context, tenant string, n int) (*Lease
 	r.WaitUntil = now.Add(r.Config.MaxWait).UTC().Truncate(time.Millisecond)
 	if deadline, ok := ctx.Deadline(); ok && deadline.Before(r.WaitUntil) {
 		r.WaitUntil = deadline.UTC().Truncate(time.Millisecond)
+	}
+	if err := validRequest(r); err != nil {
+		return nil, err
 	}
 	cmd := Command{Kind: Submit, Request: r}
 	for {

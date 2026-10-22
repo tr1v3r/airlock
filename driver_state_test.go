@@ -519,3 +519,19 @@ func TestTransitionRejectsCorruptLifecycleFields(t *testing.T) {
 		})
 	}
 }
+
+func TestTransitionRemainingIncludesFractionalBackendTime(t *testing.T) {
+	now := time.Unix(1000, 900000)
+	r := stateTestRequest(now.Truncate(time.Millisecond), stateTestConfig(), "", 1)
+	data, result, err := Transition(nil, now, Command{Kind: Submit, Request: r})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Remaining != r.Config.LeaseTTL-900*time.Microsecond {
+		t.Fatalf("optimistic TTL: %s", result.Remaining)
+	}
+	_, result, err = Transition(data, now.Add(100*time.Millisecond), Command{Kind: Observe, Request: r})
+	if err != nil || result.Remaining != r.Config.LeaseTTL-100*time.Millisecond-900*time.Microsecond {
+		t.Fatalf("observation TTL: %s %v", result.Remaining, err)
+	}
+}

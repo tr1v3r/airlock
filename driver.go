@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Driver atomically executes one command for a resource. Implementations must
@@ -143,12 +144,12 @@ func validConfig(c ResourceConfig) error {
 			return ErrInvalidConfig
 		}
 		for tenant, group := range p.TenantGroups {
-			if len(tenant) > 256 || len(group) > 256 {
+			if len(tenant) > 256 || len(group) > 256 || !validText(tenant) || !validText(group) {
 				return ErrInvalidConfig
 			}
 		}
 		for _, group := range p.Groups {
-			if len(group.Name) > 256 {
+			if len(group.Name) > 256 || !validText(group.Name) {
 				return ErrInvalidConfig
 			}
 		}
@@ -161,7 +162,7 @@ func validRequest(r Request) error {
 		return err
 	}
 	prefix := strconv.FormatInt(r.SubmitUntil.UnixMilli(), 10) + "-"
-	if r.Resource == "" || len(r.Resource) > 256 || len(r.Tenant) > 256 || !validSecret(r.Owner) || !strings.HasPrefix(r.ID, prefix) || !validSecret(strings.TrimPrefix(r.ID, prefix)) || r.SubmitUntil.UnixMilli() <= 0 || !r.SubmitUntil.Equal(r.SubmitUntil.Truncate(time.Millisecond)) || !r.WaitUntil.Equal(r.WaitUntil.Truncate(time.Millisecond)) || r.WaitUntil.After(r.SubmitUntil.Add(r.Config.MaxWait)) {
+	if r.Resource == "" || !validText(r.Resource) || !validText(r.Tenant) || len(r.Resource) > 256 || len(r.Tenant) > 256 || !validSecret(r.Owner) || !strings.HasPrefix(r.ID, prefix) || !validSecret(strings.TrimPrefix(r.ID, prefix)) || r.SubmitUntil.UnixMilli() <= 0 || !r.SubmitUntil.Equal(r.SubmitUntil.Truncate(time.Millisecond)) || !r.WaitUntil.Equal(r.WaitUntil.Truncate(time.Millisecond)) || r.WaitUntil.After(r.SubmitUntil.Add(r.Config.MaxWait)) {
 		return ErrInvalidRequest
 	}
 	if r.Weight <= 0 {
@@ -186,3 +187,5 @@ func ValidateCommand(cmd Command) error {
 		return ErrInvalidRequest
 	}
 }
+
+func validText(s string) bool { return utf8.ValidString(s) && !strings.ContainsRune(s, 0) }

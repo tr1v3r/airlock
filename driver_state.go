@@ -45,7 +45,8 @@ func Transition(snapshot []byte, now time.Time, cmd Command) ([]byte, Result, er
 	if err := ValidateCommand(cmd); err != nil {
 		return nil, Result{}, err
 	}
-	now = now.UTC().Truncate(time.Millisecond)
+	observedNow := now.UTC()
+	now = observedNow.Truncate(time.Millisecond)
 	var s durableSnapshot
 	if len(snapshot) == 0 {
 		s = durableSnapshot{Version: 1, Resource: r.Resource, Config: r.Config, Records: make(map[string]*durableRecord), Queues: make(map[string][]string)}
@@ -169,7 +170,7 @@ func Transition(snapshot []byte, now time.Time, cmd Command) ([]byte, Result, er
 		out.LeaseID = rec.LeaseID
 		out.Weight = rec.Request.Weight
 		if rec.Status == Granted {
-			out.Remaining = rec.Until.Sub(now)
+			out.Remaining = rec.Until.Sub(observedNow)
 		}
 		if rec.Status == Rejected && opErr == nil {
 			opErr = admissionError(rec.Failure)

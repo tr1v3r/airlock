@@ -22,7 +22,7 @@ Driver 必须串行化整个资源的读、转换、写，并且在新 snapshot 
 
 ## 时间、幂等与 GC
 
-所有时间统一毫秒；LeaseTTL、MaxWait、SubmitWindow 各不超过一小时，Retention 不超过一天。
+持久时间与配置时长统一毫秒；返回 Remaining 扣除后端当前时间的小数毫秒，避免客户端把截断损失误当有效期。所有文本字段要求合法 UTF-8 且无 NUL，防止 JSON 替换字节造成身份漂移，同时与 PostgreSQL text 支持域一致。LeaseTTL、MaxWait、SubmitWindow 各不超过一小时，Retention 不超过一天。
 后端在获得独占访问后取时；检测到比上次提交时间回退则拒绝。本地客户端使用单调计时，
 按调用开始时间加 Remaining 建立保守 deadline（扣掉整个往返时间）。这不解决后端时钟向前跳变。
 

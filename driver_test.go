@@ -136,3 +136,34 @@ func TestDriverPriorityConfigBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestDriverTextEncoding(t *testing.T) {
+	for _, bad := range []string{string([]byte{0xff}), "has\x00nul"} {
+		for _, field := range []string{"resource", "tenant"} {
+			r := stateTestRequest(time.Unix(1000, 0), stateTestConfig(), "", 1)
+			if field == "resource" {
+				r.Resource = bad
+			} else {
+				r.Tenant = bad
+			}
+			if err := validRequest(r); !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("%s accepted: %v", field, err)
+			}
+		}
+		for _, field := range []string{"group", "tenant", "mapping"} {
+			c := stateTestConfig()
+			c.Admission.Priority = &PriorityPolicy{Groups: []PriorityGroup{{Name: "g", Turns: 1, MaxQueued: 100}}, DefaultGroup: "g", TenantGroups: map[string]string{"a": "g"}}
+			switch field {
+			case "group":
+				c.Admission.Priority.Groups[0].Name = bad
+			case "tenant":
+				c.Admission.Priority.TenantGroups[bad] = "g"
+			case "mapping":
+				c.Admission.Priority.TenantGroups["a"] = bad
+			}
+			if err := validConfig(c); !errors.Is(err, ErrInvalidConfig) {
+				t.Fatalf("%s accepted: %v", field, err)
+			}
+		}
+	}
+}
