@@ -225,7 +225,14 @@ func runProtocolTrace(t testing.TB, trace []byte, priority bool) {
 func TestTransitionModelTraces(t *testing.T) {
 	seeds, steps := 8, 128
 	if os.Getenv("AIRLOCK_STRESS") == "1" {
-		seeds, steps = 64, 1000
+		// Budget 64*250 = 16,000 transitions versus 8*128 = 1,024 normally
+		// (about 16x), preserving seed diversity and both priority modes while
+		// bounding race-instrumented JSON round trips. This serial model has no
+		// worker interleavings; the stress runner executes it once, outside the
+		// CPU repetition matrix used by concurrent Local and Shared tests.
+		// Measured once with -race: 15.8s on Go 1.27.1/darwin arm64 (M3 Pro);
+		// this is a tuning reference, not a wall-time assertion or CI SLA.
+		seeds, steps = 64, 250
 	}
 	for seed := 0; seed < seeds; seed++ {
 		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
