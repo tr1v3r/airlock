@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -73,7 +74,13 @@ func (h *harness) request(tenant string, weight int) airlock.Request {
 }
 
 func (h *harness) execute(kind airlock.Operation, request airlock.Request, lease string) (airlock.Result, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	timeout := 5 * time.Second
+	if os.Getenv("AIRLOCK_STRESS") == "1" {
+		// Race instrumentation and CPU=1 amplify snapshot/CAS contention.
+		// Keep the stress run bounded without turning this into a latency SLA.
+		timeout = 20 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return Invoke(ctx, h.driver, airlock.Command{Kind: kind, Request: request, LeaseID: lease})
 }
