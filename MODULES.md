@@ -8,7 +8,7 @@
 | `driver/postgres` | `github.com/tr1v3r/airlock/driver/postgres` | Core and database/sql; pgx/sqlmock are test-only |
 
 The root module contains local admission, the durable protocol, `Transition`, and
-`NewDistributed`. It does not import drivers. Memory has no persistence and does
+`NewShared`. It does not import drivers. Memory has no persistence and does
 not share resources across driver instances. PostgreSQL and Redis are implemented in independent modules; installing core must not pull in their client dependencies.
 
 Each driver pins a reachable core commit containing its API. No placeholder

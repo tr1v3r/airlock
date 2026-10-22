@@ -8,25 +8,29 @@ import (
 	"time"
 )
 
-// DistributedOptions specifies one resource and bounded network polling.
+// SharedOptions specifies one backend resource and bounded network polling.
 // There is no implicit renewal or background acquisition worker.
-type DistributedOptions struct {
+type SharedOptions struct {
 	Resource         string
 	Config           ResourceConfig
 	OperationTimeout time.Duration
 	PollInterval     time.Duration
 }
 
-// Distributed is a lease-based client. It never closes the injected Driver.
+// Shared coordinates admission to a resource through an injected Driver.
+// The driver determines the sharing scope. Grants are time-bounded leases.
+// Shared never closes the driver or its connections.
 // An acquisition context only controls waiting; delivered leases have their own
 // lifetime. Backend failures never fall back to local admission.
-type Distributed struct {
+type Shared struct {
 	driver  Driver
-	options DistributedOptions
+	options SharedOptions
 }
 
-// NewDistributed validates and snapshots all options without contacting a backend.
-func NewDistributed(d Driver, options DistributedOptions) (*Distributed, error) {
+// NewShared creates shared admission through a driver and snapshots its options.
+// Construction performs no backend I/O and acquires no tokens. The caller owns
+// the driver and its connections; Acquire starts admission.
+func NewShared(d Driver, options SharedOptions) (*Shared, error) {
 	if d == nil || options.Resource == "" || !validText(options.Resource) || len(options.Resource) > 256 || options.OperationTimeout <= 0 || options.OperationTimeout > time.Minute || options.PollInterval <= 0 || options.PollInterval > time.Minute {
 		return nil, ErrInvalidConfig
 	}
@@ -34,26 +38,26 @@ func NewDistributed(d Driver, options DistributedOptions) (*Distributed, error) 
 		return nil, err
 	}
 	data, _ := json.Marshal(options)
-	var copied DistributedOptions
+	var copied SharedOptions
 	_ = json.Unmarshal(data, &copied)
-	return &Distributed{driver: d, options: copied}, nil
+	return &Shared{driver: d, options: copied}, nil
 }
 
 // Acquire obtains one leased token for the default tenant.
-func (d *Distributed) Acquire(ctx context.Context) (*Lease, error) { return d.AcquireN(ctx, 1) }
+func (d *Shared) Acquire(ctx context.Context) (*Lease, error) { return d.AcquireN(ctx, 1) }
 
 // AcquireFor obtains one leased token for an explicitly named tenant.
-func (d *Distributed) AcquireFor(ctx context.Context, tenant string) (*Lease, error) {
+func (d *Shared) AcquireFor(ctx context.Context, tenant string) (*Lease, error) {
 	return d.AcquireNFor(ctx, tenant, 1)
 }
 
 // AcquireN obtains n leased tokens atomically for the default tenant.
-func (d *Distributed) AcquireN(ctx context.Context, n int) (*Lease, error) {
+func (d *Shared) AcquireN(ctx context.Context, n int) (*Lease, error) {
 	return d.acquire(ctx, "", n)
 }
 
 // AcquireNFor obtains n leased tokens atomically for an explicitly named tenant.
-func (d *Distributed) AcquireNFor(ctx context.Context, tenant string, n int) (*Lease, error) {
+func (d *Shared) AcquireNFor(ctx context.Context, tenant string, n int) (*Lease, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
 	}
@@ -62,21 +66,21 @@ func (d *Distributed) AcquireNFor(ctx context.Context, tenant string, n int) (*L
 	}
 	return d.acquire(ctx, tenant, n)
 }
-func (d *Distributed) execute(ctx context.Context, cmd Command) (Result, time.Time, error) {
+func (d *Shared) execute(ctx context.Context, operation func(context.Context) (Result, error)) (Result, time.Time, error) {
 	op, cancel := context.WithTimeout(ctx, d.options.OperationTimeout)
 	defer cancel()
 	start := time.Now()
 	if err := op.Err(); err != nil {
 		return Result{}, start, err
 	}
-	result, err := d.driver.Execute(op, cmd)
+	result, err := operation(op)
 	// Even a driver that reports success after its I/O deadline cannot authorize work.
 	if err == nil {
 		err = op.Err()
 	}
 	return result, start, err
 }
-func (d *Distributed) acquire(ctx context.Context, tenant string, n int) (*Lease, error) {
+func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
 	}
@@ -102,9 +106,9 @@ func (d *Distributed) acquire(ctx context.Context, tenant string, n int) (*Lease
 	if err := validRequest(r); err != nil {
 		return nil, err
 	}
-	cmd := Command{Kind: Submit, Request: r}
+	operation := func(ctx context.Context) (Result, error) { return d.driver.Submit(ctx, r) }
 	for {
-		result, start, err := d.execute(ctx, cmd)
+		result, start, err := d.execute(ctx, operation)
 		if err == nil {
 			err = ctx.Err()
 		}
@@ -128,7 +132,7 @@ func (d *Distributed) acquire(ctx context.Context, tenant string, n int) (*Lease
 					timer.Stop()
 					err = ctx.Err()
 				case <-timer.C:
-					cmd.Kind = Observe
+					operation = func(ctx context.Context) (Result, error) { return d.driver.Observe(ctx, r) }
 					continue
 				}
 			default:
@@ -136,7 +140,7 @@ func (d *Distributed) acquire(ctx context.Context, tenant string, n int) (*Lease
 			}
 		}
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.options.OperationTimeout)
-		_, _, cleanupErr := d.execute(cleanup, Command{Kind: Cancel, Request: r})
+		_, _, cleanupErr := d.execute(cleanup, func(ctx context.Context) (Result, error) { return d.driver.Cancel(ctx, r) })
 		cancel()
 		return nil, errors.Join(err, cleanupErr)
 	}
@@ -149,7 +153,7 @@ func (d *Distributed) acquire(ctx context.Context, tenant string, n int) (*Lease
 type Lease struct {
 	opMu     sync.Mutex
 	mu       sync.Mutex
-	client   *Distributed
+	client   *Shared
 	request  Request
 	id       string
 	deadline time.Time
@@ -192,7 +196,9 @@ func (l *Lease) Renew(ctx context.Context) error {
 	if !l.Valid() {
 		return ErrLeaseLost
 	}
-	result, start, err := l.client.execute(ctx, Command{Kind: Renew, Request: l.request, LeaseID: l.id})
+	result, start, err := l.client.execute(ctx, func(ctx context.Context) (Result, error) {
+		return l.client.driver.Renew(ctx, LeaseRef{Request: l.request, ID: l.id})
+	})
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	deadline := start.Add(result.Remaining)
@@ -217,7 +223,9 @@ func (l *Lease) Release(ctx context.Context) error {
 	l.mu.Lock()
 	l.invalidateLocked()
 	l.mu.Unlock()
-	result, _, err := l.client.execute(ctx, Command{Kind: Release, Request: l.request, LeaseID: l.id})
+	result, _, err := l.client.execute(ctx, func(ctx context.Context) (Result, error) {
+		return l.client.driver.Release(ctx, LeaseRef{Request: l.request, ID: l.id})
+	})
 	if err == nil && result.Status != Released && result.Status != Expired && result.Status != Cancelled {
 		return ErrLeaseLost
 	}

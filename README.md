@@ -394,12 +394,25 @@ PostgreSQL and Redis are provided as independent modules. This does not indicate
 
 ## Distributed leases and drivers
 
-This branch implements the driver protocol, `NewDistributed`, and the independent
+This branch implements the driver protocol, `NewShared`, and the independent
 [memory](driver/memory), [PostgreSQL](driver/postgres), and [Redis](driver/redis) drivers. Local `New(Config)` and `Permit` are unchanged.
+`NewShared(driver, SharedOptions)` returns a `*Shared` for admission coordinated
+through the chosen driver. The driver determines the sharing scope. Construction
+validates and copies configuration without backend I/O or acquiring tokens.
+The previous `NewDistributed`, `Distributed`, and `DistributedOptions` names
+remain deprecated compatibility aliases/entry points.
+
 Use the independent [memory module](driver/memory) to exercise the same protocol
 in one process. It does not provide durable storage or cross-process capacity.
 
-`Distributed.AcquireNFor(ctx, tenant, n)` returns `(*Lease, error)`. Waiting uses
+The driver exposes `Submit(ctx, Request)`, `Observe(ctx, Request)`, and
+`Cancel(ctx, Request)`, plus `Renew(ctx, LeaseRef)` and `Release(ctx, LeaseRef)`.
+Each returns `(Result, error)`. `LeaseRef{Request: original, ID: result.LeaseID}`
+identifies the grant. Custom drivers must implement these five methods; the
+earlier `Execute(ctx, Command)` interface has been removed. `Command` remains
+a state-machine helper for driver implementations.
+
+`Shared.AcquireNFor(ctx, tenant, n)` returns `(*Lease, error)`. Waiting uses
 bounded persistent queues and periodic Observe; a lease requires explicit
 `Renew(ctx)` and `Release(ctx) error`. Stop work when `Done()` closes or `Valid()`
 is false. The acquisition context does not revoke a delivered lease. There is

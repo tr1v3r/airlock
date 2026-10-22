@@ -116,11 +116,11 @@ func (d *Driver) EnsureSchema(ctx context.Context) error {
 	return nil
 }
 
-// Execute atomically evaluates a command. Business rejections still commit any
+// execute atomically evaluates a command. Business rejections still commit any
 // expiry/scheduling changes. Transport/commit errors return a zero Result: the
 // transaction may have committed, so recover with the same request identity.
 // No connection is held while the admitted business task executes.
-func (d *Driver) Execute(ctx context.Context, cmd airlock.Command) (airlock.Result, error) {
+func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Result, error) {
 	if err := d.validate(ctx); err != nil {
 		return airlock.Result{}, err
 	}
@@ -183,3 +183,28 @@ func (d *Driver) validate(ctx context.Context) error {
 }
 
 var _ airlock.Driver = (*Driver)(nil)
+
+// Submit atomically submits the whole request without refreshing an existing lease.
+func (d *Driver) Submit(ctx context.Context, request airlock.Request) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Submit, Request: request})
+}
+
+// Observe returns the request outcome after advancing expiry and scheduling.
+func (d *Driver) Observe(ctx context.Context, request airlock.Request) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Observe, Request: request})
+}
+
+// Cancel cancels the request, including a grant or a cancellation before submission.
+func (d *Driver) Cancel(ctx context.Context, request airlock.Request) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Cancel, Request: request})
+}
+
+// Renew extends a live lease matching the original request and lease ID.
+func (d *Driver) Renew(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Renew, Request: lease.Request, LeaseID: lease.ID})
+}
+
+// Release ends a matching lease and returns its whole weight at most once.
+func (d *Driver) Release(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Release, Request: lease.Request, LeaseID: lease.ID})
+}

@@ -80,7 +80,7 @@ func TestValidationWithoutDatabase(t *testing.T) {
 		if err := d.EnsureSchema(ctx); !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
-		if _, err := d.Execute(ctx, airlock.Command{}); !errors.Is(err, context.Canceled) {
+		if _, err := d.Submit(ctx, airlock.Request{}); !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
 	}
@@ -88,12 +88,12 @@ func TestValidationWithoutDatabase(t *testing.T) {
 		if err := d.EnsureSchema(context.Background()); err == nil {
 			t.Fatal("invalid driver")
 		}
-		if _, err := d.Execute(context.Background(), airlock.Command{}); err == nil {
+		if _, err := d.Submit(context.Background(), airlock.Request{}); err == nil {
 			t.Fatal("invalid driver")
 		}
 	}
 	d, _ := mockDriver(t)
-	if _, err := d.Execute(context.Background(), airlock.Command{}); !errors.Is(err, airlock.ErrInvalidConfig) {
+	if _, err := d.Submit(context.Background(), airlock.Request{}); !errors.Is(err, airlock.ErrInvalidConfig) {
 		t.Fatal(err)
 	}
 }
@@ -151,7 +151,7 @@ func TestExecuteFailureBoundaries(t *testing.T) {
 			if stage != "begin" && stage != "commit" {
 				m.ExpectRollback()
 			}
-			got, err := d.Execute(context.Background(), airlock.Command{Kind: airlock.Submit, Request: request(now)})
+			got, err := d.Submit(context.Background(), request(now))
 			if err == nil || got != (airlock.Result{}) {
 				t.Fatalf("unsafe result=%+v err=%v", got, err)
 			}
@@ -170,7 +170,7 @@ func TestBusinessErrorCommitsMaintenance(t *testing.T) {
 	beforeTransition(m, initial, now.Add(2*time.Second))
 	m.ExpectExec("UPDATE").WithArgs("test", r.Resource, sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
 	m.ExpectCommit()
-	got, err := d.Execute(context.Background(), airlock.Command{Kind: airlock.Renew, Request: r, LeaseID: "stale"})
+	got, err := d.Renew(context.Background(), airlock.LeaseRef{Request: r, ID: "stale"})
 	if !errors.Is(err, airlock.ErrLeaseLost) || got.Status == airlock.Granted {
 		t.Fatalf("%+v %v", got, err)
 	}
@@ -190,14 +190,13 @@ func TestAmbiguousCommitRecovery(t *testing.T) {
 	beforeTransition(m, nil, now)
 	m.ExpectExec("UPDATE").WithArgs("test", r.Resource, durable).WillReturnResult(sqlmock.NewResult(0, 1))
 	m.ExpectCommit().WillReturnError(errors.New("commit response lost"))
-	if got, err := d.Execute(context.Background(), cmd); err == nil || got != (airlock.Result{}) {
+	if got, err := d.Submit(context.Background(), r); err == nil || got != (airlock.Result{}) {
 		t.Fatalf("%+v %v", got, err)
 	}
 	beforeTransition(m, durable, now.Add(time.Millisecond))
 	m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 	m.ExpectCommit()
-	cmd.Kind = airlock.Observe
-	got, err := d.Execute(context.Background(), cmd)
+	got, err := d.Observe(context.Background(), r)
 	if err != nil || got.Status != airlock.Granted || got.LeaseID != granted.LeaseID || got.Remaining >= granted.Remaining {
 		t.Fatalf("%+v %v", got, err)
 	}
@@ -207,7 +206,7 @@ func TestOperationDeadline(t *testing.T) {
 	d, m := mockDriver(t, WithOperationTimeout(time.Millisecond))
 	m.ExpectBegin().WillDelayFor(20 * time.Millisecond)
 	started := time.Now()
-	if got, err := d.Execute(context.Background(), airlock.Command{Kind: airlock.Submit, Request: request(started)}); err == nil || got != (airlock.Result{}) {
+	if got, err := d.Submit(context.Background(), request(started)); err == nil || got != (airlock.Result{}) {
 		t.Fatalf("%+v %v", got, err)
 	}
 	if time.Since(started) > time.Second {

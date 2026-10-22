@@ -10,7 +10,7 @@ driver, err := postgres.New(db, "my-service",
     postgres.WithTable("public.airlock_resources"))
 // Handle err. New does not connect or execute DDL, and never closes db.
 err = driver.EnsureSchema(ctx) // Explicit deployment migration; handle err.
-// Pass driver to airlock.NewDistributed with the shared resource configuration.
+// Pass driver to airlock.NewShared with the shared resource configuration.
 ```
 
 See the complete [example](example_test.go),
@@ -87,6 +87,10 @@ exercised by terminating a blocked test session. Lost commit responses are check
 with a deterministic unit model and post-commit response-loss injection against a
 real database; these are not network-partition experiments.
 
+The public operations are `Submit`, `Observe`, `Cancel`, `Renew`, and `Release`.
+The first three accept an immutable `airlock.Request`; renewal and release use
+`airlock.LeaseRef{Request: original, ID: result.LeaseID}`. All return `(airlock.Result, error)`.
+
 ## 中文
 
 PostgreSQL driver 提供持久化的多令牌、租户/优先级公平、有界排队协议，运行时只依赖标准库
@@ -127,3 +131,7 @@ owner secret，应限制访问权限；租户映射本身不提供身份认证�
 隔离、重建 driver 后保留优先级游标、行锁等待后禁止复活、取消、连接失败，以及客户端退出
 后 queued/granted 的回收。连接故障还通过终止正在等待行锁的测试 session 验证。丢失提交
 响应使用可确定复现的单元模型及真实数据库提交成功后的响应丢失注入，不宣称模拟真实网络分区。
+
+公开操作为 `Submit`、`Observe`、`Cancel`、`Renew` 和 `Release`。前三者接收不可变
+`airlock.Request`；续租与释放接收 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`，
+均返回 `(airlock.Result, error)`。

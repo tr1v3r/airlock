@@ -12,6 +12,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/tr1v3r/airlock"
 	"github.com/tr1v3r/airlock/driver/postgres"
+	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 type failoverFixture struct {
@@ -45,7 +46,7 @@ func TestSynchronousFailover(t *testing.T) {
 	defer cancel()
 	call := func(kind airlock.Operation, r airlock.Request, lease string, want airlock.Status) airlock.Result {
 		t.Helper()
-		result, e := driver.Execute(ctx, airlock.Command{Kind: kind, Request: r, LeaseID: lease})
+		result, e := driverconformance.Invoke(ctx, driver, airlock.Command{Kind: kind, Request: r, LeaseID: lease})
 		if e != nil || result.Status != want {
 			t.Fatalf("%s: %+v %v want %s", kind, result, e, want)
 		}
@@ -110,7 +111,7 @@ func TestSynchronousFailover(t *testing.T) {
 		call(airlock.Submit, fixture.Holder, "", airlock.Released)
 		wrong := small
 		wrong.Owner = airlock.NewRequest(time.Now()).Owner
-		if _, err := driver.Execute(ctx, airlock.Command{Kind: airlock.Release, Request: wrong, LeaseID: tiny.LeaseID}); !errors.Is(err, airlock.ErrRequestConflict) {
+		if _, err := driver.Release(ctx, airlock.LeaseRef{Request: wrong, ID: tiny.LeaseID}); !errors.Is(err, airlock.ErrRequestConflict) {
 			t.Fatalf("wrong owner: %v", err)
 		}
 		call(airlock.Release, small, tiny.LeaseID, airlock.Released)

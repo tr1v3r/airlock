@@ -70,7 +70,7 @@ func (h *harness) request(tenant string, weight int) airlock.Request {
 func (h *harness) execute(kind airlock.Operation, request airlock.Request, lease string) (airlock.Result, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return h.driver.Execute(ctx, airlock.Command{Kind: kind, Request: request, LeaseID: lease})
+	return Invoke(ctx, h.driver, airlock.Command{Kind: kind, Request: request, LeaseID: lease})
 }
 
 func (h *harness) must(kind airlock.Operation, request airlock.Request, lease string, status airlock.Status) airlock.Result {

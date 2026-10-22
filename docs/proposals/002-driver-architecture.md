@@ -9,7 +9,7 @@
 容量约束是同一资源中有效授权的权重总和不超过 Capacity，不能把申请 n 个令牌实现成 n 次单令牌申请。
 
 本地 `New(Config)` 保持零外部服务、标准库运行时依赖；已有 `Permit.Release()` 保留。
-远端拟提供独立 `NewDistributed(driver, ...)` 和 `Lease.Release(ctx) error`，使用者明确选择网络生命周期。
+远端拟提供独立 `NewShared(driver, ...)` 和 `Lease.Release(ctx) error`，使用者明确选择网络生命周期。
 这是接口方向，不是已实现 API；本次不改变现有方法。
 
 ## 借鉴 anylock 的范围
@@ -49,7 +49,8 @@ memory driver 不维护第二份调度算法：通过根包提供的受控、标
 提交入口校验配置一致性；不同客户端不能以不同容量或优先级配置操作同一个 Resource。
 第一版不支持在线改容量或更改调度策略；各优先级 Turns 总和不得超过 1024。
 
-所有后端采用同一语义，方法名为提案草图：
+所有后端采用同一语义。以下为历史提案草图；当前 Request、LeaseRef 和 Result 签名见
+[已实现的 driver 契约](../decisions/005-driver-contract.md)。
 
 ```go
 type Driver interface {

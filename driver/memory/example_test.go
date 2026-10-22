@@ -10,7 +10,7 @@ import (
 )
 
 func ExampleNew() {
-	client, err := airlock.NewDistributed(memory.New(), airlock.DistributedOptions{
+	client, err := airlock.NewShared(memory.New(), airlock.SharedOptions{
 		Resource:         "workers",
 		Config:           airlock.ResourceConfig{Admission: airlock.Config{Capacity: 4, MaxQueued: 8, MaxQueuedPerTenant: 8}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Minute, MaxRecords: 100},
 		OperationTimeout: time.Second, PollInterval: 10 * time.Millisecond,

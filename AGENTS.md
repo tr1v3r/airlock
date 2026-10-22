@@ -11,7 +11,7 @@ Optional Config.Priority adds static tenant-to-group mappings, weighted selectio
 turns, and reserved group waiting budgets. Group shares count request selections,
 not tokens or execution time; a protected request blocks all groups. Pool and Gate
 are no longer public APIs. Local permits have no lease. The distributed Driver contract, Transition state
-machine and explicit Lease client are implemented; memory is the reference
+machine and NewShared/Shared/SharedOptions are implemented; memory is the reference
 driver. PostgreSQL provides transactional persistence; Redis uses guarded snapshot CAS
 with backend time. Both are independent modules with explicit deployment limits.
 
