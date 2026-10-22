@@ -15,14 +15,52 @@ import (
 func sharedConcurrentOptions(clients int) SharedOptions {
 	o := clientOptions()
 	o.Config.Admission = Config{Capacity: 7, MaxQueued: clients, MaxQueuedPerTenant: clients}
-	o.Config.LeaseTTL = 30 * time.Second
-	o.Config.MaxWait = 30 * time.Second
-	o.Config.SubmitWindow = 30 * time.Second
-	o.Config.Retention = time.Minute
+	// This fixture serializes whole-snapshot transitions, including observations.
+	// Larger loads grow both the number of grant waves and snapshot work per
+	// operation. Budget those separately instead of treating the race-instrumented
+	// fake as a fixed-throughput backend. The normal <=32-client load is unchanged.
+	const baseClients, maxWeight = 32, 3
+	perWave := o.Config.Admission.Capacity / maxWeight
+	waves := (clients + perWave - 1) / perWave
+	baseWaves := (baseClients + perWave - 1) / perWave
+	waveScale := (waves + baseWaves - 1) / baseWaves
+	snapshotScale := (clients + baseClients - 1) / baseClients
+	budget := 30 * time.Second * time.Duration(waveScale*snapshotScale)
+	o.Config.LeaseTTL = budget
+	o.Config.MaxWait = budget
+	o.Config.SubmitWindow = budget
+	// Keep terminal records until the final whole-workload assertion. Protocol GC
+	// and no-resurrection behavior are tested separately with short retention.
+	o.Config.Retention = 2 * budget
 	o.Config.MaxRecords = 2 * clients
-	o.OperationTimeout = 5 * time.Second
+	o.OperationTimeout = 5 * time.Second * time.Duration(snapshotScale)
+	// Keep the same contention model in both modes: the longer workload budget,
+	// not a different scheduler/driver or looser assertion, must enable progress.
 	o.PollInterval = 5 * time.Millisecond
 	return o
+}
+
+func TestSharedConcurrentWorkloadBudget(t *testing.T) {
+	for _, tc := range []struct {
+		clients                  int
+		budget, operationTimeout time.Duration
+	}{
+		{16, 30 * time.Second, 5 * time.Second},
+		{24, 30 * time.Second, 5 * time.Second},
+		{32, 30 * time.Second, 5 * time.Second},
+		{96, 270 * time.Second, 15 * time.Second},
+		{128, 480 * time.Second, 20 * time.Second},
+	} {
+		t.Run(fmt.Sprint(tc.clients), func(t *testing.T) {
+			o := sharedConcurrentOptions(tc.clients)
+			if o.Config.LeaseTTL != tc.budget || o.Config.MaxWait != tc.budget || o.Config.SubmitWindow != tc.budget || o.Config.Retention != 2*tc.budget || o.OperationTimeout != tc.operationTimeout || o.PollInterval != 5*time.Millisecond {
+				t.Fatalf("unexpected workload budget: %+v", o)
+			}
+			if _, err := NewShared(&clientStateDriver{}, o); err != nil {
+				t.Fatalf("workload budget exceeds protocol bounds: %v", err)
+			}
+		})
+	}
 }
 
 func sharedAssertDrained(t *testing.T, d *clientStateDriver, want int) {
@@ -56,11 +94,21 @@ func TestSharedConcurrentWeightedLifecycle(t *testing.T) {
 			d := &clientStateDriver{}
 			o := sharedConcurrentOptions(clients)
 			c := clientNew(t, d, o)
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), o.Config.MaxWait)
 			defer cancel()
 			start := make(chan struct{})
 			var workers sync.WaitGroup
 			var used, completed atomic.Int64
+			started := time.Now()
+			defer func() {
+				counts := make(map[Operation]int)
+				for _, cmd := range d.commands() {
+					counts[cmd.Kind]++
+				}
+				t.Logf("clients=%d budget=%s elapsed=%s completed=%d used=%d submit=%d observe=%d renew=%d release=%d cancel=%d",
+					clients, o.Config.MaxWait, time.Since(started), completed.Load(), used.Load(),
+					counts[Submit], counts[Observe], counts[Renew], counts[Release], counts[Cancel])
+			}()
 			for i := 0; i < clients; i++ {
 				workers.Add(1)
 				go func(i int) {
@@ -125,7 +173,7 @@ func TestSharedConcurrentQueuedCancellation(t *testing.T) {
 	}}
 	o := sharedConcurrentOptions(clients)
 	c := clientNew(t, d, o)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), o.Config.MaxWait)
 	defer cancel()
 	holder, err := c.AcquireN(ctx, o.Config.Admission.Capacity)
 	if err != nil {
