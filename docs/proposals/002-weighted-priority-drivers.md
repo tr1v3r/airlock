@@ -2,7 +2,7 @@
 
 状态：本地阶段 1（多令牌）和阶段 2（优先级组）已在当前功能分支实现，尚不代表本分支合入 `dev` 或发布。
 原提案基线为 `dev` 的 `b6c7f62`；现有单令牌入口保持原语义。
-core driver 契约、租约客户端与 memory 在当前 PR 实现；PostgreSQL 在后续独立 PR 实现并完成真实数据库与同步切换实验；Redis 待后续 PR。详见 [ADR 005](../decisions/005-driver-contract.md)。
+core driver 契约、租约客户端与 memory 在当前 PR 实现；PostgreSQL 在后续独立 PR 实现并完成真实数据库与同步切换实验；Redis 在独立 PR 实现，见 [ADR 007](../decisions/007-redis-driver.md)。详见 [ADR 005](../decisions/005-driver-contract.md)。
 
 ## 建议结论
 

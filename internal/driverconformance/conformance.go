@@ -369,9 +369,12 @@ func concurrentAdmission(h *harness) {
 				h.t.Errorf("concurrent submit: %v", err)
 				return
 			}
-			deadline := time.Now().Add(10 * time.Second)
+			deadline := time.Now().Add(20 * time.Second)
 			for result.Status == airlock.Queued && time.Now().Before(deadline) {
-				time.Sleep(time.Millisecond)
+				// Observe may atomically rewrite a bounded resource snapshot.
+				// Avoid a 24-client polling storm under race/coverage instruments;
+				// this tests capacity and completion, not an operation-latency SLA.
+				time.Sleep(50 * time.Millisecond)
 				result, err = h.execute(airlock.Observe, r, "")
 				if err != nil {
 					h.t.Errorf("concurrent observe: %v", err)

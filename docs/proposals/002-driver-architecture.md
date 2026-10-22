@@ -1,6 +1,6 @@
 # 提案 002：本地与分布式 Driver
 
-状态：core 契约、客户端与 memory 在当前 PR 实现，详见 [ADR 005](../decisions/005-driver-contract.md)；PostgreSQL 在后续独立 PR 实现（见 [ADR 006](../decisions/006-postgres-driver.md)），Redis 待后续 PR。以下保留原设计方向，API 以当前源码为准。核对日期：2026-10-22。配套：[总提案](002-weighted-priority-drivers.md)、[调度契约](002-weighted-scheduling.md)。
+状态：core 契约、客户端与 memory 在当前 PR 实现，详见 [ADR 005](../decisions/005-driver-contract.md)；PostgreSQL 在后续独立 PR 实现（见 [ADR 006](../decisions/006-postgres-driver.md)），Redis 由独立模块实现（见 [ADR 007](../decisions/007-redis-driver.md)）。以下保留原设计方向，API 以当前源码为准。核对日期：2026-10-22。配套：[总提案](002-weighted-priority-drivers.md)、[调度契约](002-weighted-scheduling.md)。
 
 ## 决策
 
@@ -165,7 +165,7 @@ PG 默认流复制也是异步；强持久授权要配置同步复制、可靠�
 4. Redis driver：实现等价脚本和 Cluster slot 约束；明确与 PG 不同的持久性及故障切换保证。
 
 两种远端 driver 可以在第二阶段契约稳定后用独立 worktree 并行开发；合入次序建议先 PG，再 Redis。
-步骤 1 的本地多令牌与优先级已在当前功能分支实现，见[本地调度契约](002-weighted-scheduling.md)。步骤 2 已在当前 PR 实现；步骤 3 已由 PostgreSQL 独立 PR 实现；步骤 4 尚待独立 PR。本篇不是远端性能或故障切换验证结论。
+步骤 1 的本地多令牌与优先级已在当前功能分支实现，见[本地调度契约](002-weighted-scheduling.md)。步骤 2 已在当前 PR 实现；步骤 3 已由 PostgreSQL 独立 PR 实现；步骤 4 已由 Redis 独立 PR 实现，采用 Go 状态机加 Lua 时间窗口 CAS，偏离下文原始的完整 Lua 调度建议。本篇不是远端性能或故障切换验证结论。
 
 | 测试类别 | 验收点 | 环境 |
 | --- | --- | --- |

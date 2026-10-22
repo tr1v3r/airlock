@@ -297,7 +297,7 @@ GOWORK=off govulncheck -test ./...
 每次 `Acquire(ctx)` 或 `AcquireFor(ctx, tenantID)` 仍然**仅获取一个令牌**。
 新增 `AcquireN(ctx, n)` 和 `AcquireNFor(ctx, tenantID, n)` 获取 `n` 个令牌，
 通过 `Permit.Release()` 一次归还。`Config.Priority` 可选启用本地优先级组，无需修改申请签名。
-无限模式、动态容量尚未实现。分布式租约和 memory driver 使用独立 API，PostgreSQL 已有独立 driver，Redis 待后续实现。使用字段名且省略 `Priority` 或设为 nil 的配置
+无限模式、动态容量尚未实现。分布式租约和 memory driver 使用独立 API，PostgreSQL 和 Redis 均提供独立 driver。使用字段名且省略 `Priority` 或设为 nil 的配置
 保持原有单组行为；新增 `Config.Priority` 字段会影响无字段名的 `Config` 字面量，请改用字段名。
 
 这是开发阶段的破坏性变更：移除 `Pool`/`NewPool` 和先前的 `Gate`/`NewGate` 名称。
@@ -318,12 +318,12 @@ Airlock 不执行任务或跟踪完成状态。
 ## 设计提案
 
 [多令牌、优先级准入与可选 driver 提案](docs/proposals/002-weighted-priority-drivers.md)描述本地、Redis 和 PostgreSQL 方案。本分支实现本地阶段 1 和 2：原子多令牌申请、优先级组与租户轮转、独占等待额度和队首保护。
-driver 契约、租约客户端和 memory 参考实现在本 PR 提供，PostgreSQL 由独立 driver 提供，Redis 后续跟进；这不代表发布标签版本。
+driver 契约、租约客户端和 memory 参考实现已提供，PostgreSQL 和 Redis 由独立 driver 提供；这不代表发布标签版本。
 
-## 分布式租约（driver 契约与 memory）
+## 分布式租约与 driver
 
-本分支实现 driver 协议、`NewShared`，以及独立 [memory](driver/memory) 和
-[PostgreSQL](driver/postgres) driver；Redis 待后续 PR。
+本分支实现 driver 协议、`NewShared`，以及独立 [memory](driver/memory)、
+[PostgreSQL](driver/postgres) 和 [Redis](driver/redis) driver。
 `NewShared(driver, SharedOptions)` 返回 `*Shared`，通过指定 driver 共享资源的容量与排队状态。
 共享范围由 driver 决定；构造时仅校验并复制配置，
 不访问后端，也不申请令牌。旧名称 `NewDistributed`、`Distributed`、`DistributedOptions`
@@ -348,3 +348,7 @@ Observe 实现等待，租约需要显式 `Renew(ctx)` 与 `Release(ctx) error`�
 
 PostgreSQL 使用调用者持有的 `*sql.DB`，显式建表，以每资源行锁串行化，并在拿到锁后读取数据库时间。
 参见[重要取舍与已测试的切换模型](docs/decisions/006-postgres-driver.md)。
+
+Redis 使用调用者持有的 go-redis 客户端，每资源一个永久 key，以后端时间窗口保护快照 CAS。
+异步切换可能丢失已确认授权，参见 [Redis 示例与配置](driver/redis/README.zh-CN.md)和
+[重要取舍与故障模型](docs/decisions/007-redis-driver.md)。

@@ -12,7 +12,8 @@ import (
 )
 
 // Driver provides atomic admission operations for a resource. Implementations must
-// serialize all operations, use backend time after obtaining exclusive access,
+// serialize all operations, use backend time after obtaining exclusive access
+// (or enforce the TransitionOptimistic publication window with atomic CAS),
 // persist the returned snapshot even when Transition returns a business error,
 // and honor ctx. Transport errors are ambiguous and never authorize work.
 // Drivers do not own injected connections, execute work, or fall back locally.

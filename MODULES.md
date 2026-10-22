@@ -4,11 +4,12 @@
 | --- | --- | --- |
 | `.` | `github.com/tr1v3r/airlock` | Standard library |
 | `driver/memory` | `github.com/tr1v3r/airlock/driver/memory` | Core and standard library |
+| `driver/redis` | `github.com/tr1v3r/airlock/driver/redis` | Core and go-redis/v9 |
 | `driver/postgres` | `github.com/tr1v3r/airlock/driver/postgres` | Core and database/sql; pgx/sqlmock are test-only |
 
 The root module contains local admission, the durable protocol, `Transition`, and
 `NewShared`. It does not import drivers. Memory has no persistence and does
-not share resources across driver instances. PostgreSQL is implemented in its own module; Redis follows separately; installing core must not pull in their client dependencies.
+not share resources across driver instances. PostgreSQL and Redis are implemented in independent modules; installing core must not pull in their client dependencies.
 
 Each driver pins a reachable core commit containing its API. No placeholder
 version or local-path replace is published. This PR bootstrap uses a pushed
@@ -46,3 +47,20 @@ The failover script creates its own network and containers, configures
 verifies committed leases and a protected weighted queue survive. It cleans up
 only its own fixtures. It does not prove safety of asynchronous replication,
 unfenced promotion, storage rollback or arbitrary failover orchestration.
+
+
+Redis integration is opt-in locally and required on CI (7 and 8):
+
+```sh
+cd driver/redis
+AIRLOCK_REDIS_ADDR=127.0.0.1:6379 GOWORK=off go test -race ./...
+# From repository root, using isolated Docker containers:
+bash scripts/redis-cluster.sh
+bash scripts/redis-failover.sh
+```
+
+Use an isolated test server: integration tests flush its script cache. The Cluster
+script creates three primaries and maps Docker-internal addresses to published
+loopback ports for macOS/Linux. The failover script deliberately demonstrates
+acknowledged-grant loss with a stale asynchronous replica; passing means this
+limitation was reproduced, not that failover is safe. See [ADR 007](docs/decisions/007-redis-driver.md).
