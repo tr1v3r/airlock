@@ -10,7 +10,7 @@ driver, err := postgres.New(db, "my-service",
     postgres.WithTable("public.airlock_resources"))
 // Handle err. New does not connect or execute DDL, and never closes db.
 err = driver.EnsureSchema(ctx) // Explicit deployment migration; handle err.
-// Pass driver to airlock.NewDistributed with the shared resource configuration.
+// Pass driver to airlock.NewShared with the shared resource configuration.
 ```
 
 See the complete [example](example_test.go),
