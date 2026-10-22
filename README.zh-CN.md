@@ -100,6 +100,9 @@ defer permit.Release()
   单令牌调用中 `InUse == ActivePermits`。快照不能作为任务完成屏障。
   Airlock 必须通过 `New` 创建、禁止复制，内部不启动 goroutine。
 
+[本地多令牌设计取舍](docs/decisions/001-local-weighted-tradeoffs.md)记录大请求保护、
+按请求机会公平和显式释放等选择的理由、代价与重新评估条件。
+
 [初始设计记录](docs/proposals/001-tenant-fair-admission.md) 描述单令牌基础，
 [多令牌契约](docs/proposals/002-weighted-scheduling.md) 在此基础上扩展；其中优先级分组仍为提案。
 [历史原型测量](docs/proposals/001-experiment-results.md) 尚未证明优于表现最好的两级 semaphore，

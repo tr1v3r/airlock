@@ -120,6 +120,11 @@ the same `permit.Release()` returns all three. Without a tenant ID, use
   not a completion barrier. Airlock must be constructed with `New` and must not
   be copied. It starts no goroutines.
 
+The [local weighted admission tradeoffs](docs/decisions/001-local-weighted-tradeoffs.md)
+record why this implementation protects large requests, uses request-based
+fairness, and keeps explicit release, including costs and reassessment criteria
+(document in Chinese).
+
 The [initial design record](docs/proposals/001-tenant-fair-admission.md) describes
 the single-token foundation. The [weighted contract](docs/proposals/002-weighted-scheduling.md)
 extends it; priority groups in that document remain proposed. [Historical prototype measurements](docs/proposals/001-experiment-results.md)
