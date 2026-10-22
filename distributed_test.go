@@ -85,9 +85,9 @@ func TestSharedOptionsValidationAndSnapshot(t *testing.T) {
 	}{
 		{"empty resource", func(o *SharedOptions) { o.Resource = "" }},
 		{"long resource", func(o *SharedOptions) { o.Resource = strings.Repeat("x", 257) }},
-		{"zero timeout", func(o *SharedOptions) { o.OperationTimeout = 0 }},
+		{"negative timeout", func(o *SharedOptions) { o.OperationTimeout = -time.Second }},
 		{"long timeout", func(o *SharedOptions) { o.OperationTimeout = time.Minute + 1 }},
-		{"zero interval", func(o *SharedOptions) { o.PollInterval = 0 }},
+		{"negative interval", func(o *SharedOptions) { o.PollInterval = -time.Millisecond }},
 		{"long interval", func(o *SharedOptions) { o.PollInterval = time.Minute + 1 }},
 		{"invalid admission", func(o *SharedOptions) { o.Config.Admission.Capacity = 0 }},
 	}
