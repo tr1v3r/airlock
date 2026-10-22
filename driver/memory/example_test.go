@@ -11,9 +11,10 @@ import (
 
 func ExampleNew() {
 	client, err := airlock.NewShared(memory.New(), airlock.SharedOptions{
-		Resource:         "workers",
-		Config:           airlock.ResourceConfig{Admission: airlock.Config{Capacity: 4, MaxQueued: 8, MaxQueuedPerTenant: 8}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Minute, MaxRecords: 100},
-		OperationTimeout: time.Second, PollInterval: 10 * time.Millisecond,
+		Resource: "workers",
+		Config: airlock.ResourceConfig{
+			Admission: airlock.Config{Capacity: 4, MaxQueued: 8, MaxQueuedPerTenant: 8},
+		},
 	})
 	if err != nil {
 		panic(err)
@@ -25,7 +26,9 @@ func ExampleNew() {
 	fmt.Println(lease.Weight(), lease.Valid())
 	// Do bounded, cancellable work here; stop if lease.Done closes. Renew explicitly
 	// if needed. Release only after the work has actually stopped.
-	if err := lease.Release(context.Background()); err != nil {
+	cleanup, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := lease.Release(cleanup); err != nil {
 		panic(err)
 	}
 	fmt.Println(lease.Valid())

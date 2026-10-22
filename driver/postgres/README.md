@@ -4,6 +4,13 @@ A durable adapter for Airlock's weighted, bounded, tenant/group-fair admission
 protocol. Runtime dependencies are the standard library and Airlock core; the
 application selects a `database/sql` PostgreSQL driver. Tests use pgx v5.
 
+Start with the [Shared user guide](../../docs/guides/shared.md): resource, capacity
+and queue limits are enough to configure admission; advanced protocol settings
+have defaults. It includes a complete explicit-renewal, task-cancellation and
+release-cleanup example. Backend implementation details below are for deployment
+and adapter maintenance.
+
+
 ```go
 driver, err := postgres.New(db, "my-service",
     postgres.WithOperationTimeout(2*time.Second),
@@ -92,6 +99,10 @@ The first three accept an immutable `airlock.Request`; renewal and release use
 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`. All return `(airlock.Result, error)`.
 
 ## 中文
+
+业务接入先看 [Shared 使用指南](../../docs/guides/shared.zh-CN.md)：只需配置资源、容量与队列，
+高级协议参数已有默认值。指南提供显式续租、任务取消和释放清理的完整示例；下面的存储细节
+供部署和后端维护参考。
 
 PostgreSQL driver 提供持久化的多令牌、租户/优先级公平、有界排队协议，运行时只依赖标准库
 和 Airlock core。应用自行选择 `database/sql` 驱动并管理连接池；测试使用 pgx v5。

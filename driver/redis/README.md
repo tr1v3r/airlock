@@ -6,6 +6,13 @@ Independent module `github.com/tr1v3r/airlock/driver/redis`. The core module kee
 standard-library-only runtime dependencies; this adapter uses `go-redis/v9`.
 Miniredis is a test dependency. Requires Redis with Lua scripting and `TIME`.
 
+Start with the [Shared user guide](../../docs/guides/shared.md): resource, capacity
+and queue limits are enough to configure admission; advanced protocol settings
+have defaults. It includes a complete explicit-renewal, task-cancellation and
+release-cleanup example. Backend implementation details below are for deployment
+and adapter maintenance.
+
+
 ```go
 client := redis.NewClient(&redis.Options{
     Addr: "127.0.0.1:6379", ContextTimeoutEnabled: true,

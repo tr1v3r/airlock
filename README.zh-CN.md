@@ -6,13 +6,23 @@
 提供租户内 FIFO、等待租户间轮转、可选的优先级组加权选择与独立等待额度，以及全局和每租户排队上限。
 运行时仅依赖标准库；goroutine、结果、错误和任务完成由调用方管理。
 
+## 选择使用入口
+
+| 需求 | 入口 | 从这里开始 |
+| --- | --- | --- |
+| 单进程内并发控制 | `New(Config)` → `*Airlock`、`*Permit` | [Hello world](#hello-world) |
+| 通过 Redis 或 PostgreSQL 共享容量 | `NewShared(driver, options)` → `*Shared`、`*Lease` | [Shared 快速入门](#shared-快速入门) |
+| 测试或演示 Shared 租约 API | `NewShared(memory.New(), options)` | [Memory 示例](driver/memory) |
+
+普通本地准入不需要 driver。核心运行时仅依赖标准库，远端 driver 的依赖单独安装。
+
 ## 安装
 
 ```sh
 go get github.com/tr1v3r/airlock
 ```
 
-此 API 正在面向 `dev` 的功能分支开发，尚无包含该 API 的标签版本。
+本 README 描述面向 `dev` 的开发阶段 API，尚无包含该 API 的标签版本。
 
 ## Hello world
 
@@ -45,6 +55,33 @@ func main() {
 `ErrQueueFull`。需要等待时，必须设置**两个**队列上限，例如
 `Config{Capacity: 2, MaxQueued: 8, MaxQueuedPerTenant: 8}`。
 默认租户遵循相同的排队上限、FIFO 和取消规则，不会与任何显式租户 ID 冲突。
+
+## Shared 快速入门
+
+创建 [Redis](driver/redis/README.zh-CN.md) 或 [PostgreSQL](driver/postgres/README.md#中文)
+driver 后，只需配置资源、容量和可选的队列上限；协议参数已有默认值：
+
+```go
+shared, err := airlock.NewShared(driver, airlock.SharedOptions{
+    Resource: "jobs",
+    Config: airlock.ResourceConfig{
+        Admission: airlock.Config{
+            Capacity: 10, MaxQueued: 20, MaxQueuedPerTenant: 10,
+        },
+    },
+})
+if err != nil {
+    return err
+}
+```
+
+无租户 ID 的单令牌申请用 `shared.Acquire(ctx)`；指定租户申请两个令牌用
+`shared.AcquireNFor(ctx, "online", 2)`。与本地相同，省略队列上限就不等待。
+Shared 返回 Lease，默认有效期 30 秒，释放使用 `lease.Release(ctx) error`，
+失效时业务必须停止，长任务需要显式续租。
+
+[Shared 使用指南](docs/guides/shared.zh-CN.md)提供后端接入、可运行 hello 示例、
+完整的取消/续租/清理示例，以及高级配置。使用 Shared 无需先理解 Driver 协议。
 
 ## 立即获取
 
@@ -320,35 +357,12 @@ Airlock 不执行任务或跟踪完成状态。
 [多令牌、优先级准入与可选 driver 提案](docs/proposals/002-weighted-priority-drivers.md)描述本地、Redis 和 PostgreSQL 方案。本分支实现本地阶段 1 和 2：原子多令牌申请、优先级组与租户轮转、独占等待额度和队首保护。
 driver 契约、租约客户端和 memory 参考实现已提供，PostgreSQL 和 Redis 由独立 driver 提供；这不代表发布标签版本。
 
-## 分布式租约与 driver
+## Driver 实现细节
 
-本分支实现 driver 协议、`NewShared`，以及独立 [memory](driver/memory)、
-[PostgreSQL](driver/postgres) 和 [Redis](driver/redis) driver。
-`NewShared(driver, SharedOptions)` 返回 `*Shared`，通过指定 driver 共享资源的容量与排队状态。
-共享范围由 driver 决定；构造时仅校验并复制配置，
-不访问后端，也不申请令牌。旧名称 `NewDistributed`、`Distributed`、`DistributedOptions`
-保留为已弃用的兼容入口或别名。
+后端作者可阅读独立的[自定义 driver 指南](docs/guides/drivers.zh-CN.md)、
+[协议取舍](docs/decisions/005-driver-contract.md)和[模块说明](MODULES.md)。
+Redis 与 PostgreSQL 是独立模块，各自 README 说明部署要求和故障边界。
 
-本地 `New(Config)` 和 `Permit` 保持原有语义。独立的 [memory 模块](driver/memory)
-可在单进程演示同一协议，但不提供持久存储或跨进程容量。
-
-Driver 提供 `Submit(ctx, Request)`、`Observe(ctx, Request)`、`Cancel(ctx, Request)`，
-以及 `Renew(ctx, LeaseRef)`、`Release(ctx, LeaseRef)`，均返回 `(Result, error)`。
-`LeaseRef{Request: original, ID: result.LeaseID}` 标识授予的租约。自定义 driver
-需实现这五个方法；早期 `Execute(ctx, Command)` 接口已移除。`Command` 仍作为
-driver 实现可以复用的状态机工具。
-
-`Shared.AcquireNFor(ctx, tenant, n)` 返回 `(*Lease, error)`。有界持久队列配合定期
-Observe 实现等待，租约需要显式 `Renew(ctx)` 与 `Release(ctx) error`。
-`Done()` 关闭或 `Valid()` 为 false 时应停止工作。获取时的 ctx 不撤销已交付租约；
-没有自动续租、业务重试，网络错误不授权执行工作。
-
-参见[契约与取舍](docs/decisions/005-driver-contract.md)和[模块说明](MODULES.md)。
-租约约束有效授权，不约束忽略过期后仍运行的物理工作，也不提供通用 fencing 或延迟 SLA。
-
-PostgreSQL 使用调用者持有的 `*sql.DB`，显式建表，以每资源行锁串行化，并在拿到锁后读取数据库时间。
-参见[重要取舍与已测试的切换模型](docs/decisions/006-postgres-driver.md)。
-
-Redis 使用调用者持有的 go-redis 客户端，每资源一个永久 key，以后端时间窗口保护快照 CAS。
-异步切换可能丢失已确认授权，参见 [Redis 示例与配置](driver/redis/README.zh-CN.md)和
-[重要取舍与故障模型](docs/decisions/007-redis-driver.md)。
+`NewShared` 构造时不访问后端，不接管连接。旧名称 `NewDistributed`、`Distributed`、
+`DistributedOptions` 保留为已弃用的兼容入口或别名。旧构造函数同样使用 NewShared 的
+零值默认规则；已有显式配置保持原样。

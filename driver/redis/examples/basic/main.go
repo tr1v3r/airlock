@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -31,8 +32,10 @@ func run(address string) error {
 		return err
 	}
 	limiter, err := airlock.NewShared(driver, airlock.SharedOptions{
-		Resource: "jobs", OperationTimeout: time.Second, PollInterval: 20 * time.Millisecond,
-		Config: airlock.ResourceConfig{Admission: airlock.Config{Capacity: 8, MaxQueued: 32, MaxQueuedPerTenant: 8}, LeaseTTL: 30 * time.Second, MaxWait: 10 * time.Second, SubmitWindow: 5 * time.Second, Retention: time.Minute, MaxRecords: 256},
+		Resource: "jobs",
+		Config: airlock.ResourceConfig{
+			Admission: airlock.Config{Capacity: 8, MaxQueued: 32, MaxQueuedPerTenant: 8},
+		},
 	})
 	if err != nil {
 		return err
@@ -45,14 +48,15 @@ func run(address string) error {
 	}
 	// Real work must stop when Done closes or Valid becomes false. Acquisition
 	// context cancellation does not stop work or release this delivered lease.
+	var workErr error
 	select {
 	case <-lease.Done():
-		return airlock.ErrLeaseLost
+		workErr = airlock.ErrLeaseLost
 	default:
 		fmt.Printf("admitted %d tokens\n", lease.Weight())
 	}
 	// Work has stopped before releasing. Use a fresh context for cleanup.
 	cleanup, cancelCleanup := context.WithTimeout(context.Background(), time.Second)
 	defer cancelCleanup()
-	return lease.Release(cleanup)
+	return errors.Join(workErr, lease.Release(cleanup))
 }
