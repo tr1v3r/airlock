@@ -200,6 +200,98 @@ func TestSharedClockAllowanceCancellationDuringBudgetCheck(t *testing.T) {
 	}
 }
 
+// delayedDeadlineContext models a caller timer notification becoming visible
+// during cleanup, after the backend has already observed the same deadline.
+// Its logical clock is advanced by the fixture, so no wall-clock sleep is needed.
+type delayedDeadlineContext struct {
+	context.Context
+	deadline time.Time
+}
+
+func (c delayedDeadlineContext) Deadline() (time.Time, bool) { return c.deadline, true }
+func (c delayedDeadlineContext) Err() error {
+	if errors.Is(context.Cause(c.Context), context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+	return c.Context.Err()
+}
+
+type deadlineOutcomeDriver struct {
+	clockStateDriver
+	expire     func()
+	observeErr error
+	cleanupErr error
+	observed   Result
+}
+
+func (d *deadlineOutcomeDriver) Observe(ctx context.Context, r Request) (Result, error) {
+	// Advance backend time to the immutable queue deadline. The real Transition
+	// must expire the queued request before the caller's timer is signalled.
+	d.offset = time.Until(r.WaitUntil)
+	result, err := d.clockStateDriver.Observe(ctx, r)
+	d.observed = result
+	return result, errors.Join(err, d.observeErr)
+}
+
+func (d *deadlineOutcomeDriver) Cancel(ctx context.Context, r Request) (Result, error) {
+	result, err := d.clockStateDriver.Cancel(ctx, r)
+	if d.expire != nil {
+		d.expire()
+	}
+	return result, errors.Join(err, d.cleanupErr)
+}
+
+func TestSharedExpiredResultPreservesCallerDeadline(t *testing.T) {
+	lostObserve := errors.New("observe transport response lost")
+	lostCleanup := errors.New("cleanup transport response lost")
+	for _, tc := range []struct {
+		name                   string
+		expire                 bool
+		observeErr, cleanupErr error
+	}{
+		{"caller deadline during cleanup", true, nil, nil},
+		{"caller deadline and cleanup failure", true, nil, lostCleanup},
+		{"live caller keeps lease lost", false, nil, nil},
+		{"transport error remains original", true, lostObserve, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base, cancel := context.WithCancelCause(context.Background())
+			defer cancel(context.Canceled)
+			deadline := time.Now().Add(20 * time.Second).UTC().Truncate(time.Millisecond)
+			ctx := delayedDeadlineContext{Context: base, deadline: deadline}
+			d := &deadlineOutcomeDriver{observeErr: tc.observeErr, cleanupErr: tc.cleanupErr}
+			if tc.expire {
+				d.expire = func() { cancel(context.DeadlineExceeded) }
+			}
+			o := sharedConcurrentOptions(16)
+			o.Config.Admission.Capacity = 1
+			o.Config.LeaseTTL = time.Minute // Holder survives the queued request's deadline.
+			c := clientNew(t, d, o)
+			holder := clientAcquire(t, c)
+			defer func() { _ = holder.Release(context.Background()) }()
+			lease, err := c.Acquire(ctx)
+			if d.observed.Status != Expired {
+				t.Fatalf("fixture did not observe backend expiry: %+v", d.observed)
+			}
+			wantLeaseLost := tc.observeErr == nil
+			wantDeadline := tc.expire && wantLeaseLost
+			if lease != nil || errors.Is(err, ErrLeaseLost) != wantLeaseLost || errors.Is(err, context.DeadlineExceeded) != wantDeadline {
+				t.Fatalf("lease=%v error=%v want leaseLost=%v deadline=%v", lease, err, wantLeaseLost, wantDeadline)
+			}
+			if tc.observeErr != nil && !errors.Is(err, tc.observeErr) || tc.cleanupErr != nil && !errors.Is(err, tc.cleanupErr) {
+				t.Fatalf("original operation/cleanup error lost: %v", err)
+			}
+			calls := d.commands()
+			if len(calls) != 4 || calls[1].Kind != Submit || calls[2].Kind != Observe || calls[3].Kind != Cancel {
+				t.Fatalf("unexpected cleanup sequence: %+v", calls)
+			}
+			if !calls[1].Request.WaitUntil.Equal(deadline) || calls[3].Request.ID != calls[1].Request.ID {
+				t.Fatal("queue deadline or cleanup identity changed")
+			}
+		})
+	}
+}
+
 func TestSharedClockAllowanceIsClientLocal(t *testing.T) {
 	d := &clockStateDriver{}
 	o := clockOptions()

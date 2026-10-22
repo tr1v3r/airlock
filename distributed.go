@@ -175,6 +175,13 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.options.OperationTimeout)
 		_, _, cleanupErr := d.execute(cleanup, func(ctx context.Context) (Result, error) { return d.driver.Cancel(ctx, r) })
 		cancel()
+		// The caller deadline may become visible during cleanup after the backend
+		// already reported expiry. Preserve both cancellation and the terminal fact.
+		if errors.Is(err, ErrLeaseLost) {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				err = errors.Join(ctxErr, err)
+			}
+		}
 		return nil, errors.Join(err, cleanupErr)
 	}
 }
