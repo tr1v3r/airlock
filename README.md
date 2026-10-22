@@ -165,6 +165,29 @@ See the [priority design tradeoffs](docs/decisions/003-local-priority.md) and
 [comparison results](docs/proposals/002-priority-experiment-results.md) for the
 fairness boundaries and utilization cost (documents in Chinese).
 
+## Isolating latency-sensitive work
+
+Weighted selection does not guarantee high-priority admission latency. For a
+fixed resource budget, compose independent instances: for example, reserve 4 of
+12 tokens for high-priority work and use the remaining 8 for normal/low groups.
+Their queues and protected heads are independent. Route using trusted identity;
+do not borrow reserved capacity or add a shared outer blocking gate.
+
+The [isolation example](examples/isolation/example.go) runs online work while all
+low-pool tokens remain held, and separates acquisition and execution deadlines.
+Queue timeout does not retry; cancellation after acquisition does not revoke a
+permit. Release only after the task actually stops using the resource.
+
+The tradeoffs are idle reserved capacity and earlier rejection when the high pool
+itself overloads. Request weights must fit their destination pool; replacing pools
+while old permits remain live can exceed the total budget. This does not isolate
+CPU, downstream services, or a shared connection pool, and is not a latency SLA.
+The [proposal](docs/proposals/003-high-priority-isolation.md) and
+[measurements](docs/proposals/003-isolation-experiment-results.md) (Chinese)
+evaluate composition without introducing a partitioning API.
+See the [isolation tradeoffs](docs/decisions/004-high-priority-isolation.md) for
+reservation costs, timeout/retry ownership, weight limits and migration boundaries.
+
 ## Usage and contract
 
 ```go
@@ -267,6 +290,7 @@ Run from `airlock/`:
 | [Multi-tenant weighted admission](examples/weighted/example.go) | `go run ./examples/weighted` |
 | [Immediate acquisition and fallback](examples/tryacquire/example.go) | `go run ./examples/tryacquire` |
 | [Priority selection order](examples/priority/example.go) | `go run ./examples/priority` |
+| [Reserved capacity for online work](examples/isolation/example.go) | `go run ./examples/isolation` |
 
 ```sh
 GOWORK=off go test -race ./...

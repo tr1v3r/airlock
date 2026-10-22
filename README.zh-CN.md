@@ -140,6 +140,22 @@ defer permit.Release()
 公平性边界与利用率代价见[优先级设计取舍](docs/decisions/003-local-priority.md)
 和[比较实验结果](docs/proposals/002-priority-experiment-results.md)。
 
+## 隔离有延迟要求的任务
+
+加权选择不能保证高组准入延迟。可以用独立实例划分固定资源预算：例如总共 12 个令牌，
+高组专用 4 个，中低组共享其余 8 个。两池队列和受保护队首互不影响。按可信身份路由，
+不借用保留容量，也不在两池之外再串一个共享的阻塞入口。
+
+[容量隔离示例](examples/isolation/example.go)在低组占满时执行在线任务，并区分申请等待期限
+与任务执行期限。排队超时不自动重试；申请成功后的 context 取消不会撤销 Permit。
+必须等任务实际停止使用受控资源后再 Release。
+
+代价是保留容量可能闲置，高组自身过载时也可能更早拒绝。请求权重必须适合目标池容量；
+旧 Permit 仍存活时直接换新池可能突破总预算。这不能隔离 CPU、下游服务或共享连接池，
+也不是延迟 SLA。参见[方案](docs/proposals/003-high-priority-isolation.md)和
+[实测报告](docs/proposals/003-isolation-experiment-results.md)；当前通过实例组合验证，未新增分区 API。
+保留容量成本、超时与重试归属、权重限制及迁移边界见[重要取舍](docs/decisions/004-high-priority-isolation.md)。
+
 ## 用法与契约
 
 ```go
@@ -221,6 +237,7 @@ GOWORK=off go test ./internal/comparison -run '^$' -bench BenchmarkAdmission -be
 | [多租户多令牌准入](examples/weighted/example.go) | `go run ./examples/weighted` |
 | [立即获取与降级](examples/tryacquire/example.go) | `go run ./examples/tryacquire` |
 | [优先级选择顺序](examples/priority/example.go) | `go run ./examples/priority` |
+| [在线任务保留容量](examples/isolation/example.go) | `go run ./examples/isolation` |
 
 ```sh
 GOWORK=off go test -race ./...
