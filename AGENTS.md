@@ -12,7 +12,8 @@ turns, and reserved group waiting budgets. Group shares count request selections
 not tokens or execution time; a protected request blocks all groups. Pool and Gate
 are no longer public APIs. Local permits have no lease. The distributed Driver contract, Transition state
 machine and explicit Lease client are implemented; memory is the reference
-driver. PostgreSQL and Redis are separate follow-up implementations.
+driver. PostgreSQL provides transactional persistence; Redis is a separate
+follow-up implementation.
 
 - Keep runtime dependencies limited to the standard library unless justified.
 - Define atomic acquisition, cancellation, weight validation, release accounting,

@@ -361,7 +361,7 @@ The local admission type is `Airlock`, constructed with `New(Config)`. Every
 The new `AcquireN(ctx, n)` and `AcquireNFor(ctx, tenantID, n)` acquire `n` tokens,
 returned together by `Permit.Release()`. `Config.Priority` optionally enables local
 priority groups without changing these signatures. Unlimited mode and dynamic capacity are not implemented. Distributed leases and the memory driver use a separate API;
-PostgreSQL and Redis remain planned. Existing keyed configurations with
+PostgreSQL has a separate driver; Redis remains planned. Existing keyed configurations with
 `Priority: nil` (or omitted) retain single-group behavior. The new `Config.Priority`
 field requires callers using unkeyed `Config` literals to migrate to keyed fields.
 
@@ -390,12 +390,12 @@ when a later acquisition fails. Airlock does not execute jobs or track completio
 The [weighted, priority-aware admission and optional drivers proposal](docs/proposals/002-weighted-priority-drivers.md) describes local, Redis, and PostgreSQL support. This branch implements local phases 1 and 2: atomic multi-token acquisition,
 priority groups with tenant round-robin, reserved waiting budgets, and head-request
 protection. The driver contract, lease client and memory reference are implemented in this PR;
-PostgreSQL and Redis follow separately. This does not indicate a tagged release.
+PostgreSQL is provided separately; Redis follows next. This does not indicate a tagged release.
 
 ## Distributed leases (driver contract and memory)
 
-This branch implements the driver protocol and `NewDistributed`; PostgreSQL and
-Redis remain planned separate drivers. Local `New(Config)` and `Permit` are unchanged.
+This branch implements the driver protocol, `NewDistributed`, and the independent
+[memory](driver/memory) and [PostgreSQL](driver/postgres) drivers. Redis remains planned. Local `New(Config)` and `Permit` are unchanged.
 Use the independent [memory module](driver/memory) to exercise the same protocol
 in one process. It does not provide durable storage or cross-process capacity.
 
@@ -408,3 +408,7 @@ no automatic renewal or business retry. Network errors never authorize work.
 See the [contract and tradeoffs](docs/decisions/005-driver-contract.md) and
 [module guide](MODULES.md). Leases bound valid allocations, not physical work
 that ignores expiry; they do not provide generic fencing or a latency SLA.
+
+PostgreSQL uses caller-owned `*sql.DB`, explicit schema setup, per-resource row
+locks and database time after locking. See its [tradeoffs and tested failover
+model](docs/decisions/006-postgres-driver.md).
