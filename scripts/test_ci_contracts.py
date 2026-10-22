@@ -154,6 +154,41 @@ class InstallWrapperTests(unittest.TestCase):
         self.assertIn("Unexpected selected version", result.stderr)
 
 
+class CompatibilityMatrixTests(unittest.TestCase):
+    def test_only_postgres_is_excluded_from_go124(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        step = workflow.split("      - name: Test independent modules on each supported toolchain and OS\n", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("MATRIX_GO: ${{ matrix.go }}", step)
+        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        for version in ("1.24.x", "1.25.x", "oldstable", "stable"):
+            with self.subTest(version=version), tempfile.TemporaryDirectory(prefix="airlock-compatibility-") as temp:
+                root = pathlib.Path(temp)
+                for module in ("memory", "postgres", "redis"):
+                    directory = root / "driver" / module
+                    directory.mkdir(parents=True)
+                    (directory / "go.mod").write_text("module example.com/" + module + "\n")
+                log = root / "go.jsonl"
+                fake = root / "go"
+                fake.write_text(f"#!{sys.executable}\n" + textwrap.dedent('''
+                    import json, os, pathlib, sys
+                    with open(os.environ["FAKE_GO_LOG"], "a") as out:
+                        out.write(json.dumps({"module": pathlib.Path.cwd().name, "command": sys.argv[1]}) + "\\n")
+                '''))
+                fake.chmod(0o755)
+                env = dict(os.environ, PATH=f"{root}{os.pathsep}{os.environ['PATH']}",
+                           MATRIX_GO=version, FAKE_GO_LOG=str(log))
+                result = subprocess.run(["bash", "-euo", "pipefail", "-c", script],
+                                        cwd=root, env=env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                calls = [json.loads(line) for line in log.read_text().splitlines()]
+                expected_modules = ("memory", "redis") if version == "1.24.x" else ("memory", "postgres", "redis")
+                self.assertEqual(calls, [{"module": module, "command": command}
+                                        for module in expected_modules for command in ("test", "vet")])
+                self.assertEqual("Skipping driver/postgres on Go 1.24" in result.stdout, version == "1.24.x")
+                if version == "1.24.x":
+                    self.assertIn("security fixes require Go 1.25+", result.stdout)
+
+
 class StressBudgetTests(unittest.TestCase):
     def test_model_and_heavy_shared_are_not_multiplied_by_local_schedule(self):
         for lane, count, cpus, fuzztime, stress in (

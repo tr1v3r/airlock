@@ -21,7 +21,7 @@ claiming independent-module validation.
 
 | Lane | Scope and assertions | Trigger / budget |
 | --- | --- | --- |
-| Compatibility | Root + memory/PostgreSQL/Redis separately: shuffled tests and vet; root local examples | Every PR/push; Linux Go 1.24/1.25/oldstable/stable, macOS/Windows stable; no automatic toolchain upgrade |
+| Compatibility | Root + memory/PostgreSQL/Redis separately: shuffled tests and vet; root local examples | Every PR/push; Linux Go 1.24/1.25/oldstable/stable, macOS/Windows stable; PostgreSQL explicitly excluded only on 1.24 (minimum 1.25); no automatic toolchain upgrade |
 | Quality | Formatting all tracked Go; root module/dependency guard, root lint, workflow syntax; Python regression tests | Every PR/push; 15-minute job limit |
 | Race / coverage | Root uncached race, CPU 1/2/4 × ten repetitions, per-file and total 95% statements | Every PR/push; 15-minute job; excludes examples/comparison/conformance helper from coverage |
 | Independent drivers | `driver-check.sh`: tidy diff, verify, vet, race and per-file coverage per module; memory hello/lifecycle executable examples | Every PR/push; stable Linux; PostgreSQL ExampleNew is compile-only (no Output assertion) |
@@ -43,6 +43,22 @@ at a reachable upstream candidate before publication.
 安装任务只在 fork PR / merge-group 临时提交时按条件跳过；这些运行不构成发布安装验证。
 其他必需任务不能跳过，失败与取消不能变绿。扩展任务只在每周/手动运行；对应 skip 条件由
 Python 回归测试覆盖。每周定时任务使用仓库默认分支的工作流。
+
+### Intentional PostgreSQL toolchain boundary
+
+Core, memory and Redis retain Go 1.24 support. PostgreSQL requires Go 1.25:
+pgx v5.9.2 and x/text v0.41.0 both require it. The pgx upgrade addresses
+GO-2026-5004 (SQL injection); retaining the vulnerable version merely to preserve
+Go 1.24 would not be an acceptable compatibility workaround. CI prints the reason
+and skips **only** PostgreSQL in the 1.24 matrix entry, while testing memory and
+Redis there as usual. PostgreSQL remains covered on 1.25 and newer matrix entries,
+and by the stable-toolchain race, security and real-backend jobs. CI Gate needs no
+extra skip exception because the compatibility job itself still runs and succeeds.
+
+core、memory、Redis 保持 Go 1.24；PostgreSQL 因 pgx SQL 注入安全修复升级依赖，
+最低版本有意提高到 Go 1.25。1.24 矩阵只跳过 PostgreSQL 并打印原因，不跳过另外两个
+模块或整个 job；PostgreSQL 在 1.25 及更新矩阵、race、安全扫描和真实后端任务继续验证。
+Python 回归执行实际 workflow 中的循环，断言各版本测试的模块集合，防止静默漏测。
 
 ## Reproducible commands
 

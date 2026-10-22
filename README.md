@@ -21,6 +21,11 @@ standard library; remote driver dependencies are installed separately.
 
 ## Installation
 
+Core, memory and Redis require **Go 1.24+**. The PostgreSQL module requires
+**Go 1.25+**: its upgraded pgx and x/text dependencies need that toolchain to
+include the pgx SQL-injection security fix. This is an intentional module-specific
+support change; it does not raise the core, memory or Redis minimum.
+
 ```sh
 go get github.com/tr1v3r/airlock@dev
 # Install only the backend you use:
@@ -360,7 +365,9 @@ only explicitly inapplicable installation/extended jobs may be skipped (see the
 - Tests run without cache and in shuffled order on Linux (Go 1.24, 1.25,
   previous stable, and stable), plus macOS and Windows (stable). `GOTOOLCHAIN=local`
   prevents automatic toolchain upgrades from hiding minimum-version failures.
-  Root and all three independent driver modules run separately on each entry.
+  Root and independent driver modules run separately on each entry; only PostgreSQL
+  is explicitly skipped on Go 1.24 because its security-updated dependencies require
+  Go 1.25+. Memory and Redis are still tested on 1.24.
   Local examples execute on every entry; Shared memory examples run in the Linux
   driver job, Redis's example uses the integration service, and PostgreSQL's
   `ExampleNew` is compile-checked (it has no Output assertion).

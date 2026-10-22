@@ -18,6 +18,10 @@
 
 ## 安装
 
+core、memory 与 Redis 仍要求 **Go 1.24+**。PostgreSQL 模块要求 **Go 1.25+**：
+为纳入 pgx SQL 注入安全修复，升级后的 pgx 和 x/text 依赖需要该工具链。
+这是有意的分模块支持范围变更，不提高 core、memory 或 Redis 的最低版本。
+
 ```sh
 go get github.com/tr1v3r/airlock@dev
 # 只安装实际使用的后端：
@@ -302,7 +306,8 @@ PR、推送到 `dev`/`main`、合并队列、手动触发和每周扫描均运�
 - 检查模块清单整洁性、校验和，并保证运行时仅依赖标准库。
 - Linux 覆盖 Go 1.24、1.25、上一稳定版及稳定版，macOS/Windows 覆盖稳定版。
   测试禁用缓存并随机排序，`GOTOOLCHAIN=local` 防止自动升级工具链掩盖最低版本不兼容。
-  每个矩阵任务分别测试根模块与三个独立 driver 模块。
+  每个矩阵任务分别测试根模块与独立 driver；仅 Go 1.24 项明确跳过 PostgreSQL，
+  因其安全更新后的依赖要求 Go 1.25+。memory 与 Redis 仍在 1.24 测试。
   本地示例在每个矩阵执行；Shared memory 示例在 Linux driver 任务运行，
   Redis 示例使用集成测试服务；PostgreSQL 的 `ExampleNew` 只检查编译（没有 Output 断言）。
 - Linux 运行 race 检测，并在 CPU 数 1/2/4 下各重复十轮乱序测试。
