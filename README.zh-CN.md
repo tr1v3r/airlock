@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-面向 Go 1.24+ 的多令牌、按租户并发准入库。
+面向 Go 1.25+ 的多令牌、按租户并发准入库。
 提供租户内 FIFO、等待租户间轮转、可选的优先级组加权选择与独立等待额度，以及全局和每租户排队上限。
 运行时仅依赖标准库；goroutine、结果、错误和任务完成由调用方管理。
 
@@ -18,9 +18,9 @@
 
 ## 安装
 
-core、memory 与 Redis 仍要求 **Go 1.24+**。PostgreSQL 模块要求 **Go 1.25+**：
-为纳入 pgx SQL 注入安全修复，升级后的 pgx 和 x/text 依赖需要该工具链。
-这是有意的分模块支持范围变更，不提高 core、memory 或 Redis 的最低版本。
+所有模块统一要求 **Go 1.25+**。PostgreSQL 模块因 pgx/x-text 依赖升级修复可达
+安全漏洞（修复版本需要 Go 1.25）而率先触及该下限；core、memory 与 Redis 随后
+采用同一最低版本，仓库保持单一工具链要求与统一 CI 矩阵。
 
 ```sh
 go get github.com/tr1v3r/airlock@dev
@@ -304,10 +304,9 @@ PR、推送到 `dev`/`main`、合并队列、手动触发和每周扫描均运�
   质量检查固定使用 Go 1.27.0 与 golangci-lint v2.13.2，需配套升级并验证，
   避免分析器尚未支持新版 Go 的导出格式。兼容性测试和漏洞扫描仍跟踪稳定版 Go。
 - 检查模块清单整洁性、校验和，并保证运行时仅依赖标准库。
-- Linux 覆盖 Go 1.24、1.25、上一稳定版及稳定版，macOS/Windows 覆盖稳定版。
+- Linux 覆盖 Go 1.25、上一稳定版及稳定版，macOS/Windows 覆盖稳定版。
   测试禁用缓存并随机排序，`GOTOOLCHAIN=local` 防止自动升级工具链掩盖最低版本不兼容。
-  每个矩阵任务分别测试根模块与独立 driver；仅 Go 1.24 项明确跳过 PostgreSQL，
-  因其安全更新后的依赖要求 Go 1.25+。memory 与 Redis 仍在 1.24 测试。
+  每个矩阵任务分别测试根模块与全部独立 driver，无任何模块跳过。
   本地示例在每个矩阵执行；Shared memory 示例在 Linux driver 任务运行，
   Redis 示例使用集成测试服务；PostgreSQL 的 `ExampleNew` 只检查编译（没有 Output 断言）。
 - Linux 运行 race 检测，并在 CPU 数 1/2/4 下各重复十轮乱序测试。

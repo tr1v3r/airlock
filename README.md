@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A Go 1.24+ library for weighted, tenant-aware concurrency admission.
+A Go 1.25+ library for weighted, tenant-aware concurrency admission.
 It provides FIFO waiting within each tenant, round-robin selection across waiting
 tenants, optional priority groups with weighted selection and reserved waiting
 budgets, and global/per-tenant queue limits. Runtime dependencies are standard
@@ -21,10 +21,10 @@ standard library; remote driver dependencies are installed separately.
 
 ## Installation
 
-Core, memory and Redis require **Go 1.24+**. The PostgreSQL module requires
-**Go 1.25+**: its upgraded pgx and x/text dependencies need that toolchain to
-include the pgx SQL-injection security fix. This is an intentional module-specific
-support change; it does not raise the core, memory or Redis minimum.
+All modules require **Go 1.25+**. The PostgreSQL module forced this floor when
+its pgx and x/text dependencies were upgraded over reachable security advisories
+(the fixed versions need Go 1.25); core, memory and Redis adopted the same
+minimum so the repository ships one toolchain requirement and a single CI matrix.
 
 ```sh
 go get github.com/tr1v3r/airlock@dev
@@ -362,12 +362,10 @@ only explicitly inapplicable installation/extended jobs may be skipped (see the
   them together because analyzer support can lag Go export-format changes.
   Compatibility tests and vulnerability scans still track stable Go.
 - Module tidiness/checksums and standard-library-only runtime dependencies are enforced.
-- Tests run without cache and in shuffled order on Linux (Go 1.24, 1.25,
+- Tests run without cache and in shuffled order on Linux (Go 1.25,
   previous stable, and stable), plus macOS and Windows (stable). `GOTOOLCHAIN=local`
   prevents automatic toolchain upgrades from hiding minimum-version failures.
-  Root and independent driver modules run separately on each entry; only PostgreSQL
-  is explicitly skipped on Go 1.24 because its security-updated dependencies require
-  Go 1.25+. Memory and Redis are still tested on 1.24.
+  Root and independent driver modules run separately on every entry.
   Local examples execute on every entry; Shared memory examples run in the Linux
   driver job, Redis's example uses the integration service, and PostgreSQL's
   `ExampleNew` is compile-checked (it has no Output assertion).
