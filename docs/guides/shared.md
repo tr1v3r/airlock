@@ -101,9 +101,10 @@ external writes. Such writes need application-specific downstream protection.
 
 ## 4. Adjust advanced settings only when needed
 
-Only **zero** selects a default in `NewShared`; explicit nonzero values remain
-unchanged, and invalid values still fail validation. No defaults apply to direct
-Driver requests. The deprecated `NewDistributed` constructor forwards to the same
+For the protocol and polling settings below, **zero** selects a default in
+`NewShared`; explicit nonzero values remain unchanged, and invalid values still
+fail validation. `ClockSkewAllowance` is opt-in: zero reserves no skew budget.
+No defaults apply to direct Driver requests. The deprecated `NewDistributed` constructor forwards to the same
 implementation and uses the same defaults.
 
 | Setting | Default | Meaning |
@@ -115,6 +116,7 @@ implementation and uses the same defaults.
 | `Config.MaxRecords` | 10000 | Bound on active, queued and retained terminal records together |
 | `OperationTimeout` | 5s | Maximum duration of each client-side backend call |
 | `PollInterval` | 50ms | Delay between queries while queued |
+| `ClockSkewAllowance` | 0 | Opt-in budget for a known client/backend clock-offset bound |
 
 Terminal records remain until both the submission window and retention requirement
 permit removal. A full history can return `ErrHistoryFull` even when token capacity
@@ -128,7 +130,46 @@ Defaults are filled before requests reach the backend. Existing resources retain
 their configuration: upgrading and omitting previously explicit, different values
 will yield `ErrConfigConflict`, not an online policy migration. Keep the existing
 explicit policy when upgrading, or introduce a distinct resource with a planned
-cutover. OperationTimeout and PollInterval are client-local settings.
+cutover. OperationTimeout, PollInterval and ClockSkewAllowance are client-local settings.
+
+### Reserve an explicit clock-skew budget for remote clients
+
+Without an allowance, a client clock ahead of the backend by more than the time
+spent delivering the command can repeatedly receive `ErrInvalidRequest`: its
+absolute submission/waiting deadlines exceed the backend's maximum windows.
+Increasing those windows alone does not remove the offset. Choose an allowance
+from a **known deployment clock-offset bound**, not a universal recommended value:
+
+```go
+options.ClockSkewAllowance = 200 * time.Millisecond // Only if this bounds your deployment's skew.
+```
+
+Let the allowance be `A`. Zero keeps the previous construction behavior exactly.
+A positive allowance must be whole milliseconds and satisfy both
+`2*A < Config.SubmitWindow` and `2*A < Config.MaxWait` after defaults resolve;
+otherwise construction returns `ErrInvalidConfig`. The client constructs:
+
+```text
+SubmitUntil = floor_ms(clientNow + SubmitWindow - A)
+WaitUntil   = floor_ms(min(clientNow + MaxWait, callerDeadline) - A)
+```
+
+The caller deadline term is omitted when absent. This also shortens an earlier
+caller deadline; it never extends how long the caller may wait. If a positive
+allowance consumes the entire local waiting budget, `Acquire` returns
+`ErrLeaseLost` without backend I/O. This does not mean `ctx` itself has expired;
+an already cancelled context still returns its own error. For clocks within
+`±A`, the backend's effective windows can be as short as `window - 2*A`, before
+network/processing time is deducted. A short caller deadline may still expire at
+the backend even if the local preflight succeeds.
+
+The setting is not clock synchronization or a skew detector. With insufficient
+budget, the backend can still reject or expire a request; errors never authorize
+work and no fresh identity is automatically retried. The request ID remains bound
+to its adjusted submission deadline, and backend validation, tombstones and GC are
+unchanged. Lease Remaining/RTT accounting is unchanged: this budget does not add
+lease time, handle arbitrary clock jumps or network delay, or provide fencing.
+See [ADR 009](../decisions/009-clock-skew.md).
 
 For protocol internals, use the separate [custom driver guide](drivers.md).
 For the choices behind these defaults, see [ADR 008](../decisions/008-shared-usability.md).

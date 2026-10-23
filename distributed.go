@@ -23,6 +23,12 @@ type SharedOptions struct {
 	OperationTimeout time.Duration
 	// PollInterval spaces observations while queued; zero defaults to 50ms.
 	PollInterval time.Duration
+	// ClockSkewAllowance reserves time for a known bound on client/backend clock
+	// offset. Zero preserves the original deadlines (no skew allowance). Positive
+	// values must be whole milliseconds and less than half both SubmitWindow and
+	// MaxWait. This client-local setting shortens submission and waiting deadlines,
+	// including an earlier caller deadline; it does not extend lease validity.
+	ClockSkewAllowance time.Duration
 }
 
 // Shared coordinates admission to a resource through an injected Driver.
@@ -45,6 +51,12 @@ func NewShared(d Driver, options SharedOptions) (*Shared, error) {
 	}
 	if err := validConfig(options.Config); err != nil {
 		return nil, err
+	}
+	allowance := options.ClockSkewAllowance
+	// Check each upper bound before subtraction; never multiply an untrusted
+	// duration by two (which could overflow). Both windows need room for +/-skew.
+	if allowance < 0 || allowance%time.Millisecond != 0 || allowance >= options.Config.SubmitWindow || allowance >= options.Config.MaxWait || allowance >= options.Config.SubmitWindow-allowance || allowance >= options.Config.MaxWait-allowance {
+		return nil, ErrInvalidConfig
 	}
 	data, _ := json.Marshal(options)
 	var copied SharedOptions
@@ -103,7 +115,8 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 		return nil, err
 	}
 	now := time.Now()
-	r := NewRequest(now.Add(d.options.Config.SubmitWindow))
+	allowance := d.options.ClockSkewAllowance
+	r := NewRequest(now.Add(d.options.Config.SubmitWindow - allowance))
 	r.Resource = d.options.Resource
 	r.Config = d.options.Config
 	r.Tenant = tenant
@@ -111,6 +124,17 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 	r.WaitUntil = now.Add(r.Config.MaxWait).UTC().Truncate(time.Millisecond)
 	if deadline, ok := ctx.Deadline(); ok && deadline.Before(r.WaitUntil) {
 		r.WaitUntil = deadline.UTC().Truncate(time.Millisecond)
+	}
+	if allowance > 0 {
+		r.WaitUntil = r.WaitUntil.Add(-allowance)
+		// A short caller deadline can consume the entire conservative waiting
+		// budget. No command has been sent, so there is nothing to cancel.
+		if !time.Now().Before(r.WaitUntil) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return nil, ErrLeaseLost
+		}
 	}
 	if err := validRequest(r); err != nil {
 		return nil, err
@@ -151,6 +175,13 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.options.OperationTimeout)
 		_, _, cleanupErr := d.execute(cleanup, func(ctx context.Context) (Result, error) { return d.driver.Cancel(ctx, r) })
 		cancel()
+		// The caller deadline may become visible during cleanup after the backend
+		// already reported expiry. Preserve both cancellation and the terminal fact.
+		if errors.Is(err, ErrLeaseLost) {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				err = errors.Join(ctxErr, err)
+			}
+		}
 		return nil, errors.Join(err, cleanupErr)
 	}
 }

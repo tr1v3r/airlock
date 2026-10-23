@@ -5,16 +5,26 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 image=${AIRLOCK_REDIS_IMAGE:-redis:7-alpine}
 prefix="airlock-redis-failover-$$"
-primary="$prefix-primary"
-replica="$prefix-replica"
-fixture_dir=$(mktemp -d)
+primary_name="$prefix-primary"
+replica_name="$prefix-replica"
+primary='' replica='' network=''
+fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/airlock-redis-failover.XXXXXX")
+fixture_dir=$(cd "$fixture_dir" && pwd -P)
 cleanup() {
-  docker unpause "$replica" >/dev/null 2>&1 || true
-  docker rm -f "$primary" "$replica" >/dev/null 2>&1 || true
-  docker network rm "$prefix" >/dev/null 2>&1 || true
-  rm -rf "$fixture_dir"
+  # Never unpause or delete a colliding name that this invocation did not create.
+  if [[ -n "$replica" ]]; then
+    docker unpause "$replica" >/dev/null 2>&1 || true
+    docker rm -f "$replica" >/dev/null 2>&1 || true
+  fi
+  [[ -z "$primary" ]] || docker rm -f "$primary" >/dev/null 2>&1 || true
+  [[ -z "$network" ]] || docker network rm "$network" >/dev/null 2>&1 || true
+  if [[ "$fixture_dir" = /*/airlock-redis-failover.* && -d "$fixture_dir" ]]; then
+    rm -rf -- "${fixture_dir:?}"
+  fi
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 ready() {
   for ((i=0;i<120;i++)); do
     if docker exec "$1" redis-cli ping 2>/dev/null | grep -q PONG; then return; fi
@@ -23,12 +33,15 @@ ready() {
   docker logs "$1"
   return 1
 }
-docker network create "$prefix" >/dev/null
-docker run --rm -d --name "$primary" --network "$prefix" -p 127.0.0.1::6379 \
-  "$image" redis-server --save '' --appendonly no --maxmemory-policy noeviction >/dev/null
+created=$(docker network create "$prefix")
+network=$created
+created=$(docker run --rm -d --name "$primary_name" --network "$network" -p 127.0.0.1::6379 \
+  "$image" redis-server --save '' --appendonly no --maxmemory-policy noeviction)
+primary=$created
 ready "$primary"
-docker run --rm -d --name "$replica" --network "$prefix" -p 127.0.0.1::6379 \
-  "$image" redis-server --save '' --appendonly no --replicaof "$primary" 6379 >/dev/null
+created=$(docker run --rm -d --name "$replica_name" --network "$network" -p 127.0.0.1::6379 \
+  "$image" redis-server --save '' --appendonly no --replicaof "$primary_name" 6379)
+replica=$created
 ready "$replica"
 synced=false
 for ((i=0;i<120;i++)); do

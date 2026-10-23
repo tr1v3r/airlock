@@ -5,6 +5,10 @@ updates:
     schedule:
       interval: weekly
   - package-ecosystem: gomod
-    directory: /
+    directories:
+      - /
+      - /driver/memory
+      - /driver/postgres
+      - /driver/redis
     schedule:
       interval: weekly

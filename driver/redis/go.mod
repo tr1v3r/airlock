@@ -1,11 +1,11 @@
 module github.com/tr1v3r/airlock/driver/redis
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/redis/go-redis/v9 v9.22.0
-	github.com/tr1v3r/airlock v0.0.0-20261022183308-b95fb28be3a7
+	github.com/tr1v3r/airlock v0.0.0-20261022202251-eeba969c9ef0
 )
 
 require (
