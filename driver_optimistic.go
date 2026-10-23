@@ -10,7 +10,10 @@ import (
 // Before is exclusive; zero means no upper bound. NotBefore prevents publication
 // after a backward clock jump. A miss requires a fresh read and recomputation.
 // Transport errors are unknown outcomes, never compare-and-swap conflicts.
-type CommitWindow struct{ NotBefore, Before time.Time }
+type CommitWindow struct {
+	// NotBefore is inclusive; Before is exclusive and zero means no upper bound.
+	NotBefore, Before time.Time
+}
 
 // Allows reports whether a backend time is inside the publication window.
 func (w CommitWindow) Allows(now time.Time) bool {

@@ -1,6 +1,8 @@
 // Package memory provides an in-process reference for Airlock's durable protocol.
 // Use it for Shared API tests and demos; use airlock.New for ordinary local admission.
 // It simulates leases and recovery, not network partitions or durable storage.
+// All operations follow airlock.Driver: reuse the original request, disregard
+// results on error, and remember that cancellation can follow a committed change.
 package memory
 
 import (
@@ -11,16 +13,22 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
+// resource holds one volatile protocol snapshot and its serialization gate.
 type resource struct {
-	gate     chan struct{}
+	// gate serializes transitions for this resource with context-aware waiting.
+	gate chan struct{}
+	// snapshot is the last committed opaque state; gate protects access.
 	snapshot []byte
 }
 
 // Driver owns volatile resource snapshots. Independent instances do not share
 // capacity. Resource configurations remain allocated for the driver's lifetime;
-// terminal request records are reclaimed by subsequent operations. Do not copy.
+// terminal request records are reclaimed by subsequent operations. It is safe
+// for concurrent use. Do not copy. Methods require non-nil contexts.
 type Driver struct {
-	mu        sync.Mutex
+	// mu protects resource lookup and lazy allocation, not individual transitions.
+	mu sync.Mutex
+	// resources retains independent per-resource gates and snapshots for this driver's lifetime.
 	resources map[string]*resource
 }
 
@@ -64,6 +72,7 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 	return result, err
 }
 
+// Verify the reference backend implements the public Driver contract.
 var _ airlock.Driver = (*Driver)(nil)
 
 // Submit atomically submits the whole request without refreshing an existing lease.

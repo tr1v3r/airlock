@@ -58,13 +58,19 @@ func Run(t *testing.T, factory func(*testing.T) airlock.Driver) {
 	}
 }
 
+// harness binds one backend, isolated resource and protocol configuration.
 type harness struct {
-	t        *testing.T
-	driver   airlock.Driver
+	// t owns assertions and backend cleanup for this isolated subtest.
+	t *testing.T
+	// driver is the backend under conformance testing.
+	driver airlock.Driver
+	// resource uniquely isolates this subtest from other backend users.
 	resource string
-	cfg      airlock.ResourceConfig
+	// cfg supplies the immutable policy used for requests in this subtest.
+	cfg airlock.ResourceConfig
 }
 
+// request creates a fresh identity with deadlines inside the configured backend windows.
 func (h *harness) request(tenant string, weight int) airlock.Request {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	r := airlock.NewRequest(now.Add(h.cfg.SubmitWindow - time.Millisecond))
@@ -73,6 +79,7 @@ func (h *harness) request(tenant string, weight int) airlock.Request {
 	return r
 }
 
+// execute invokes one bounded backend operation, allowing a larger bound in stress mode.
 func (h *harness) execute(kind airlock.Operation, request airlock.Request, lease string) (airlock.Result, error) {
 	timeout := 5 * time.Second
 	if os.Getenv("AIRLOCK_STRESS") == "1" {
@@ -85,6 +92,7 @@ func (h *harness) execute(kind airlock.Operation, request airlock.Request, lease
 	return Invoke(ctx, h.driver, airlock.Command{Kind: kind, Request: request, LeaseID: lease})
 }
 
+// must requires the expected successful status and validates grant accounting.
 func (h *harness) must(kind airlock.Operation, request airlock.Request, lease string, status airlock.Status) airlock.Result {
 	h.t.Helper()
 	result, err := h.execute(kind, request, lease)
@@ -100,6 +108,7 @@ func (h *harness) must(kind airlock.Operation, request airlock.Request, lease st
 	return result
 }
 
+// wantError requires a specific error identity while preserving the returned protocol result.
 func (h *harness) wantError(kind airlock.Operation, request airlock.Request, lease string, want error) airlock.Result {
 	h.t.Helper()
 	result, err := h.execute(kind, request, lease)
@@ -109,6 +118,7 @@ func (h *harness) wantError(kind airlock.Operation, request airlock.Request, lea
 	return result
 }
 
+// idempotency verifies stable grants, immutable request identity and at-most-once release accounting.
 func idempotency(h *harness) {
 	r := h.request("a", 2)
 	first := h.must(airlock.Submit, r, "", airlock.Granted)
@@ -145,6 +155,7 @@ func idempotency(h *harness) {
 	h.must(airlock.Observe, third, "", airlock.Granted)
 }
 
+// cancelBeforeSubmit verifies tombstones prevent late submissions from acquiring capacity.
 func cancelBeforeSubmit(h *harness) {
 	r := h.request("a", 3)
 	h.must(airlock.Cancel, r, "", airlock.Cancelled)
@@ -158,6 +169,7 @@ func cancelBeforeSubmit(h *harness) {
 	h.must(airlock.Submit, h.request("c", 3), "", airlock.Granted)
 }
 
+// weightValidation checks invalid weights leave full capacity available.
 func weightValidation(h *harness) {
 	for _, weight := range []int{-1, 0, 4} {
 		want := airlock.ErrInvalidWeight
@@ -169,6 +181,7 @@ func weightValidation(h *harness) {
 	h.must(airlock.Submit, h.request("b", h.cfg.Admission.Capacity), "", airlock.Granted)
 }
 
+// protectedHead verifies small requests cannot bypass a selected whole-weight request.
 func protectedHead(h *harness) {
 	holder := h.request("holder", 2)
 	grant := h.must(airlock.Submit, holder, "", airlock.Granted)
@@ -185,6 +198,7 @@ func protectedHead(h *harness) {
 	h.must(airlock.Observe, small, "", airlock.Granted)
 }
 
+// queueBounds checks global/tenant limits and retained rejection outcomes.
 func queueBounds(h *harness) {
 	h.cfg.Admission.MaxQueued = 2
 	h.cfg.Admission.MaxQueuedPerTenant = 1
@@ -203,6 +217,7 @@ func queueBounds(h *harness) {
 	h.must(airlock.Submit, h.request("c", 1), "", airlock.Queued)
 }
 
+// groupBounds verifies reserved group waiting budgets and per-tenant bounds.
 func groupBounds(h *harness) {
 	h.cfg.Admission.MaxQueued = 4
 	h.cfg.Admission.MaxQueuedPerTenant = 1
@@ -221,6 +236,7 @@ func groupBounds(h *harness) {
 	h.must(airlock.Submit, h.request("h3", 1), "", airlock.Queued)
 }
 
+// priorityRotation verifies weighted group turns are independent of observation frequency.
 func priorityRotation(h *harness) {
 	h.cfg.Admission.Capacity = 1
 	h.cfg.Admission.Priority = &airlock.PriorityPolicy{
@@ -257,6 +273,7 @@ func priorityRotation(h *harness) {
 	}
 }
 
+// tenantRotation checks FIFO round-robin order after a tenant leaves and rejoins.
 func tenantRotation(h *harness) {
 	h.cfg.Admission.Capacity = 1
 	holder := h.request("holder", 1)
@@ -275,6 +292,7 @@ func tenantRotation(h *harness) {
 	}
 }
 
+// selectedCancel verifies cancellation does not refund a consumed group selection turn.
 func selectedCancel(h *harness) {
 	h.cfg.Admission.Priority = &airlock.PriorityPolicy{
 		Groups:       []airlock.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 8}, {Name: "low", Turns: 1, MaxQueued: 8}},
@@ -294,6 +312,7 @@ func selectedCancel(h *harness) {
 	}
 }
 
+// queueExpiry checks deadline expiry frees waiting space without reviving the request.
 func queueExpiry(h *harness) {
 	h.cfg.MaxWait = 300 * time.Millisecond
 	h.cfg.Admission.MaxQueued = 1
@@ -308,6 +327,7 @@ func queueExpiry(h *harness) {
 	h.must(airlock.Submit, h.request("b", 3), "", airlock.Queued)
 }
 
+// leaseExpiry verifies renewal identity, capacity reclamation and terminal release behavior.
 func leaseExpiry(h *harness) {
 	h.cfg.LeaseTTL = 300 * time.Millisecond
 	r := h.request("a", 3)
@@ -327,6 +347,7 @@ func leaseExpiry(h *harness) {
 	h.must(airlock.Observe, waiting, "", airlock.Granted)
 }
 
+// historyGC verifies live records survive GC and terminal retention prevents premature ID reuse.
 func historyGC(h *harness) {
 	h.cfg.MaxRecords = 1
 	h.cfg.SubmitWindow = 300 * time.Millisecond
@@ -344,12 +365,14 @@ func historyGC(h *harness) {
 	h.wantError(airlock.Submit, r, "", airlock.ErrSubmitExpired)
 }
 
+// sleepUntil waits only when a conformance deadline is still in the future.
 func sleepUntil(deadline time.Time) {
 	if delay := time.Until(deadline); delay > 0 {
 		time.Sleep(delay)
 	}
 }
 
+// concurrentAdmission checks weighted capacity and eventual completion across concurrent tenants.
 func concurrentAdmission(h *harness) {
 	h.cfg.Admission.Capacity = 7
 	const clients = 24

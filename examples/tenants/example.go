@@ -1,3 +1,4 @@
+// Command tenants demonstrates concurrent work under named-tenant admission.
 // Run with: go run ./examples/tenants
 package main
 
@@ -10,6 +11,7 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
+// run demonstrates concurrent work under named-tenant admission.
 func run(ctx context.Context) error {
 	g, err := airlock.New(airlock.Config{
 		Capacity: 2, MaxQueued: 8, MaxQueuedPerTenant: 4,
@@ -37,6 +39,7 @@ func run(ctx context.Context) error {
 	return nil
 }
 
+// main runs the tenants admission example.
 func main() {
 	if err := run(context.Background()); err != nil {
 		log.Fatal(err)

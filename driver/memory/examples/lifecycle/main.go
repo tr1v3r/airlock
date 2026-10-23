@@ -13,12 +13,14 @@ import (
 	"github.com/tr1v3r/airlock/driver/memory"
 )
 
+// main runs the application-owned lease lifecycle example.
 func main() {
 	if err := demo(); err != nil {
 		log.Fatal(err)
 	}
 }
 
+// demo runs cooperative work with explicit renewal and stop-before-release supervision.
 func demo() error {
 	client, err := airlock.NewShared(memory.New(), airlock.SharedOptions{
 		Resource: "lifecycle-example",
@@ -57,18 +59,24 @@ func demo() error {
 	return err
 }
 
-// A small interface lets the example test failure ordering without a server.
+// jobLease lets the example test failure ordering without a server.
 // *airlock.Lease implements it; this helper is application code, not an SDK API.
 type jobLease interface {
+	// Valid checks local lease validity before starting work.
 	Valid() bool
+	// Done signals permanent invalidation to the independent work watcher.
 	Done() <-chan struct{}
+	// Renew extends validity or returns an error that must stop work.
 	Renew(context.Context) error
+	// Release invalidates locally and attempts cleanup after work has stopped.
 	Release(context.Context) error
 }
 
+// errWorkFinished distinguishes normal supervisor shutdown from lease or work failure.
 var errWorkFinished = errors.New("example: work finished")
 
-// runJob executes work exactly once. Work must honor its context and return only
+// runJob invokes work at most once after checking local validity; it provides
+// no cross-process exactly-once guarantee. Work must honor its context and return only
 // after ALL its child tasks have stopped. Context cancellation cannot kill code
 // that ignores it. The library itself does not start these application workers.
 func runJob(ctx context.Context, lease jobLease, renewEvery, operationTimeout time.Duration, work func(context.Context) error) (err error) {
@@ -164,6 +172,7 @@ func onlyContextError(err, target error) bool {
 	}
 }
 
+// releaseStoppedJob retries cleanup once with the same identity and fresh bounded contexts.
 func releaseStoppedJob(ctx context.Context, lease jobLease, timeout time.Duration) error {
 	var failures []error
 	// A failed release may already have committed. Retry cleanup once using the

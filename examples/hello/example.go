@@ -1,3 +1,4 @@
+// Command hello demonstrates local acquisition and explicit release.
 // Run with: go run ./examples/hello
 package main
 
@@ -9,6 +10,7 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
+// main runs the hello admission example.
 func main() {
 	lock, err := airlock.New(airlock.Config{Capacity: 2})
 	if err != nil {
