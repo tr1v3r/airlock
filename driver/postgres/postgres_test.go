@@ -144,6 +144,30 @@ func TestEnsureSchema(t *testing.T) {
 	if err := d.EnsureSchema(context.Background()); !errors.Is(err, sentinel) {
 		t.Fatal(err)
 	}
+	// Begin failures surface with schema context.
+	m.ExpectBegin().WillReturnError(sentinel)
+	if err := d.EnsureSchema(context.Background()); !errors.Is(err, sentinel) {
+		t.Fatal(err)
+	}
+	// A pre-release snapshot layout fails the column probe instead of being converted.
+	m.ExpectBegin()
+	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	m.ExpectQuery("SELECT state_version").WillReturnError(sentinel)
+	m.ExpectRollback()
+	err := d.EnsureSchema(context.Background())
+	if !errors.Is(err, sentinel) || !strings.Contains(err.Error(), "legacy snapshot layout") {
+		t.Fatal(err)
+	}
+	// Row-close failures abort the probe transaction.
+	m.ExpectBegin()
+	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"unused"}).CloseError(sentinel))
+	m.ExpectRollback()
+	if err = d.EnsureSchema(context.Background()); !errors.Is(err, sentinel) {
+		t.Fatal(err)
+	}
 }
 
 func TestExecuteFailureBoundaries(t *testing.T) {
