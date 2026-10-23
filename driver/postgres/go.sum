@@ -19,8 +19,8 @@ github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UV
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/tr1v3r/airlock v0.0.0-20261023031427-116a6994095c h1:SjVK5MAd1nzeRS7IUn5N96vXhic7cTAb5vR5V13bUpk=
-github.com/tr1v3r/airlock v0.0.0-20261023031427-116a6994095c/go.mod h1:tP5bzhEABVC+HwIs1gU6fIxTDK9ui7KeEyWW9X36+ng=
+github.com/tr1v3r/airlock v0.0.0-20261023032712-34c68a3cdbb6 h1:KhI0aTkSjF+5NqsmiiP4b6xR+qEQRlcqK493cv+wHHQ=
+github.com/tr1v3r/airlock v0.0.0-20261023032712-34c68a3cdbb6/go.mod h1:tP5bzhEABVC+HwIs1gU6fIxTDK9ui7KeEyWW9X36+ng=
 golang.org/x/sync v0.22.0 h1:SZjpbeLmrCk4xhRSZFNZW5gFUeCeFgjekvI/+gfScek=
 golang.org/x/sync v0.22.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
 golang.org/x/text v0.41.0 h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
