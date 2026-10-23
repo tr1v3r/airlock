@@ -20,7 +20,9 @@ func TestExpiryBetweenReadAndCommit(t *testing.T) {
 			d, client, server := fixture(t)
 			now := time.Now().UTC().Truncate(time.Millisecond)
 			server.SetTime(now)
-			r := request()
+			// Share one time base: taking time.Now again can move deadlines
+			// beyond the frozen server's MaxWait/SubmitWindow by one millisecond.
+			r := requestAt(now)
 			r.Config.LeaseTTL = 100 * time.Millisecond
 			grant := mustExecute(t, d, submit(r))
 			var shifted bool

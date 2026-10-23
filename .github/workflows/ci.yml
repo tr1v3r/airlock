@@ -70,9 +70,21 @@ jobs:
           go-version: ${{ matrix.go }}
       - run: go test -shuffle=on -count=1 -timeout=5m ./...
       - run: go vet ./...
-      - name: Run documented examples
+      - name: Run documented local examples
         shell: bash
         run: bash scripts/check.sh examples
+      - name: Test independent modules on each supported toolchain and OS
+        shell: bash
+        env:
+          MATRIX_GO: ${{ matrix.go }}
+        run: |
+          for manifest in driver/*/go.mod; do
+            if [[ "$MATRIX_GO" == 1.24.* && "$manifest" == driver/postgres/go.mod ]]; then
+              echo 'Skipping driver/postgres on Go 1.24: pgx security fixes require Go 1.25+; root, memory and Redis remain supported on 1.24.'
+              continue
+            fi
+            (cd "$(dirname "$manifest")" && go test -shuffle=on -count=1 -timeout=5m ./... && go vet ./...)
+          done
 
   race:
     name: Race and coverage
@@ -214,9 +226,13 @@ jobs:
       - run: bash scripts/redis-failover.sh
 
   security:
-    name: Vulnerabilities
+    name: Vulnerabilities (${{ matrix.module }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ['.', driver/memory, driver/postgres, driver/redis]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -226,24 +242,79 @@ jobs:
           go-version: stable
       - run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
       - run: govulncheck -test ./...
+        working-directory: ${{ matrix.module }}
+
+  installation:
+    name: Published consumer installation
+    # Fork and merge-queue synthetic SHAs need not be resolvable as module versions.
+    # Those events are explicitly not claimed as published-installation evidence.
+    if: github.event_name != 'merge_group' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - name: Install documented dev and the pushed candidate without replace
+        env:
+          CANDIDATE: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/install-smoke.sh "$CANDIDATE"
+
+  stress:
+    name: Bounded concurrency and fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - run: bash scripts/stress.sh quick
+
+  extended:
+    name: Extended concurrency and fuzz
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - run: bash scripts/stress.sh extended
 
   gate:
     name: CI Gate
     if: always()
-    needs: [quality, test, race, security, drivers, postgres, postgres-failover, redis, redis-cluster]
+    needs: [quality, test, race, security, drivers, postgres, postgres-failover, redis, redis-cluster, installation, stress, extended]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Require every job to succeed
         env:
           RESULTS: ${{ toJSON(needs) }}
+          EVENT_NAME: ${{ github.event_name }}
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
           python3 - <<'PYTHON'
           import json, os, sys
           results = json.loads(os.environ['RESULTS'])
-          failed = {name: job['result'] for name, job in results.items() if job['result'] != 'success'}
+          allowed_skips = set()
+          if os.environ['EVENT_NAME'] not in ('schedule', 'workflow_dispatch'):
+              allowed_skips.add('extended')
+          if os.environ['EVENT_NAME'] == 'merge_group' or (os.environ['EVENT_NAME'] == 'pull_request' and os.environ['IS_FORK'] == 'true'):
+              allowed_skips.add('installation')
+          failed = {name: job['result'] for name, job in results.items()
+                    if job['result'] != 'success' and not (job['result'] == 'skipped' and name in allowed_skips)}
           if failed:
               print(f'CI gate failed: {failed}')
               sys.exit(1)
-          print('All required CI jobs passed.')
+          print('All required CI jobs passed; allowed skips:', sorted(allowed_skips))
           PYTHON

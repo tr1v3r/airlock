@@ -21,12 +21,24 @@ standard library; remote driver dependencies are installed separately.
 
 ## Installation
 
+Core, memory and Redis require **Go 1.24+**. The PostgreSQL module requires
+**Go 1.25+**: its upgraded pgx and x/text dependencies need that toolchain to
+include the pgx SQL-injection security fix. This is an intentional module-specific
+support change; it does not raise the core, memory or Redis minimum.
+
 ```sh
-go get github.com/tr1v3r/airlock
+go get github.com/tr1v3r/airlock@dev
+# Install only the backend you use:
+go get github.com/tr1v3r/airlock/driver/redis@dev
+# go get github.com/tr1v3r/airlock/driver/postgres@dev
+# go get github.com/tr1v3r/airlock/driver/memory@dev # tests/demos
 ```
 
-This README describes the development API targeting `dev`; it is not
-available in a tagged release yet.
+This README describes the development API on `dev`; it is not available in a tagged
+release yet. An unqualified `go get` / `@latest` can select the older default branch
+and omit these APIs. For reproducible builds, replace `dev` with a reviewed, pushed
+commit or its pseudo-version; each backend is an independent Go module. Changes
+that exist only in an unmerged PR require that PR's pushed commit, not `@dev`.
 
 ## Hello world
 
@@ -340,7 +352,9 @@ GOWORK=off go vet ./...
 ## CI quality gates
 
 Pull requests, pushes to `dev`/`main`, merge queues, manual runs, and a weekly
-scan run [CI](.github/workflows/ci.yml). All jobs must pass the final **CI Gate**:
+scan run [CI](.github/workflows/ci.yml). All required jobs must pass **CI Gate**;
+only explicitly inapplicable installation/extended jobs may be skipped (see the
+[testing matrix and replay commands](docs/testing.md)):
 
 - `gofmt`, `go vet`, and pinned golangci-lint check correctness, error handling,
   exported API comments, naming, spelling, and explained lint suppressions.
@@ -351,15 +365,28 @@ scan run [CI](.github/workflows/ci.yml). All jobs must pass the final **CI Gate*
 - Tests run without cache and in shuffled order on Linux (Go 1.24, 1.25,
   previous stable, and stable), plus macOS and Windows (stable). `GOTOOLCHAIN=local`
   prevents automatic toolchain upgrades from hiding minimum-version failures.
-  All documented examples execute on every matrix entry.
+  Root and independent driver modules run separately on each entry; only PostgreSQL
+  is explicitly skipped on Go 1.24 because its security-updated dependencies require
+  Go 1.25+. Memory and Redis are still tested on 1.24.
+  Local examples execute on every entry; Shared memory examples run in the Linux
+  driver job, Redis's example uses the integration service, and PostgreSQL's
+  `ExampleNew` is compile-checked (it has no Output assertion).
 - Race detection, ten shuffled repetitions at CPU counts 1/2/4, and atomic
   statement coverage run on Linux. Every production file and the total must
   reach **95%** (current core baseline: **100%**). Examples and comparison-only
   code are excluded from coverage; new production packages are included automatically.
   Coverage profiles are retained for 14 days, including on failure.
-- Pinned `govulncheck -test` rejects reachable known vulnerabilities in the SDK
-  and tests. This does not certify the absence of all vulnerabilities.
-- Workflow syntax and coverage-checker regression tests are checked. Actions
+- Pinned `govulncheck -test` scans root and each independent driver module, including
+  their distinct dependency graphs and tests. Dependabot covers all four modules.
+  This does not certify the absence of all vulnerabilities.
+- Normal PRs include bounded model/concurrency tests and four short fuzz targets.
+  Weekly/manual extended runs set `AIRLOCK_STRESS=1`, repeat CPU schedules, and fuzz
+  longer. These assert invariants, not performance SLAs.
+- External consumer smoke installs both documented `@dev` and a pushed candidate
+  without workspace/replace overrides. Fork PRs and merge-group synthetic commits
+  explicitly skip this lane; they are not published-installation evidence.
+- Fake Docker failure tests verify fixture cleanup owns every resource it touches;
+  they never contact a daemon. Workflow syntax and coverage-checker tests also run. Actions
   use full commit pins, read-only permissions, job timeouts, and no PR secrets.
   Dependabot proposes weekly Action/module updates; review pinned CLI versions
   in the workflow separately.
@@ -378,6 +405,13 @@ bash scripts/check.sh coverage
 GOWORK=off go test -race -shuffle=on -count=10 -cpu=1,2,4 -timeout=5m ./...
 bash scripts/check.sh examples
 GOWORK=off govulncheck -test ./...
+bash scripts/driver-check.sh
+for module in driver/memory driver/postgres driver/redis; do
+  (cd "$module" && GOWORK=off govulncheck -test ./...)
+done
+bash scripts/stress.sh quick
+# Opt-in larger workload: bash scripts/stress.sh extended
+# After pushing the candidate: bash scripts/install-smoke.sh <commit>
 ```
 
 `modules` runs `go mod tidy` and fails on manifest drift; it may update your

@@ -18,11 +18,23 @@
 
 ## 安装
 
+core、memory 与 Redis 仍要求 **Go 1.24+**。PostgreSQL 模块要求 **Go 1.25+**：
+为纳入 pgx SQL 注入安全修复，升级后的 pgx 和 x/text 依赖需要该工具链。
+这是有意的分模块支持范围变更，不提高 core、memory 或 Redis 的最低版本。
+
 ```sh
-go get github.com/tr1v3r/airlock
+go get github.com/tr1v3r/airlock@dev
+# 只安装实际使用的后端：
+go get github.com/tr1v3r/airlock/driver/redis@dev
+# go get github.com/tr1v3r/airlock/driver/postgres@dev
+# go get github.com/tr1v3r/airlock/driver/memory@dev # 测试/演示
 ```
 
-本 README 描述面向 `dev` 的开发阶段 API，尚无包含该 API 的标签版本。
+本 README 描述 `dev` 上的开发阶段 API，尚无包含该 API 的标签版本。
+不指定版本的 `go get` / `@latest` 可能选择较旧的默认分支，缺少这些 API。
+需要可重复构建时，将 `dev` 替换为已审查并推送的提交或其 pseudo-version；
+每个后端都是独立 Go module。仅存在于未合并 PR 的变更须安装该 PR 已推送的提交，
+不能假定 `@dev` 已包含它们。
 
 ## Hello world
 
@@ -284,7 +296,8 @@ GOWORK=off go vet ./...
 ## CI 质量门禁
 
 PR、推送到 `dev`/`main`、合并队列、手动触发和每周扫描均运行
-[CI](.github/workflows/ci.yml)。所有任务必须成功，最终的 **CI Gate** 才会通过：
+[CI](.github/workflows/ci.yml)。全部必需任务成功后 **CI Gate** 才会通过；
+只允许不适用的安装/扩展任务按明确条件跳过（见[测试矩阵与复现命令](docs/testing.md)）：
 
 - `gofmt`、`go vet` 和固定版本的 golangci-lint 检查正确性、错误处理、
   导出 API 注释、命名、拼写，并要求 lint 豁免注明具体检查项和原因。
@@ -293,13 +306,22 @@ PR、推送到 `dev`/`main`、合并队列、手动触发和每周扫描均运�
 - 检查模块清单整洁性、校验和，并保证运行时仅依赖标准库。
 - Linux 覆盖 Go 1.24、1.25、上一稳定版及稳定版，macOS/Windows 覆盖稳定版。
   测试禁用缓存并随机排序，`GOTOOLCHAIN=local` 防止自动升级工具链掩盖最低版本不兼容。
-  每个矩阵任务都会执行所有文档示例。
+  每个矩阵任务分别测试根模块与独立 driver；仅 Go 1.24 项明确跳过 PostgreSQL，
+  因其安全更新后的依赖要求 Go 1.25+。memory 与 Redis 仍在 1.24 测试。
+  本地示例在每个矩阵执行；Shared memory 示例在 Linux driver 任务运行，
+  Redis 示例使用集成测试服务；PostgreSQL 的 `ExampleNew` 只检查编译（没有 Output 断言）。
 - Linux 运行 race 检测，并在 CPU 数 1/2/4 下各重复十轮乱序测试。
   原子语句覆盖率要求每个生产文件及总计均达到 **95%**（当前核心基线为 **100%**）。
   示例和仅用于比较的代码不计入覆盖率；新增生产包自动纳入。
   覆盖率报告保存 14 天，失败时也上传。
-- 固定版本的 `govulncheck -test` 阻止 SDK 和测试中可达的已知漏洞；这不代表不存在其他漏洞。
-- 校验工作流语法并测试覆盖率检查器。Action 固定完整提交 SHA，只授予读取权限，
+- 固定版本的 `govulncheck -test` 分别扫描根模块与三个独立 driver 的依赖图和测试，
+  Dependabot 覆盖全部四个模块；这不代表不存在其他漏洞。
+- 普通 PR 运行有界模型/并发测试及四个短时 fuzz target；每周和手动扩展任务设置
+  `AIRLOCK_STRESS=1`，增加 CPU 调度重复及 fuzz 时长。检查的是不变量，不是性能 SLA。
+- 仓库外 consumer 分别安装文档 `@dev` 与已推送候选提交，不使用 workspace/replace。
+  fork PR 和 merge-group 临时合并提交明确跳过该任务，不算已验证发布安装。
+- fake Docker 故障测试确认 fixture 清理只触及自身资源，不连接真实 daemon；
+  同时校验工作流语法并测试覆盖率检查器。Action 固定完整提交 SHA，只授予读取权限，
   配置任务超时，PR 不使用密钥。Dependabot 每周提出 Action/模块更新；
   工作流中固定的 CLI 工具版本需单独审查更新。
 
@@ -317,6 +339,13 @@ bash scripts/check.sh coverage
 GOWORK=off go test -race -shuffle=on -count=10 -cpu=1,2,4 -timeout=5m ./...
 bash scripts/check.sh examples
 GOWORK=off govulncheck -test ./...
+bash scripts/driver-check.sh
+for module in driver/memory driver/postgres driver/redis; do
+  (cd "$module" && GOWORK=off govulncheck -test ./...)
+done
+bash scripts/stress.sh quick
+# 按需扩大规模：bash scripts/stress.sh extended
+# 推送候选提交后：bash scripts/install-smoke.sh <commit>
 ```
 
 `modules` 会运行 `go mod tidy`，模块清单变化时失败；本地清单可能被更新，供审查。
@@ -330,7 +359,7 @@ GOWORK=off govulncheck -test ./...
 
 ## 迁移
 
-唯一的准入类型为 `Airlock`，通过 `New(Config)` 构造。
+本地准入类型为 `Airlock`，通过 `New(Config)` 构造。
 每次 `Acquire(ctx)` 或 `AcquireFor(ctx, tenantID)` 仍然**仅获取一个令牌**。
 新增 `AcquireN(ctx, n)` 和 `AcquireNFor(ctx, tenantID, n)` 获取 `n` 个令牌，
 通过 `Permit.Release()` 一次归还。`Config.Priority` 可选启用本地优先级组，无需修改申请签名。

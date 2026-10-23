@@ -5,15 +5,23 @@ cd "$(dirname "$0")/.."
 repo=$(pwd)
 image=${AIRLOCK_PG_IMAGE:-postgres:16}
 prefix="airlock-pg-failover-$$"
-primary="$prefix-primary"
-standby="$prefix-standby"
-fixture_dir=$(mktemp -d)
+primary_name="$prefix-primary"
+standby_name="$prefix-standby"
+primary='' standby='' network=''
+fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/airlock-pg-failover.XXXXXX")
+fixture_dir=$(cd "$fixture_dir" && pwd -P)
 cleanup() {
-  docker rm -f "$primary" "$standby" >/dev/null 2>&1 || true
-  docker network rm "$prefix" >/dev/null 2>&1 || true
-  rm -rf "$fixture_dir"
+  # Names are candidates, not proof of ownership. Record IDs only after success.
+  [[ -z "$standby" ]] || docker rm -f "$standby" >/dev/null 2>&1 || true
+  [[ -z "$primary" ]] || docker rm -f "$primary" >/dev/null 2>&1 || true
+  [[ -z "$network" ]] || docker network rm "$network" >/dev/null 2>&1 || true
+  if [[ "$fixture_dir" = /*/airlock-pg-failover.* && -d "$fixture_dir" ]]; then
+    rm -rf -- "${fixture_dir:?}"
+  fi
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 wait_ready() {
   for ((i=0;i<120;i++)); do
     if docker exec "$1" pg_isready -h 127.0.0.1 -U airlock -d airlock >/dev/null 2>&1; then return; fi
@@ -22,17 +30,20 @@ wait_ready() {
   docker logs "$1"
   return 1
 }
-docker network create "$prefix" >/dev/null
-docker run --rm -d --name "$primary" --network "$prefix" \
+created=$(docker network create "$prefix")
+network=$created
+created=$(docker run --rm -d --name "$primary_name" --network "$network" \
   -p 127.0.0.1::5432 -e POSTGRES_USER=airlock -e POSTGRES_PASSWORD=airlock \
-  -e POSTGRES_DB=airlock "$image" >/dev/null
+  -e POSTGRES_DB=airlock "$image")
+primary=$created
 wait_ready "$primary"
 docker exec "$primary" sh -c 'printf "host replication all 0.0.0.0/0 scram-sha-256\n" >> "$PGDATA/pg_hba.conf"'
 docker exec "$primary" psql -U airlock -d airlock -v ON_ERROR_STOP=1 -c 'SELECT pg_reload_conf()' >/dev/null
-docker run --rm -d --name "$standby" --network "$prefix" --user postgres \
+created=$(docker run --rm -d --name "$standby_name" --network "$network" --user postgres \
   -p 127.0.0.1::5432 -e PGDATA=/tmp/airlock-standby -e PGPASSWORD=airlock \
   --entrypoint bash "$image" -c \
-  'pg_basebackup -D "$PGDATA" -d "host='"$primary"' user=airlock application_name=airlock_standby" -R -X stream && exec postgres -D "$PGDATA"' >/dev/null
+  'pg_basebackup -D "$PGDATA" -d "host='"$primary_name"' user=airlock application_name=airlock_standby" -R -X stream && exec postgres -D "$PGDATA"')
+standby=$created
 wait_ready "$standby"
 docker exec "$primary" psql -U airlock -d airlock -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET synchronous_standby_names = 'FIRST 1 (airlock_standby)'" >/dev/null
 docker exec "$primary" psql -U airlock -d airlock -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET synchronous_commit = 'remote_apply'" >/dev/null

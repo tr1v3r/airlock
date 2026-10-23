@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -142,6 +143,86 @@ func TestJobPreservesRenewErrorWhenDoneClosesFirst(t *testing.T) {
 	})
 	if !errors.Is(err, lostReply) || !errors.Is(err, airlock.ErrLeaseLost) {
 		t.Fatalf("lost renewal failure: %v", err)
+	}
+}
+
+func TestJobWorkFinishedPreservesLateRenewalFailure(t *testing.T) {
+	lostReply := errors.New("renew committed but response was lost")
+	for _, tc := range []struct {
+		name     string
+		renewErr error
+		failed   bool
+	}{
+		{"cancelled cleanup", context.Canceled, false},
+		{"wrapped cancelled cleanup", fmt.Errorf("rpc: %w", context.Canceled), false},
+		{"joined cancelled cleanup", errors.Join(context.Canceled, fmt.Errorf("rpc: %w", context.Canceled)), false},
+		{"lost backend reply", lostReply, true},
+		{"joined cancellation and backend failure", errors.Join(context.Canceled, lostReply), true},
+		{"wrapped mixed failure", fmt.Errorf("rpc: %w", errors.Join(fmt.Errorf("cancel: %w", context.Canceled), lostReply)), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			lease := testLease(t)
+			started := make(chan struct{})
+			var joined atomic.Bool
+			lease.renew = func(ctx context.Context) error {
+				close(started)
+				<-ctx.Done() // Work returns first; defer cancels with errWorkFinished.
+				joined.Store(true)
+				return tc.renewErr
+			}
+			releases := 0
+			lease.release = func(ctx context.Context) error {
+				if !joined.Load() || ctx.Err() != nil {
+					t.Error("release did not join renewal with an independent context")
+				}
+				releases++
+				return nil
+			}
+			err := runJob(ctx, lease, time.Millisecond, time.Second, func(ctx context.Context) error {
+				select {
+				case <-started:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			})
+			if errors.Is(err, lostReply) != tc.failed || (!tc.failed && err != nil) || releases != 1 {
+				t.Fatalf("failed=%v error=%v releases=%d", tc.failed, err, releases)
+			}
+		})
+	}
+}
+
+type testErrorGroup []error
+
+func (e testErrorGroup) Error() string   { return "test error group" }
+func (e testErrorGroup) Unwrap() []error { return e }
+
+func TestOnlyContextError(t *testing.T) {
+	backend := errors.New("backend unavailable")
+	for _, tc := range []struct {
+		name        string
+		err, target error
+		want        bool
+	}{
+		{"nil error", nil, context.Canceled, false},
+		{"nil target", context.Canceled, nil, false},
+		{"empty group", testErrorGroup{}, context.Canceled, false},
+		{"nil leaf", testErrorGroup{nil}, context.Canceled, false},
+		{"bare cancellation", context.Canceled, context.Canceled, true},
+		{"single wrapper", fmt.Errorf("rpc: %w", context.Canceled), context.Canceled, true},
+		{"pure tree", fmt.Errorf("rpc: %w", errors.Join(context.Canceled, fmt.Errorf("inner: %w", context.Canceled))), context.Canceled, true},
+		{"mixed tree", errors.Join(context.Canceled, backend), context.Canceled, false},
+		{"deadline not cancellation", context.DeadlineExceeded, context.Canceled, false},
+		{"parent deadline", fmt.Errorf("rpc: %w", context.DeadlineExceeded), context.DeadlineExceeded, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := onlyContextError(tc.err, tc.target); got != tc.want {
+				t.Fatalf("onlyContextError(%v, %v)=%v want=%v", tc.err, tc.target, got, tc.want)
+			}
+		})
 	}
 }
 

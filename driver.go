@@ -179,6 +179,13 @@ func validRequest(r Request) error {
 	if err := validConfig(r.Config); err != nil {
 		return err
 	}
+	return validRequestFields(r)
+}
+
+// validRequestFields requires an already validated Config. Restored records all
+// share the immutable snapshot configuration; recompiling it per record would
+// multiply restoration cost by the number of configured tenant mappings.
+func validRequestFields(r Request) error {
 	prefix := strconv.FormatInt(r.SubmitUntil.UnixMilli(), 10) + "-"
 	if r.Resource == "" || !validText(r.Resource) || !validText(r.Tenant) || len(r.Resource) > 256 || len(r.Tenant) > 256 || !validSecret(r.Owner) || !strings.HasPrefix(r.ID, prefix) || !validSecret(strings.TrimPrefix(r.ID, prefix)) || r.SubmitUntil.UnixMilli() <= 0 || !r.SubmitUntil.Equal(r.SubmitUntil.Truncate(time.Millisecond)) || !r.WaitUntil.Equal(r.WaitUntil.Truncate(time.Millisecond)) || r.WaitUntil.After(r.SubmitUntil.Add(r.Config.MaxWait)) {
 		return ErrInvalidRequest

@@ -259,6 +259,10 @@ func (s *durableSnapshot) capture(g *Airlock, ws map[string]*waiter) {
 		s.Rotations = append(s.Rotations, tenants)
 	}
 }
+
+// restore receives the Config validated by ValidateCommand and matched against
+// the snapshot by Transition. Each record is assigned that same Config before
+// restoration; only its identity, deadlines, weight and lifecycle need checking.
 func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 	g, err := New(s.Config.Admission)
 	if err != nil {
@@ -270,7 +274,7 @@ func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 		return nil, nil, ErrCorruptState
 	}
 	for id, r := range s.Records {
-		if r == nil || r.Request.ID != id || r.Request.Resource != s.Resource || validRequest(r.Request) != nil || !reflect.DeepEqual(r.Request.Config, s.Config) || !validRecord(r, s.Time) {
+		if r == nil || r.Request.ID != id || r.Request.Resource != s.Resource || validRequestFields(r.Request) != nil || !reflect.DeepEqual(r.Request.Config, s.Config) || !validRecord(r, s.Time) {
 			return nil, nil, ErrCorruptState
 		}
 		switch r.Status {

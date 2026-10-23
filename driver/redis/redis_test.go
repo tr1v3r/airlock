@@ -28,8 +28,10 @@ func fixture(t *testing.T) (*Driver, *goredis.Client, *miniredis.Miniredis) {
 	}
 	return d, client, server
 }
-func request() airlock.Request {
-	now := time.Now().UTC().Truncate(time.Millisecond)
+func request() airlock.Request { return requestAt(time.Now()) }
+
+func requestAt(now time.Time) airlock.Request {
+	now = now.UTC().Truncate(time.Millisecond)
 	r := airlock.NewRequest(now.Add(10 * time.Second))
 	r.Resource = "resource"
 	r.Weight = 1
@@ -49,7 +51,15 @@ func mustExecute(t *testing.T, d *Driver, c airlock.Command) airlock.Result {
 	return result
 }
 func TestConformance(t *testing.T) {
-	driverconformance.Run(t, func(t *testing.T) airlock.Driver { d, _, _ := fixture(t); return d })
+	driverconformance.Run(t, func(t *testing.T) airlock.Driver {
+		d, _, _ := fixture(t)
+		if os.Getenv("AIRLOCK_STRESS") == "1" {
+			// Match the conformance harness's heavy budget; otherwise the
+			// adapter's inner five-second context still wins under contention.
+			d.timeout = 20 * time.Second
+		}
+		return d
+	})
 }
 
 func TestConstructor(t *testing.T) {
