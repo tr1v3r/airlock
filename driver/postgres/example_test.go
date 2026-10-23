@@ -23,7 +23,7 @@ func ExampleNew() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Run schema migrations explicitly during deployment, before serving traffic.
+	// Create the schema explicitly during deployment, before serving traffic.
 	if err := driver.EnsureSchema(context.Background()); err != nil {
 		log.Fatal(err)
 	}

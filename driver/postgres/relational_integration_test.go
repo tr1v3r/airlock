@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"testing"
@@ -55,9 +54,9 @@ func TestIntegrationRelationalDeltaWrites(t *testing.T) {
 	}
 }
 
-func legacyDriver(t *testing.T, db *sql.DB) *Driver {
-	t.Helper()
-	name := "migration_" + airlock.NewRequest(time.Now()).Owner
+func TestIntegrationLegacySnapshotLayoutRejected(t *testing.T) {
+	db := integrationDB(t)
+	name := "legacy_" + airlock.NewRequest(time.Now()).Owner
 	d, err := New(db, "", WithTable(name), WithOperationTimeout(10*time.Second))
 	if err != nil {
 		t.Fatal(err)
@@ -69,87 +68,8 @@ func legacyDriver(t *testing.T, db *sql.DB) *Driver {
 		_, _ = db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, d.requests))
 		_, _ = db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, d.table))
 	})
-	return d
-}
-
-func TestIntegrationSnapshotMigration(t *testing.T) {
-	db := integrationDB(t)
-	d := legacyDriver(t, db)
-	now := time.Now().UTC().Truncate(time.Millisecond)
-	holder := request(now)
-	holder.Config.LeaseTTL = 30 * time.Second
-	snapshot, held, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: holder})
-	if err != nil {
-		t.Fatal(err)
-	}
-	waiter := holder
-	id := airlock.NewRequest(holder.SubmitUntil)
-	waiter.ID, waiter.Owner = id.ID, id.Owner
-	snapshot, _, err = airlock.Transition(snapshot, now, airlock.Command{Kind: airlock.Submit, Request: waiter})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, prefix := range []string{"", "another namespace"} {
-		if _, err = db.Exec(fmt.Sprintf(`INSERT INTO %s VALUES($1,$2,$3)`, d.table), prefix, holder.Resource, snapshot); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err = d.EnsureSchema(context.Background()); err == nil || !strings.Contains(err.Error(), "offline migration") {
+	if err = d.EnsureSchema(context.Background()); err == nil || !strings.Contains(err.Error(), "legacy snapshot layout") {
 		t.Fatalf("legacy schema silently accepted: %v", err)
-	}
-	if err = d.MigrateSnapshotSchema(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err = d.EnsureSchema(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	var count int
-	if err = db.QueryRow(fmt.Sprintf(`SELECT count(*) FROM %s`, d.requests)).Scan(&count); err != nil || count != 4 {
-		t.Fatal(count, err)
-	}
-	var revision string
-	var observed int64
-	if err = db.QueryRow(fmt.Sprintf(`SELECT revision,observed_ms FROM %s WHERE namespace=''`, d.table)).Scan(&revision, &observed); err != nil || revision != "2" || observed != now.UnixMilli() {
-		t.Fatal(revision, observed, err)
-	}
-	if err = d.MigrateSnapshotSchema(context.Background()); err == nil {
-		t.Fatal("repeated migration accepted")
-	}
-	got := executeStatus(t, d, airlock.Observe, holder, "", airlock.Granted)
-	if got.LeaseID != held.LeaseID || got.Remaining > held.Remaining {
-		t.Fatal("migration reset lease")
-	}
-	executeStatus(t, d, airlock.Observe, waiter, "", airlock.Queued)
-	executeStatus(t, d, airlock.Release, holder, held.LeaseID, airlock.Released)
-	executeStatus(t, d, airlock.Observe, waiter, "", airlock.Granted)
-	other := *d
-	other.prefix = "another namespace"
-	executeStatus(t, &other, airlock.Observe, holder, "", airlock.Granted)
-}
-
-func TestIntegrationMigrationRollback(t *testing.T) {
-	db := integrationDB(t)
-	d := legacyDriver(t, db)
-	r := request(time.Now())
-	snapshot, _, err := airlock.Transition(nil, time.Now(), airlock.Command{Kind: airlock.Submit, Request: r})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for prefix, data := range map[string][]byte{"a": snapshot, "z": []byte(`{}`)} {
-		if _, err = db.Exec(fmt.Sprintf(`INSERT INTO %s VALUES($1,$2,$3)`, d.table), prefix, r.Resource, data); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err = d.MigrateSnapshotSchema(context.Background()); err == nil {
-		t.Fatal("corrupt migration succeeded")
-	}
-	var stored []byte
-	if err = db.QueryRow(fmt.Sprintf(`SELECT snapshot FROM %s WHERE namespace='a'`, d.table)).Scan(&stored); err != nil || string(stored) != string(snapshot) {
-		t.Fatal("legacy data changed", err)
-	}
-	var relation sql.NullString
-	if err = db.QueryRow(`SELECT to_regclass($1)::text`, d.requests).Scan(&relation); err != nil || relation.Valid {
-		t.Fatal("partial request table survived", err)
 	}
 }
 
