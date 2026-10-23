@@ -251,7 +251,7 @@ func TestSharedExpiredResultPreservesCallerDeadline(t *testing.T) {
 	}{
 		{"caller deadline during cleanup", true, nil, nil},
 		{"caller deadline and cleanup failure", true, nil, lostCleanup},
-		{"live caller keeps lease lost", false, nil, nil},
+		{"backend expiry before caller timer", false, nil, nil},
 		{"transport error remains original", true, lostObserve, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -274,7 +274,7 @@ func TestSharedExpiredResultPreservesCallerDeadline(t *testing.T) {
 				t.Fatalf("fixture did not observe backend expiry: %+v", d.observed)
 			}
 			wantLeaseLost := tc.observeErr == nil
-			wantDeadline := tc.expire && wantLeaseLost
+			wantDeadline := wantLeaseLost
 			if lease != nil || errors.Is(err, ErrLeaseLost) != wantLeaseLost || errors.Is(err, context.DeadlineExceeded) != wantDeadline {
 				t.Fatalf("lease=%v error=%v want leaseLost=%v deadline=%v", lease, err, wantLeaseLost, wantDeadline)
 			}
@@ -287,6 +287,44 @@ func TestSharedExpiredResultPreservesCallerDeadline(t *testing.T) {
 			}
 			if !calls[1].Request.WaitUntil.Equal(deadline) || calls[3].Request.ID != calls[1].Request.ID {
 				t.Fatal("queue deadline or cleanup identity changed")
+			}
+		})
+	}
+}
+
+// A waiting deadline folded from the caller's context is the caller's own
+// deadline. When the backend observes that expiry first — before the caller's
+// timer is even visible — the error must still report the deadline, not a bare
+// ErrLeaseLost, because whichever side notices first must not change semantics.
+func TestSharedFoldedDeadlineExpiryReportsCallerDeadline(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		withDeadline bool
+	}{
+		{"backend expiry before caller timer", true},
+		{"unfolded window expiry keeps lease lost", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tc.withDeadline {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(context.Background(), 20*time.Second)
+				defer cancel()
+			}
+			d := &deadlineOutcomeDriver{}
+			o := sharedConcurrentOptions(16)
+			o.Config.Admission.Capacity = 1
+			o.Config.LeaseTTL = time.Minute
+			c := clientNew(t, d, o)
+			holder := clientAcquire(t, c)
+			defer func() { _ = holder.Release(context.Background()) }()
+			lease, err := c.Acquire(ctx)
+			if d.observed.Status != Expired {
+				t.Fatalf("fixture did not observe backend expiry: %+v", d.observed)
+			}
+			wantDeadline := tc.withDeadline
+			if lease != nil || !errors.Is(err, ErrLeaseLost) || errors.Is(err, context.DeadlineExceeded) != wantDeadline {
+				t.Fatalf("lease=%v error=%v want leaseLost=true deadline=%v", lease, err, wantDeadline)
 			}
 		})
 	}
