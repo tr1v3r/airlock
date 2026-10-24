@@ -1,0 +1,148 @@
+{
+  "archify_version": "3.1.0",
+  "source_revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+  "automated_browser_scope": "Four desktop light-theme viewports; dark-theme endpoints; READ/Still state.",
+  "preview_capture": "Full-page Chrome screenshot at 1440 CSS pixels wide; light theme; no screenshot cropping.",
+  "index_checks": "No horizontal overflow at 1440 and 390 CSS pixels; all images loaded.",
+  "diagrams": [
+    {
+      "slug": "overview",
+      "candidate": ".archify/architecture-overview-20261024-152114/candidate.json",
+      "candidate_sha256": "2594aa1a94909a89592f339e6c4564d85e1110df3673ff5ff21a4fa9ec52bd1b",
+      "html": ".archify/architecture-overview-20261024-152114/overview.html",
+      "html_sha256": "c79082cf5f48f6718a68ed6ccb1dbda0699cfcc94cce18875be155286c7daf37",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/overview.png",
+      "preview_sha256": "e27d203678658837d16570daf0a4597c62c1c8de2bf2b3dce3023e25bb2be6d7",
+      "manual_review": "Light-theme diagram inspected; full-page workflow and sequence previews inspected.",
+      "route_advisory": {}
+    },
+    {
+      "slug": "local-admission",
+      "candidate": ".archify/workflow-local-admission-20261024-152114/candidate.json",
+      "candidate_sha256": "43f0bb808ffb9c3e86a14423eee14611ddb70c7cae7e27bc09023c715580b222",
+      "html": ".archify/workflow-local-admission-20261024-152114/local-admission.html",
+      "html_sha256": "b04006eca2e4b2490f2c5045052e0f505626877cbee32a9a3ad09448d1515b93",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/local-admission.png",
+      "preview_sha256": "a006635e7a0d1fe0e2061732c9cfeb44b5d3b126ad6e4d0e9eb0f43071ef564f",
+      "manual_review": "Light-theme diagram inspected; full-page workflow and sequence previews inspected.",
+      "route_advisory": {}
+    },
+    {
+      "slug": "scheduler",
+      "candidate": ".archify/workflow-scheduler-20261024-152114/candidate.json",
+      "candidate_sha256": "f28101183e9c60229a475d0335660ee89278e78fd9edf2c3c2b250c1ff13e7ad",
+      "html": ".archify/workflow-scheduler-20261024-152114/scheduler.html",
+      "html_sha256": "f68d58aed53b09adead17f70b29fdc6a49d8f79a1143f5154047d7fae8b6644a",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/scheduler.png",
+      "preview_sha256": "02f264ba2492923744a2fbfda15bb98918c9d4ae2d273d8c78881f3737ddf493",
+      "manual_review": "Light-theme diagram inspected; full-page workflow and sequence previews inspected.",
+      "route_advisory": {}
+    },
+    {
+      "slug": "request-states",
+      "candidate": ".archify/lifecycle-request-states-20261024-152114/candidate.json",
+      "candidate_sha256": "2f772e33ee481b4d6ab73e723fb37240d80884d40f1be8085aeb541757f0ace2",
+      "html": ".archify/lifecycle-request-states-20261024-152114/request-states.html",
+      "html_sha256": "3c3f4acce883cfa2cf373af066ca5a17936834fd9a354c0054d3e4ebc6cbca72",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/request-states.png",
+      "preview_sha256": "86e9f273375149f89d5faecd2ba2adfb696a90b05259ed1c030822d376b37c66",
+      "manual_review": "Light-theme diagram inspected; full-page workflow and sequence previews inspected.",
+      "route_advisory": {
+        "resolvedCrossovers": 16,
+        "routesOverSuggestedStretch": 1
+      }
+    },
+    {
+      "slug": "lease-states",
+      "candidate": ".archify/lifecycle-lease-states-20261024-152114/candidate.json",
+      "candidate_sha256": "6ebe84c00527c2a086f21bafc7372d86d7ba3c2d484ce63a9ae0abc510d48892",
+      "html": ".archify/lifecycle-lease-states-20261024-152114/lease-states.html",
+      "html_sha256": "03a489d1c0444dd2591bd5fa9e9204e393b5d5511331d265bdc102ed18878b8a",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/lease-states.png",
+      "preview_sha256": "fb12ecb0bd005c46bf875165619b59a8f6f613bc6f97e531a2802b4b30de481c",
+      "manual_review": "Light-theme diagram inspected; full-page workflow and sequence previews inspected.",
+      "route_advisory": {}
+    },
+    {
+      "slug": "shared-sequence",
+      "candidate": ".archify/sequence-shared-sequence-20261024-152114/candidate.json",
+      "candidate_sha256": "22b2d7def94ddbb3cb97b6039b9222538bb9089ed078210a483dcc3e10a4f368",
+      "html": ".archify/sequence-shared-sequence-20261024-152114/shared-sequence.html",
+      "html_sha256": "3431f0c18fae8053a7382dbb5e89d62d0d4340230c040171664cb977c2f62e5b",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/shared-sequence.png",
+      "preview_sha256": "ef60736de135f0a8a9cba6127ca5e9da194765f3f4c4cd603bc29787b7157e8f",
+      "manual_review": "Light-theme diagram inspected; full-page workflow and sequence previews inspected.",
+      "route_advisory": {}
+    },
+    {
+      "slug": "driver-boundaries",
+      "candidate": ".archify/architecture-driver-boundaries-20261024-152114/candidate.json",
+      "candidate_sha256": "1cc95c01e09e5ace48a1e4f525c8d2472add125f9cea63866a4f026a1467e0c7",
+      "html": ".archify/architecture-driver-boundaries-20261024-152114/driver-boundaries.html",
+      "html_sha256": "d0023fec0b312796ae7a52676c807021ea09af9adc640eb19509be53cddefa16",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/driver-boundaries.png",
+      "preview_sha256": "d8ab599d5bb2863063317a70e9a8c64fc29a50d3c52647b84719ad609cc44abf",
+      "manual_review": "Light-theme diagram inspected; full-page workflow and sequence previews inspected.",
+      "route_advisory": {}
+    },
+    {
+      "slug": "application-lifecycle",
+      "candidate": ".archify/workflow-application-lifecycle-20261024-152114/candidate.json",
+      "candidate_sha256": "56e66b1cbc5d1060072387760fe5b6166f967ba36c2e4f867382b445a6048f6d",
+      "html": ".archify/workflow-application-lifecycle-20261024-152114/application-lifecycle.html",
+      "html_sha256": "dfdbf13cc26df0e6c34cbd913e1754cf2558abc63a361e9ba5d96fca9c7dbdc3",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/application-lifecycle.png",
+      "preview_sha256": "fe46d62ed8bab47b3f7268129d33af80debbe73a1885011a36094477782ccbb3",
+      "manual_review": "Light-theme diagram inspected; full-page workflow and sequence previews inspected.",
+      "route_advisory": {}
+    }
+  ]
+}

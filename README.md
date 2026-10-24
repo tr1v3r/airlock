@@ -29,6 +29,10 @@ Start with the [Local API](airlock.go), [shared API](distributed.go), and [drive
 Ordinary local admission does not need a driver. The core runtime uses only the
 standard library; remote driver dependencies are installed separately.
 
+## Architecture atlas
+
+Explore the [architecture atlas](docs/architecture/README.md) for eight source-backed diagrams, reading paths for users and contributors, and implementation/test entry points. [中文图集](docs/architecture/README.zh-CN.md).
+
 ## Installation
 
 All modules require **Go 1.25+**. The PostgreSQL module forced this floor when
