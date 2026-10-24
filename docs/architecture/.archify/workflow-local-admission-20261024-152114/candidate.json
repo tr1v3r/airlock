@@ -1,0 +1,291 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "本地准入：快速路径、排队与取消竞争",
+    "locale": "zh-CN",
+    "output": ".archify/workflow-local-admission-20261024-152114/local-admission.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "link_mode": "local-only"
+    },
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "库内逻辑"
+        },
+        "security": {
+          "label": "校验与裁决"
+        },
+        "external": {
+          "label": "业务任务"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "entry",
+      "label": "校验与立即授予"
+    },
+    {
+      "id": "wait",
+      "label": "有界等待"
+    },
+    {
+      "id": "cancel",
+      "label": "取消裁决",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "check",
+    "fast",
+    "limits",
+    "queued",
+    "permit",
+    "release"
+  ],
+  "nodes": [
+    {
+      "id": "check",
+      "type": "backend",
+      "label": "校验输入",
+      "sublabel": "nil / tenant / weight",
+      "lane": "entry",
+      "col": 0,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 155,
+          "end_line": 184
+        }
+      ]
+    },
+    {
+      "id": "fast",
+      "type": "backend",
+      "label": "可立即授予？",
+      "sublabel": "无等待且容量够",
+      "lane": "entry",
+      "col": 1,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 180,
+          "end_line": 190
+        }
+      ]
+    },
+    {
+      "id": "permit",
+      "type": "backend",
+      "label": "返回 Permit",
+      "sublabel": "整份 weight 已占用",
+      "lane": "entry",
+      "col": 4,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 185,
+          "end_line": 205
+        }
+      ]
+    },
+    {
+      "id": "release",
+      "type": "backend",
+      "label": "业务结束后释放",
+      "sublabel": "sync.Once + dispatch",
+      "lane": "entry",
+      "col": 5,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 277,
+          "end_line": 295
+        }
+      ]
+    },
+    {
+      "id": "limits",
+      "type": "backend",
+      "label": "检查队列额度",
+      "sublabel": "全局 → 组 → 租户",
+      "lane": "wait",
+      "col": 1,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 216,
+          "end_line": 227
+        }
+      ]
+    },
+    {
+      "id": "queued",
+      "type": "backend",
+      "label": "入队并调度",
+      "sublabel": "等待 ready / ctx",
+      "lane": "wait",
+      "col": 2,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 191,
+          "end_line": 211
+        },
+        {
+          "path": "airlock.go",
+          "line": 228,
+          "end_line": 237
+        }
+      ]
+    },
+    {
+      "id": "reject",
+      "type": "security",
+      "label": "返回队列错误",
+      "sublabel": "不持有 token",
+      "lane": "wait",
+      "col": 0,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 191,
+          "end_line": 195
+        },
+        {
+          "path": "airlock.go",
+          "line": 216,
+          "end_line": 227
+        }
+      ]
+    },
+    {
+      "id": "race",
+      "type": "security",
+      "label": "锁内检查 granted",
+      "sublabel": "ctx.Done 被选中",
+      "lane": "cancel",
+      "col": 2,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 201,
+          "end_line": 210
+        }
+      ]
+    },
+    {
+      "id": "remove",
+      "type": "backend",
+      "label": "移除并重新调度",
+      "sublabel": "返回 ctx.Err()",
+      "lane": "cancel",
+      "col": 3,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 201,
+          "end_line": 210
+        },
+        {
+          "path": "airlock.go",
+          "line": 241,
+          "end_line": 252
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "check-fast",
+      "from": "check",
+      "to": "fast",
+      "label": "合法且未取消"
+    },
+    {
+      "id": "fast-permit",
+      "from": "fast",
+      "to": "permit",
+      "label": "是"
+    },
+    {
+      "id": "fast-limits",
+      "from": "fast",
+      "to": "limits",
+      "label": "否"
+    },
+    {
+      "id": "limits-queued",
+      "from": "limits",
+      "to": "queued",
+      "label": "额度允许"
+    },
+    {
+      "id": "limits-reject",
+      "from": "limits",
+      "to": "reject",
+      "label": "已满"
+    },
+    {
+      "id": "queued-permit",
+      "from": "queued",
+      "to": "permit",
+      "label": "ready"
+    },
+    {
+      "id": "queued-race",
+      "from": "queued",
+      "to": "race",
+      "label": "取消"
+    },
+    {
+      "id": "race-permit",
+      "from": "race",
+      "to": "permit",
+      "label": "已授予"
+    },
+    {
+      "id": "race-remove",
+      "from": "race",
+      "to": "remove",
+      "label": "未授予"
+    },
+    {
+      "id": "permit-release",
+      "from": "permit",
+      "to": "release",
+      "label": "工作已停止"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "错误优先级",
+      "items": [
+        "nil context 会 panic；显式空租户、非法权重先于取消校验。",
+        "ctx.Err 在锁内检查；取消与授予以锁内状态转换为准。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "TryAcquire 旁路",
+      "items": [
+        "TryAcquireN 校验后只检查容量及是否有人等待。",
+        "不能立即授予就 ErrWouldBlock；不排队，但仍获取互斥锁。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "释放与完成",
+      "items": [
+        "授予赢得竞争时，即使 context 已取消也可能成功返回。",
+        "库不执行任务；所有成功返回的 Permit 都需要释放。"
+      ]
+    }
+  ]
+}

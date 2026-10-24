@@ -1,0 +1,2 @@
+# Preserve verified renderer bytes and keep generated viewer code collapsed in PRs.
+.archify/**/*.html linguist-generated=true whitespace=-blank-at-eol

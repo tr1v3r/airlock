@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Shared 调用链：排队、观察与租约交付",
+    "locale": "zh-CN",
+    "output": ".archify/sequence-shared-sequence-20261024-152114/shared-sequence.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "link_mode": "local-only"
+    }
+  },
+  "participants": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "应用",
+      "sublabel": "拥有业务任务",
+      "sources": [
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 22,
+          "end_line": 41
+        },
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 167,
+          "end_line": 180
+        }
+      ]
+    },
+    {
+      "id": "client",
+      "type": "backend",
+      "label": "Shared / Lease",
+      "sublabel": "截止时间与轮询",
+      "sources": [
+        {
+          "path": "distributed.go",
+          "line": 90,
+          "end_line": 185
+        },
+        {
+          "path": "distributed.go",
+          "line": 233,
+          "end_line": 272
+        }
+      ]
+    },
+    {
+      "id": "adapter",
+      "type": "backend",
+      "label": "Driver",
+      "sublabel": "原子边界内执行",
+      "sources": [
+        {
+          "path": "driver.go",
+          "line": 14,
+          "end_line": 31
+        },
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 123,
+          "end_line": 172
+        }
+      ]
+    },
+    {
+      "id": "machine",
+      "type": "backend",
+      "label": "Transition",
+      "sublabel": "纯状态转换",
+      "sources": [
+        {
+          "path": "driver_state.go",
+          "line": 40,
+          "end_line": 89
+        },
+        {
+          "path": "driver_state.go",
+          "line": 92,
+          "end_line": 187
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "acquire",
+      "from": "caller",
+      "to": "client",
+      "y": 160,
+      "label": "AcquireNFor(ctx, tenant, n)",
+      "note": "创建不可变 Request"
+    },
+    {
+      "id": "submit",
+      "from": "client",
+      "to": "adapter",
+      "y": 225,
+      "label": "Submit(Request)"
+    },
+    {
+      "id": "transition",
+      "from": "adapter",
+      "to": "machine",
+      "y": 270,
+      "label": "快照 + 后端时间 + 命令"
+    },
+    {
+      "id": "queued",
+      "from": "machine",
+      "to": "adapter",
+      "y": 315,
+      "label": "新快照 + Queued",
+      "variant": "return"
+    },
+    {
+      "id": "committed",
+      "from": "adapter",
+      "to": "client",
+      "y": 360,
+      "label": "提交后返回 Queued",
+      "variant": "return"
+    },
+    {
+      "id": "observe",
+      "from": "client",
+      "to": "adapter",
+      "y": 405,
+      "label": "PollInterval 后 Observe",
+      "note": "Queued 时重复；ctx 取消可打断"
+    },
+    {
+      "id": "advance",
+      "from": "adapter",
+      "to": "machine",
+      "y": 475,
+      "label": "推进过期与调度"
+    },
+    {
+      "id": "granted",
+      "from": "machine",
+      "to": "adapter",
+      "y": 520,
+      "label": "可授予时返回 Granted",
+      "variant": "return"
+    },
+    {
+      "id": "remaining",
+      "from": "adapter",
+      "to": "client",
+      "y": 565,
+      "label": "提交后返回 Remaining",
+      "variant": "return"
+    },
+    {
+      "id": "lease",
+      "from": "client",
+      "to": "caller",
+      "y": 610,
+      "label": "校验通过后交付 Lease",
+      "variant": "return",
+      "note": "deadline = 调用起点 + Remaining"
+    },
+    {
+      "id": "release",
+      "from": "caller",
+      "to": "client",
+      "y": 680,
+      "label": "工作停止后 Release(ctx)"
+    },
+    {
+      "id": "release-driver",
+      "from": "client",
+      "to": "adapter",
+      "y": 725,
+      "label": "先本地失效，再 Release"
+    },
+    {
+      "id": "release-state",
+      "from": "adapter",
+      "to": "machine",
+      "y": 770,
+      "label": "验证身份并归还 weight"
+    },
+    {
+      "id": "released",
+      "from": "machine",
+      "to": "adapter",
+      "y": 815,
+      "label": "新快照 + Released",
+      "variant": "return"
+    },
+    {
+      "id": "release-commit",
+      "from": "adapter",
+      "to": "client",
+      "y": 860,
+      "label": "提交后返回终态",
+      "variant": "return"
+    },
+    {
+      "id": "done",
+      "from": "client",
+      "to": "caller",
+      "y": 905,
+      "label": "返回清理结果",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这是一次排队成功路径",
+      "items": [
+        "可能第一次 Submit 就授予；轮询次数不固定。",
+        "纵向位置只表示顺序，不表示实测耗时；没有自动续租步骤。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "错误与取消分支",
+      "items": [
+        "任何等待失败或无效授予都会以独立、有限时长 context 尝试 Cancel。",
+        "获取失败返回原始错误与清理错误；从不授权业务继续执行。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "一致性责任",
+      "items": [
+        "图中 Driver 将状态转换包在事务或受保护 CAS 内；只在提交后返回。",
+        "Redis CAS 冲突会重新读取并计算；传输错误不能当成冲突重试。"
+      ]
+    }
+  ]
+}

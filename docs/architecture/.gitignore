@@ -1,0 +1,10 @@
+# Keep atlas sources and HTML even when a global Git ignore excludes .archify.
+!.archify/
+
+# Machine-local Archify receipts and optional capture sets are reproducible.
+.archify/**/*.delivery.json
+.archify/**/*.finalize.json
+.archify/**/*.finalize-summary.json
+.archify/**/*.browser-check.json
+.archify/**/visual-check/
+.archify/**/review-*/

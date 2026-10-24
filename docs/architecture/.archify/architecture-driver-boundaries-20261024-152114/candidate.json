@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "驱动实现：原子边界与快照持久化",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-driver-boundaries-20261024-152114/driver-boundaries.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "contract",
+      "type": "backend",
+      "label": "Driver 接口",
+      "sublabel": "五个原子协议操作",
+      "pos": [
+        40,
+        245
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "driver.go",
+          "line": 14,
+          "end_line": 31
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "backend",
+      "label": "Memory 驱动",
+      "sublabel": "每资源 gate 串行化",
+      "pos": [
+        360,
+        60
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "driver/memory/memory.go",
+          "line": 30,
+          "end_line": 64
+        }
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "backend",
+      "label": "PostgreSQL 驱动",
+      "sublabel": "事务 + 行锁后读时间",
+      "pos": [
+        360,
+        245
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 123,
+          "end_line": 172
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "backend",
+      "label": "Redis 驱动",
+      "sublabel": "读取 → 计算 → CAS",
+      "pos": [
+        360,
+        430
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 162,
+          "end_line": 221
+        }
+      ]
+    },
+    {
+      "id": "memstore",
+      "type": "database",
+      "label": "进程内快照",
+      "sublabel": "实例之间不共享",
+      "pos": [
+        700,
+        60
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "driver/memory/memory.go",
+          "line": 14,
+          "end_line": 25
+        },
+        {
+          "path": "driver/memory/memory.go",
+          "line": 57,
+          "end_line": 64
+        }
+      ]
+    },
+    {
+      "id": "pgstore",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "资源行保存 snapshot",
+      "pos": [
+        700,
+        245
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 138,
+          "end_line": 172
+        }
+      ]
+    },
+    {
+      "id": "redisstore",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "比较快照与时间窗口",
+      "pos": [
+        700,
+        430
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "driver/redis/scripts.go",
+          "line": 3,
+          "end_line": 39
+        }
+      ]
+    },
+    {
+      "id": "transition",
+      "type": "backend",
+      "label": "Transition",
+      "sublabel": "无 I/O；复用本地调度",
+      "pos": [
+        360,
+        620
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "driver_state.go",
+          "line": 32,
+          "end_line": 40
+        },
+        {
+          "path": "driver_state.go",
+          "line": 163,
+          "end_line": 187
+        },
+        {
+          "path": "driver_state.go",
+          "line": 221,
+          "end_line": 228
+        }
+      ]
+    },
+    {
+      "id": "window",
+      "type": "backend",
+      "label": "TransitionOptimistic",
+      "sublabel": "附加提交时间窗口",
+      "pos": [
+        700,
+        620
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "driver_optimistic.go",
+          "line": 20,
+          "end_line": 62
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "contract-memory",
+      "from": "contract",
+      "to": "memory",
+      "label": "实现"
+    },
+    {
+      "id": "contract-postgres",
+      "from": "contract",
+      "to": "postgres",
+      "label": "实现"
+    },
+    {
+      "id": "contract-redis",
+      "from": "contract",
+      "to": "redis",
+      "label": "实现"
+    },
+    {
+      "id": "memory-memstore",
+      "from": "memory",
+      "to": "memstore",
+      "label": "内存写入"
+    },
+    {
+      "id": "postgres-pgstore",
+      "from": "postgres",
+      "to": "pgstore",
+      "label": "提交事务"
+    },
+    {
+      "id": "redis-redisstore",
+      "from": "redis",
+      "to": "redisstore",
+      "label": "Lua CAS"
+    },
+    {
+      "id": "redis-window",
+      "from": "redis",
+      "to": "window",
+      "label": "计算"
+    },
+    {
+      "id": "window-transition",
+      "from": "window",
+      "to": "transition",
+      "label": "复用"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "三种原子边界",
+      "items": [
+        "Memory 和 PostgreSQL 在独占资源后直接调用 Transition。",
+        "Redis 通过 TransitionOptimistic 计算；CAS 同时校验原快照与发布时间。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "自定义驱动的切入点",
+      "items": [
+        "实现 Driver 的五个方法；不可自行修改 opaque snapshot。",
+        "即使有业务错误，也要提交非 nil 新快照；传输错误是未知结果。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "部署与性能边界",
+      "items": [
+        "Memory 仅供测试演示；远端驱动分别是独立 Go 模块。",
+        "每资源全快照读写；Observe 也推进状态，不能当作廉价只读查询。"
+      ]
+    }
+  ]
+}
