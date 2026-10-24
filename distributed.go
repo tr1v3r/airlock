@@ -14,14 +14,17 @@ import (
 // remain unchanged: zero disables waiting. There is no implicit renewal or
 // background acquisition worker.
 type SharedOptions struct {
+	// Resource is a nonempty UTF-8 name without NUL, at most 256 bytes, shared by all contenders.
 	Resource string
 	// Config fixes resource-wide admission and lease policy. Zero protocol fields
 	// default to LeaseTTL=30s, MaxWait=30s, SubmitWindow=5s, Retention=1m, and
 	// MaxRecords=10000. All clients of a resource must use the same resolved Config.
 	Config ResourceConfig
 	// OperationTimeout bounds each backend call; zero defaults to 5s.
+	// Nonzero values must be positive and at most one minute.
 	OperationTimeout time.Duration
 	// PollInterval spaces observations while queued; zero defaults to 50ms.
+	// Nonzero values must be positive and at most one minute.
 	PollInterval time.Duration
 	// ClockSkewAllowance reserves time for a known bound on client/backend clock
 	// offset. Zero preserves the original deadlines (no skew allowance). Positive
@@ -33,11 +36,14 @@ type SharedOptions struct {
 
 // Shared coordinates admission to a resource through an injected Driver.
 // The driver determines the sharing scope. Grants are time-bounded leases.
-// Shared never closes the driver or its connections.
+// Shared never closes the driver or its connections. Use NewShared; the zero
+// value is unusable. It is safe for concurrent use with a concurrency-safe Driver.
 // An acquisition context only controls waiting; delivered leases have their own
 // lifetime. Backend failures never fall back to local admission.
 type Shared struct {
-	driver  Driver
+	// driver is the caller-owned, concurrency-safe backend adapter.
+	driver Driver
+	// options is an immutable deep copy with protocol defaults resolved.
 	options SharedOptions
 }
 
@@ -64,20 +70,31 @@ func NewShared(d Driver, options SharedOptions) (*Shared, error) {
 	return &Shared{driver: d, options: copied}, nil
 }
 
-// Acquire obtains one leased token for the default tenant.
+// Acquire obtains one leased token for the default tenant under AcquireN
+// waiting, cancellation and lease-lifecycle rules. A nil context panics.
 func (d *Shared) Acquire(ctx context.Context) (*Lease, error) { return d.AcquireN(ctx, 1) }
 
-// AcquireFor obtains one leased token for an explicitly named tenant.
+// AcquireFor obtains one leased token for a named tenant under AcquireNFor
+// validation, waiting and lease-lifecycle rules. A nil context panics.
 func (d *Shared) AcquireFor(ctx context.Context, tenant string) (*Lease, error) {
 	return d.AcquireNFor(ctx, tenant, 1)
 }
 
-// AcquireN obtains n leased tokens atomically for the default tenant.
+// AcquireN obtains n leased tokens atomically for the default tenant. A nil
+// context panics. Invalid weights fail before checking cancellation. Queued
+// requests are polled until grant, cancellation, expiry or backend failure.
+// Errors return a nil lease; after submission, bounded Cancel cleanup may delay
+// return beyond ctx and its error is joined. Remote state can remain uncertain.
+// Successful leases require explicit renewal/release; later cancellation of ctx
+// does not invalidate them. Stop work on Done before releasing capacity.
 func (d *Shared) AcquireN(ctx context.Context, n int) (*Lease, error) {
 	return d.acquire(ctx, "", n)
 }
 
 // AcquireNFor obtains n leased tokens atomically for an explicitly named tenant.
+// A nil context panics; an empty tenant returns ErrInvalidTenant before weight
+// checks. Names must be UTF-8 without NUL and at most 256 bytes. The caller
+// authenticates tenant identity; all other rules are those of AcquireN.
 func (d *Shared) AcquireNFor(ctx context.Context, tenant string, n int) (*Lease, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
@@ -87,6 +104,8 @@ func (d *Shared) AcquireNFor(ctx context.Context, tenant string, n int) (*Lease,
 	}
 	return d.acquire(ctx, tenant, n)
 }
+
+// execute bounds one driver call and records its start for conservative local lease timing.
 func (d *Shared) execute(ctx context.Context, operation func(context.Context) (Result, error)) (Result, time.Time, error) {
 	op, cancel := context.WithTimeout(ctx, d.options.OperationTimeout)
 	defer cancel()
@@ -101,6 +120,8 @@ func (d *Shared) execute(ctx context.Context, operation func(context.Context) (R
 	}
 	return result, start, err
 }
+
+// acquire submits once, polls queued outcomes, and attempts bounded cancellation on failure.
 func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
@@ -201,19 +222,31 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 // Lease owns a time-bounded whole allocation. Do not copy it. Callers must stop
 // work when Done closes or Valid is false, and release only after work stops.
 // Expiry reclaims accounting but cannot stop CPU work or fence external writes.
-// Renew and Release are serialized; acquiring-context cancellation is unrelated.
+// Lease methods are safe for concurrent use. Renew and Release are serialized;
+// acquiring-context cancellation is unrelated. Obtain handles from Shared;
+// the zero value is not usable, and operation contexts must be non-nil.
 type Lease struct {
-	opMu     sync.Mutex
-	mu       sync.Mutex
-	client   *Shared
-	request  Request
-	id       string
+	// opMu serializes whole Renew/Release calls, including network I/O.
+	opMu sync.Mutex
+	// mu protects local validity and timer state without blocking expiry on network I/O.
+	mu sync.Mutex
+	// client retains the backend and timeout policy used for this acquisition.
+	client *Shared
+	// request is the unchanged submission retained for renewal and recovery.
+	request Request
+	// id is the backend grant identity, not a downstream fencing token.
+	id string
+	// deadline subtracts the full backend round trip from reported remaining validity.
 	deadline time.Time
-	timer    *time.Timer
-	done     chan struct{}
-	closed   bool
+	// timer closes local validity at deadline; Valid also checks the clock directly.
+	timer *time.Timer
+	// done closes permanently when local validity ends.
+	done chan struct{}
+	// closed prevents any later response from resurrecting this handle.
+	closed bool
 }
 
+// invalidateLocked permanently closes Done and stops the timer; l.mu must be held.
 func (l *Lease) invalidateLocked() {
 	if !l.closed {
 		l.closed = true
@@ -223,6 +256,8 @@ func (l *Lease) invalidateLocked() {
 		}
 	}
 }
+
+// expire rechecks the deadline under l.mu, including after a delayed timer callback.
 func (l *Lease) expire() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -242,6 +277,8 @@ func (l *Lease) Weight() int { return l.request.Weight }
 
 // Renew explicitly extends a live lease. Any error invalidates it permanently.
 // A response after the previous local deadline never resurrects the lease.
+// Each successful call resets backend validity by LeaseTTL; there is no automatic
+// renewal. An ambiguous response is not automatically retried.
 func (l *Lease) Renew(ctx context.Context) error {
 	l.opMu.Lock()
 	defer l.opMu.Unlock()
@@ -269,6 +306,8 @@ func (l *Lease) Renew(ctx context.Context) error {
 
 // Release invalidates locally before I/O. On errors the result is unknown; retry
 // this same method for cleanup. Success means a matching terminal record exists.
+// Stop protected work before calling. After history is reclaimed, cleanup may
+// return a protocol error even if an earlier release succeeded.
 func (l *Lease) Release(ctx context.Context) error {
 	l.opMu.Lock()
 	defer l.opMu.Unlock()

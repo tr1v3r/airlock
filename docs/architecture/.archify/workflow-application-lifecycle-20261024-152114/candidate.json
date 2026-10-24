@@ -1,0 +1,298 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "应用监督流程：停止任务后再释放租约",
+    "locale": "zh-CN",
+    "output": ".archify/workflow-application-lifecycle-20261024-152114/application-lifecycle.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "link_mode": "local-only"
+    },
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "应用逻辑"
+        },
+        "security": {
+          "label": "校验与裁决"
+        },
+        "external": {
+          "label": "业务任务"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "work",
+      "label": "应用任务"
+    },
+    {
+      "id": "watch",
+      "label": "应用监督 goroutine"
+    },
+    {
+      "id": "cleanup",
+      "label": "应用清理"
+    }
+  ],
+  "mainPath": [
+    "acquire",
+    "start",
+    "work",
+    "join",
+    "release",
+    "finish"
+  ],
+  "nodes": [
+    {
+      "id": "acquire",
+      "type": "backend",
+      "label": "获取 Lease",
+      "sublabel": "NewShared + Acquire",
+      "lane": "work",
+      "col": 0,
+      "sources": [
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 22,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "start",
+      "type": "backend",
+      "label": "启动监督",
+      "sublabel": "检查 Valid 再运行",
+      "lane": "work",
+      "col": 1,
+      "sources": [
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 74,
+          "end_line": 111
+        },
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 132,
+          "end_line": 138
+        }
+      ]
+    },
+    {
+      "id": "work",
+      "type": "external",
+      "label": "执行业务一次",
+      "sublabel": "返回前停止子任务",
+      "lane": "work",
+      "col": 2,
+      "sources": [
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 71,
+          "end_line": 74
+        },
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 132,
+          "end_line": 138
+        }
+      ]
+    },
+    {
+      "id": "watch",
+      "type": "backend",
+      "label": "监测 Done",
+      "sublabel": "失效时取消工作",
+      "lane": "watch",
+      "col": 1,
+      "sources": [
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 79,
+          "end_line": 87
+        }
+      ]
+    },
+    {
+      "id": "renew",
+      "type": "backend",
+      "label": "定时显式 Renew",
+      "sublabel": "有界 I/O；出错即取消",
+      "lane": "watch",
+      "col": 2,
+      "sources": [
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 88,
+          "end_line": 110
+        }
+      ]
+    },
+    {
+      "id": "join",
+      "type": "backend",
+      "label": "停止并等待监督",
+      "sublabel": "业务已返回",
+      "lane": "cleanup",
+      "col": 2,
+      "sources": [
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 113,
+          "end_line": 130
+        }
+      ]
+    },
+    {
+      "id": "release",
+      "type": "backend",
+      "label": "Release 清理",
+      "sublabel": "独立超时 context",
+      "lane": "cleanup",
+      "col": 3,
+      "sources": [
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 167,
+          "end_line": 180
+        }
+      ]
+    },
+    {
+      "id": "retry",
+      "type": "backend",
+      "label": "同一 Lease 重试",
+      "sublabel": "示例最多两次尝试",
+      "lane": "cleanup",
+      "col": 4,
+      "sources": [
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 167,
+          "end_line": 180
+        }
+      ]
+    },
+    {
+      "id": "finish",
+      "type": "backend",
+      "label": "返回结果",
+      "sublabel": "保留业务与清理错误",
+      "lane": "cleanup",
+      "col": 5,
+      "sources": [
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 119,
+          "end_line": 130
+        },
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 167,
+          "end_line": 180
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "acquire-start",
+      "from": "acquire",
+      "to": "start",
+      "label": "成功"
+    },
+    {
+      "id": "start-work",
+      "from": "start",
+      "to": "work",
+      "label": "仍有效"
+    },
+    {
+      "id": "start-watch",
+      "from": "start",
+      "to": "watch",
+      "label": "启动"
+    },
+    {
+      "id": "start-renew",
+      "from": "start",
+      "to": "renew",
+      "label": "启动"
+    },
+    {
+      "id": "watch-work",
+      "from": "watch",
+      "to": "work",
+      "label": "失效则取消",
+      "role": "branch"
+    },
+    {
+      "id": "renew-work",
+      "from": "renew",
+      "to": "work",
+      "label": "失败则取消",
+      "role": "branch"
+    },
+    {
+      "id": "work-join",
+      "from": "work",
+      "to": "join",
+      "label": "任务全部停止"
+    },
+    {
+      "id": "join-release",
+      "from": "join",
+      "to": "release",
+      "label": "监督已退出"
+    },
+    {
+      "id": "release-finish",
+      "from": "release",
+      "to": "finish",
+      "label": "确认终态"
+    },
+    {
+      "id": "release-retry",
+      "from": "release",
+      "to": "retry",
+      "label": "结果未知"
+    },
+    {
+      "id": "retry-finish",
+      "from": "retry",
+      "to": "finish",
+      "label": "成功或耗尽"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这是应用示例，不是 SDK 后台服务",
+      "items": [
+        "runJob / releaseStoppedJob 来自 driver/memory/examples/lifecycle。",
+        "库本身不启动业务 worker，不保证任务停止，也不跟踪批次完成。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "顺序不能颠倒",
+      "items": [
+        "先停止业务和子任务，再停止并等待监督 goroutine，最后释放。",
+        "工作不配合 context 时，此流程无法强制终止它。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "恢复边界",
+      "items": [
+        "释放结果未知时重试同一身份，只做清理。",
+        "不能通过重新 Acquire 或重跑业务来掩盖未知释放结果。"
+      ]
+    }
+  ]
+}

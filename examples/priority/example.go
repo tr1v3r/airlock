@@ -1,3 +1,4 @@
+// Command priority demonstrates weighted request selection between tenant groups.
 // Run with: go run ./examples/priority
 package main
 
@@ -12,6 +13,7 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
+// run demonstrates weighted request selection between tenant groups.
 func run() error {
 	lock, err := airlock.New(airlock.Config{
 		Capacity: 1, MaxQueued: 12, MaxQueuedPerTenant: 8,
@@ -82,6 +84,7 @@ func run() error {
 	return nil
 }
 
+// main runs the priority admission example.
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)

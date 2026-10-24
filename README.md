@@ -8,6 +8,16 @@ tenants, optional priority groups with weighted selection and reserved waiting
 budgets, and global/per-tenant queue limits. Runtime dependencies are standard
 library only. Callers own goroutines, results, errors, and completion.
 
+## Fully commented SDK for agents
+
+Airlock is a **fully commented SDK** intended to help coding agents use it correctly.
+Source comments cover packages, types, interfaces, functions, methods, fields,
+constants and variables, explaining input constraints, concurrency and lifecycle
+rules, and error handling. Read the comments for your pinned version alongside
+the examples when integrating the SDK.
+
+Start with the [Local API](airlock.go), [shared API](distributed.go), and [driver contract](driver.go).
+
 ## Choose an entry point
 
 | Need | Entry point | Start here |
@@ -18,6 +28,10 @@ library only. Callers own goroutines, results, errors, and completion.
 
 Ordinary local admission does not need a driver. The core runtime uses only the
 standard library; remote driver dependencies are installed separately.
+
+## Architecture atlas
+
+Explore the [architecture atlas](docs/architecture/README.md) for eight source-backed diagrams, reading paths for users and contributors, and implementation/test entry points. [中文图集](docs/architecture/README.zh-CN.md).
 
 ## Installation
 

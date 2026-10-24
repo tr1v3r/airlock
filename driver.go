@@ -18,6 +18,9 @@ import (
 // and honor ctx. Storage layout and use of the reference helpers are optional. Transport errors are ambiguous and never authorize work.
 // Drivers do not own injected connections, execute work, or fall back locally.
 // All callers of a resource must use the same immutable ResourceConfig.
+// Implementations must be safe for concurrent use. Contexts must be non-nil.
+// Request identities and owner secrets must be retained for recovery; never
+// replace an ambiguous Submit with a fresh ID and assume no capacity was acquired.
 type Driver interface {
 	// Submit admits or queues the whole request; retries do not refresh an existing lease.
 	Submit(context.Context, Request) (Result, error)
@@ -37,12 +40,18 @@ type Driver interface {
 // queued, granted and terminal records together (1..10000). No records are
 // evicted to admit new requests. Capacity and MaxQueued are at most 10000.
 type ResourceConfig struct {
-	Admission    Config
-	LeaseTTL     time.Duration
-	MaxWait      time.Duration
+	// Admission fixes weighted capacity and request queue limits; Capacity and MaxQueued are at most 10000.
+	Admission Config
+	// LeaseTTL is validity after grant or renewal, in whole milliseconds within (0, 1h].
+	LeaseTTL time.Duration
+	// MaxWait bounds new request waiting deadlines relative to backend time, within (0, 1h].
+	MaxWait time.Duration
+	// SubmitWindow bounds how far a new submission deadline may be in the future, within (0, 1h].
 	SubmitWindow time.Duration
-	Retention    time.Duration
-	MaxRecords   int
+	// Retention keeps terminal outcomes after completion; GC also waits for SubmitUntil. Range: (0, 24h].
+	Retention time.Duration
+	// MaxRecords caps queued, granted and terminal history together, from 1 through 10000.
+	MaxRecords int
 }
 
 // Request is an immutable submission, reused verbatim for every operation.
@@ -50,22 +59,32 @@ type ResourceConfig struct {
 // deadline requires a different ID. Owner is a fresh 128-bit random hex secret.
 // Authenticate tenants and restrict backend access outside this package.
 type Request struct {
-	Resource    string
-	ID          string
-	Owner       string
+	// Resource names the shared capacity pool: nonempty UTF-8 without NUL, at most 256 bytes.
+	Resource string
+	// ID binds a random secret to SubmitUntil; obtain it from NewRequest and reuse it unchanged.
+	ID string
+	// Owner is a lowercase 128-bit random hex secret created by NewRequest; retain it for recovery.
+	Owner string
+	// SubmitUntil is the exclusive first-submission deadline, in whole milliseconds, encoded in ID.
 	SubmitUntil time.Time
-	WaitUntil   time.Time
-	Tenant      string
-	Weight      int
-	Config      ResourceConfig
+	// WaitUntil is the exclusive queue deadline; grants use LeaseTTL instead. Use whole milliseconds.
+	WaitUntil time.Time
+	// Tenant is UTF-8 without NUL, at most 256 bytes; empty selects the shared default tenant.
+	Tenant string
+	// Weight is the atomic token count, from 1 through Config.Admission.Capacity.
+	Weight int
+	// Config must exactly match the immutable resolved policy used by all callers of Resource.
+	Config ResourceConfig
 }
 
 // LeaseRef identifies a granted lease for Renew and Release. Request must be the
 // unchanged original submission; ID is the LeaseID returned by a successful grant.
 // It is an identity reference, not proof that the lease is still valid.
 type LeaseRef struct {
+	// Request is the unchanged original submission, including its owner secret and resolved config.
 	Request Request
-	ID      string
+	// ID is the LeaseID returned by the original grant, not the request ID.
+	ID string
 }
 
 // Operation identifies an atomic protocol transition.
@@ -87,8 +106,11 @@ const (
 // Command is the input to the shared Transition implementation. Driver callers
 // use the named methods with Request or LeaseRef instead of constructing commands.
 type Command struct {
-	Kind    Operation
+	// Kind selects Submit, Observe, Cancel, Renew or Release.
+	Kind Operation
+	// Request identifies the original immutable submission for every operation.
 	Request Request
+	// LeaseID must match the grant for Renew/Release; other operations ignore it.
 	LeaseID string
 }
 
@@ -114,37 +136,57 @@ const (
 // backend evaluation time; clients subtract the entire round trip. Revision is
 // monotonic per resource, including maintenance-only transitions.
 type Result struct {
-	Status    Status
-	LeaseID   string
-	Weight    int
+	// Status is the backend request lifecycle; only Granted with nil error may authorize work.
+	Status Status
+	// LeaseID identifies a grant and may remain on terminal records; it is not a fencing token.
+	LeaseID string
+	// Weight is the original allocation size; terminal records no longer hold those tokens.
+	Weight int
+	// Remaining is grant validity at backend evaluation; subtract the full round trip before use.
 	Remaining time.Duration
-	Revision  uint64
+	// Revision increases on committed transitions, including expiry/maintenance without a grant.
+	Revision uint64
 }
 
 // Protocol errors are stable identities; transport errors are preserved separately.
 var (
 	// ErrInvalidRequest reports malformed identifiers, deadlines, or operations.
-	ErrInvalidRequest  = errors.New("airlock: invalid driver request")
-	ErrConfigConflict  = errors.New("airlock: resource configuration conflict")
+	ErrInvalidRequest = errors.New("airlock: invalid driver request")
+	// ErrConfigConflict means the resource identity or immutable configuration differs from stored state.
+	ErrConfigConflict = errors.New("airlock: resource configuration conflict")
+	// ErrRequestConflict means a retained request ID was reused with a different owner or parameters.
 	ErrRequestConflict = errors.New("airlock: request identity or parameters conflict")
-	ErrNotFound        = errors.New("airlock: request not found")
-	ErrLeaseLost       = errors.New("airlock: lease no longer valid")
-	ErrSubmitExpired   = errors.New("airlock: submission window expired")
-	ErrHistoryFull     = errors.New("airlock: recovery history full")
-	ErrCorruptState    = errors.New("airlock: invalid backend snapshot")
+	// ErrNotFound means no retained request exists for an operation that requires one.
+	ErrNotFound = errors.New("airlock: request not found")
+	// ErrLeaseLost means ownership is expired, mismatched, or no longer safe to use locally.
+	ErrLeaseLost = errors.New("airlock: lease no longer valid")
+	// ErrSubmitExpired rejects an unknown request whose first-submission deadline has passed.
+	ErrSubmitExpired = errors.New("airlock: submission window expired")
+	// ErrHistoryFull means retained records fill MaxRecords; existing outcomes are not evicted.
+	ErrHistoryFull = errors.New("airlock: recovery history full")
+	// ErrCorruptState rejects malformed or inconsistent snapshots, including a backward backend clock.
+	ErrCorruptState = errors.New("airlock: invalid backend snapshot")
 )
 
 // NewRequest creates a cryptographically random identity bound to until. It does
-// not submit anything. The caller supplies the other immutable request fields.
+// not submit anything or validate until. The time is normalized to UTC and
+// truncated to milliseconds. Fill Resource, Tenant, Weight, WaitUntil and Config
+// before submission; keep the completed request unchanged for recovery.
 func NewRequest(until time.Time) Request {
 	until = until.UTC().Truncate(time.Millisecond)
 	return Request{ID: strconv.FormatInt(until.UnixMilli(), 10) + "-" + randomID(), Owner: randomID(), SubmitUntil: until}
 }
+
+// randomID generates a lowercase 128-bit cryptographic identity.
 func randomID() string { b := make([]byte, 16); _, _ = rand.Read(b); return hex.EncodeToString(b) }
+
+// validSecret accepts exactly 16 bytes encoded as lowercase hexadecimal.
 func validSecret(s string) bool {
 	b, e := hex.DecodeString(s)
 	return e == nil && len(b) == 16 && strings.ToLower(s) == s
 }
+
+// validConfig checks protocol bounds and the local scheduler policy without backend I/O.
 func validConfig(c ResourceConfig) error {
 	if c.Admission.Capacity > 10000 || c.Admission.MaxQueued > 10000 || c.MaxRecords < 1 || c.MaxRecords > 10000 {
 		return ErrInvalidConfig
@@ -175,6 +217,8 @@ func validConfig(c ResourceConfig) error {
 	_, err := New(c.Admission)
 	return err
 }
+
+// validRequest validates a complete immutable submission and its resource configuration.
 func validRequest(r Request) error {
 	if err := validConfig(r.Config); err != nil {
 		return err
@@ -201,6 +245,7 @@ func validRequestFields(r Request) error {
 
 // ValidateCommand checks immutable protocol input without reading backend state.
 // Drivers should call it before allocating a resource or opening a transaction.
+// LeaseID matching and backend-relative deadline checks occur in Transition, not here.
 func ValidateCommand(cmd Command) error {
 	if err := validRequest(cmd.Request); err != nil {
 		return err
@@ -213,4 +258,5 @@ func ValidateCommand(cmd Command) error {
 	}
 }
 
+// validText accepts shared-protocol strings that can be stored in PostgreSQL text and JSON.
 func validText(s string) bool { return utf8.ValidString(s) && !strings.ContainsRune(s, 0) }

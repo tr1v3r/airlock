@@ -1,3 +1,4 @@
+// Command isolation demonstrates fixed capacity partitioning between independent Airlocks.
 // Run with: go run ./examples/isolation
 package main
 
@@ -23,6 +24,7 @@ func doWork(ctx context.Context) error {
 	}
 }
 
+// runOnline uses separate wait and work deadlines, releasing only after work stops.
 func runOnline(ctx context.Context, high *airlock.Airlock) error {
 	waitCtx, stopWaiting := context.WithTimeout(ctx, 5*time.Millisecond)
 	permit, err := high.AcquireFor(waitCtx, "online")
@@ -37,6 +39,7 @@ func runOnline(ctx context.Context, high *airlock.Airlock) error {
 	return doWork(workCtx)
 }
 
+// run demonstrates fixed capacity partitioning between independent Airlocks.
 func run() error {
 	// A fixed total budget of 12 is partitioned into 4 + 8 at startup.
 	// Route authenticated online requests to high and batch/maintenance to low.
@@ -74,6 +77,7 @@ func run() error {
 	return nil
 }
 
+// main runs the isolation admission example.
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)

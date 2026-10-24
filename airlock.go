@@ -46,10 +46,15 @@ type Config struct {
 // count tokens; ActivePermits counts granted, unreleased permits, and Queued
 // counts pending requests, including a protected head request.
 type Stats struct {
-	Capacity       int
-	InUse          int
-	ActivePermits  int
-	Queued         int
+	// Capacity is the fixed token limit configured at construction.
+	Capacity int
+	// InUse counts held tokens, including all tokens in each weighted permit.
+	InUse int
+	// ActivePermits counts grants not yet released, regardless of their weights.
+	ActivePermits int
+	// Queued counts pending requests, including a protected head waiting for its full weight.
+	Queued int
+	// WaitingTenants counts distinct tenants with pending requests, including the default tenant.
 	WaitingTenants int
 }
 
@@ -67,28 +72,46 @@ type Stats struct {
 // may hold every token when others are idle. Use New; the zero value is not usable.
 // An Airlock is safe for concurrent use and must not be copied.
 type Airlock struct {
-	mu           sync.Mutex
-	cfg          Config
+	// mu protects all mutable scheduling and accounting state.
+	mu sync.Mutex
+	// cfg holds immutable limits; Priority is compiled into priority rather than retained.
+	cfg Config
+	// used counts held tokens; queued counts pending requests across all tenants.
 	used, queued int
-	active       int
-	protected    *waiter
-	tenants      map[string]*tenantQueue
-	priority     priorityState
+	// active counts granted allocations awaiting release.
+	active int
+	// protected is the selected head that no later request may bypass.
+	protected *waiter
+	// tenants indexes nonempty waiting queues; empty keys represent the default tenant.
+	tenants map[string]*tenantQueue
+	// priority owns group budgets and the weighted selection cursor.
+	priority priorityState
 }
 
+// tenantQueue connects one nonempty tenant FIFO to its group rotation.
 type tenantQueue struct {
-	id       string
-	group    *priorityQueue
-	turn     *list.Element
+	// id is the exact tenant key, empty only for the default tenant.
+	id string
+	// group owns this tenant's waiting budget and rotation.
+	group *priorityQueue
+	// turn is this queue's node in the group rotation.
+	turn *list.Element
+	// requests stores pending waiters in FIFO order, including any protected head.
 	requests list.List
 }
 
+// waiter tracks one pending atomic allocation under the owning Airlock mutex.
 type waiter struct {
-	ready   chan struct{}
+	// ready closes after a full grant; cancellation removes the waiter without closing it.
+	ready chan struct{}
+	// granted records the winning grant transition under the Airlock mutex.
 	granted bool
-	weight  int
-	node    *list.Element
-	tenant  *tenantQueue
+	// weight is the positive token count requested atomically.
+	weight int
+	// node links the waiter into its tenant's FIFO.
+	node *list.Element
+	// tenant owns the waiter's queue and group accounting.
+	tenant *tenantQueue
 }
 
 // Permit must not be copied. Release is idempotent, including concurrent calls.
@@ -96,8 +119,11 @@ type waiter struct {
 // Obtain permits from an Acquire or TryAcquire method; a zero-value Permit
 // holds no capacity.
 type Permit struct {
-	once   sync.Once
-	owner  *Airlock
+	// once returns capacity at most once, even under concurrent Release calls.
+	once sync.Once
+	// owner receives released capacity; it is cleared after release.
+	owner *Airlock
+	// weight is the complete token allocation returned by Release.
 	weight int
 }
 
@@ -166,7 +192,7 @@ func (g *Airlock) AcquireNFor(ctx context.Context, tenantID string, n int) (*Per
 	return g.acquire(ctx, tenantID, n)
 }
 
-// Empty is reserved internally for the default tenant.
+// acquire implements validated local admission; empty tenant is reserved for the default tenant.
 func (g *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, error) {
 	if ctx == nil {
 		panic("airlock: nil context")
@@ -252,6 +278,8 @@ func (g *Airlock) remove(w *waiter) {
 	}
 }
 
+// dispatch grants whole requests in selection order until capacity blocks the protected head.
+// The caller must serialize access; a selected turn is consumed even if later canceled.
 func (g *Airlock) dispatch() {
 	for g.used < g.cfg.Capacity && g.queued > 0 {
 		if g.protected == nil {

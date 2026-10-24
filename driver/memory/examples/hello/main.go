@@ -12,12 +12,14 @@ import (
 	"github.com/tr1v3r/airlock/driver/memory"
 )
 
+// main runs the shared-memory greeting.
 func main() {
 	if err := hello(); err != nil {
 		log.Fatal(err)
 	}
 }
 
+// hello acquires a shared lease, finishes its work and releases with a live cleanup context.
 func hello() error {
 	client, err := airlock.NewShared(memory.New(), airlock.SharedOptions{
 		Resource: "hello",

@@ -14,6 +14,7 @@ import (
 	redisdriver "github.com/tr1v3r/airlock/driver/redis"
 )
 
+// main runs the Redis example only when an isolated backend address is supplied.
 func main() {
 	address := os.Getenv("AIRLOCK_REDIS_ADDR")
 	if address == "" {
@@ -24,6 +25,8 @@ func main() {
 		log.Fatal(err)
 	}
 }
+
+// run acquires weighted shared capacity and releases after the sample work has stopped.
 func run(address string) error {
 	client := goredis.NewClient(&goredis.Options{Addr: address, ContextTimeoutEnabled: true})
 	defer func() { _ = client.Close() }()

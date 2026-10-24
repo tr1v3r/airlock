@@ -6,6 +6,14 @@
 提供租户内 FIFO、等待租户间轮转、可选的优先级组加权选择与独立等待额度，以及全局和每租户排队上限。
 运行时仅依赖标准库；goroutine、结果、错误和任务完成由调用方管理。
 
+## 方便 agent 使用的完整注释 SDK
+
+Airlock 是一个**提供完整源码注释的 SDK**，方便编码 agent 理解并正确调用。
+注释覆盖包、类型、接口、函数、方法、字段、常量和变量，说明参数约束、并发与生命周期规则，以及错误处理方式。
+集成时，请结合示例阅读所固定版本的源码注释。
+
+可从[本地 API](airlock.go)、[共享 API](distributed.go)和[驱动契约](driver.go)开始。
+
 ## 选择使用入口
 
 | 需求 | 入口 | 从这里开始 |
@@ -15,6 +23,10 @@
 | 测试或演示 Shared 租约 API | `NewShared(memory.New(), options)` | [Memory 示例](driver/memory) |
 
 普通本地准入不需要 driver。核心运行时仅依赖标准库，远端 driver 的依赖单独安装。
+
+## 架构图集
+
+查看[架构图集](docs/architecture/README.zh-CN.md)：8 张基于源码的架构、流程、时序和生命周期图，配套使用者、初学者、开发者阅读路径及源码/测试入口。[English guide](docs/architecture/README.md)。
 
 ## 安装
 

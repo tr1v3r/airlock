@@ -1,3 +1,4 @@
+// Command weighted demonstrates atomic multi-token admission and whole-weight release.
 // Run with: go run ./examples/weighted
 package main
 
@@ -10,6 +11,7 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
+// run demonstrates atomic multi-token admission and whole-weight release.
 func run(ctx context.Context) error {
 	lock, err := airlock.New(airlock.Config{
 		Capacity: 5, MaxQueued: 8, MaxQueuedPerTenant: 4,
@@ -53,6 +55,7 @@ func run(ctx context.Context) error {
 	return nil
 }
 
+// main runs the weighted admission example.
 func main() {
 	if err := run(context.Background()); err != nil {
 		log.Fatal(err)
