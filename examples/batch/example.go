@@ -1,3 +1,4 @@
+// Command batch demonstrates bounded batch execution with caller-owned completion.
 // Run with: go run ./examples/batch
 package main
 
@@ -10,6 +11,7 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
+// squares bounds concurrent calculations and joins every started worker before returning.
 func squares(ctx context.Context, inputs []int) ([]int, error) {
 	lock, err := airlock.New(airlock.Config{Capacity: 2, MaxQueued: 1, MaxQueuedPerTenant: 1})
 	if err != nil {
@@ -34,6 +36,7 @@ func squares(ctx context.Context, inputs []int) ([]int, error) {
 	return results, nil
 }
 
+// main runs the batch admission example.
 func main() {
 	results, err := squares(context.Background(), []int{1, 2, 3, 4, 5})
 	if err != nil {

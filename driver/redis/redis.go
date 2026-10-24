@@ -1,6 +1,8 @@
 // Package redis stores Airlock admission state in one persistent Redis key per
 // resource. It uses backend time and guarded compare-and-swap; it never executes
 // work or owns the injected client. Durability depends on the Redis deployment.
+// Methods require non-nil contexts and follow airlock.Driver recovery rules.
+// Confirmed CAS conflicts may retry; ambiguous writes never authorize work.
 package redis
 
 import (
@@ -20,8 +22,11 @@ import (
 // Driver is a concurrency-safe Redis adapter. Construct it with New.
 // Its zero value is invalid. Resource keys have no expiration.
 type Driver struct {
-	client  goredis.UniversalClient
-	prefix  string
+	// client is the caller-owned primary-routed Redis transport.
+	client goredis.UniversalClient
+	// prefix namespaces resource hashes without exposing logical names in keys.
+	prefix string
+	// timeout bounds reads, CAS retries and contention backoff for one operation.
 	timeout time.Duration
 }
 
@@ -29,7 +34,8 @@ type Driver struct {
 type Option func(*Driver) error
 
 // WithOperationTimeout bounds the complete operation, including CAS contention.
-// The default is five seconds; an earlier caller deadline takes precedence.
+// The timeout must be positive. The default is five seconds; an earlier caller
+// deadline takes precedence.
 func WithOperationTimeout(timeout time.Duration) Option {
 	return func(d *Driver) error {
 		if timeout <= 0 {
@@ -89,15 +95,22 @@ func New(client goredis.UniversalClient, prefix string, options ...Option) (*Dri
 	}
 	return d, nil
 }
+
+// key hashes namespace and resource into one persistent Redis Cluster key.
 func (d *Driver) key(resource string) string {
 	return fmt.Sprintf("airlock:{%x}:state", sha256.Sum256([]byte(d.prefix+"\x00"+resource)))
 }
 
-type noRetryCmd struct{ *goredis.Cmd }
+// noRetryCmd prevents transport replay of a possibly committed protocol operation.
+type noRetryCmd struct {
+	// Cmd retains the original routing, arguments and response storage.
+	*goredis.Cmd
+}
 
+// NoRetry marks this command as unsafe to replay after an ambiguous response.
 func (*noRetryCmd) NoRetry() bool { return true }
 
-// Only NOSCRIPT confirms no script ran, so it alone permits the EVAL fallback.
+// eval tries EVALSHA once, then EVAL only when NOSCRIPT proves no script ran.
 func (d *Driver) eval(ctx context.Context, script, key string, args ...any) (any, error) {
 	hash := fmt.Sprintf("%x", sha1.Sum([]byte(script)))
 	for _, head := range []struct{ name, body string }{{"evalsha", hash}, {"eval", script}} {
@@ -116,8 +129,10 @@ func (d *Driver) eval(ctx context.Context, script, key string, args ...any) (any
 	return nil, errors.New("airlock/redis: script unavailable")
 }
 
+// maxExactMicro is the largest integer exactly representable by Redis Lua numbers (2^53 - 1).
 const maxExactMicro int64 = 9007199254740991
 
+// micro encodes exact positive Unix microseconds; zero time denotes an unbounded window.
 func micro(t time.Time) (int64, error) {
 	if t.IsZero() {
 		return 0, nil
@@ -128,6 +143,8 @@ func micro(t time.Time) (int64, error) {
 	}
 	return n, nil
 }
+
+// decodeRead validates the atomic snapshot/existence/time reply before computing a transition.
 func decodeRead(raw any) ([]byte, bool, time.Time, error) {
 	values, ok := raw.([]any)
 	if !ok || len(values) != 4 {
@@ -221,6 +238,7 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 	}
 }
 
+// Verify the Redis backend implements the public Driver contract.
 var _ airlock.Driver = (*Driver)(nil)
 
 // Submit atomically submits the whole request without refreshing an existing lease.

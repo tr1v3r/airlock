@@ -2,6 +2,8 @@
 // Callers own the database pool. New performs no I/O; EnsureSchema is explicit.
 // Commands lock one permanent resource row and evaluate backend time after the
 // lock, then persist the shared state machine's snapshot in the same transaction.
+// Methods require non-nil contexts and follow airlock.Driver recovery rules.
+// An error never authorizes work; a commit response can be lost after persistence.
 package postgres
 
 import (
@@ -19,9 +21,13 @@ import (
 // Driver is a concurrency-safe PostgreSQL adapter. Construct it with New; its
 // zero value is invalid. It never closes the injected pool or starts workers.
 type Driver struct {
-	db      *sql.DB
-	prefix  string
-	table   string
+	// db is the caller-owned pool; operations use short resource-row transactions.
+	db *sql.DB
+	// prefix is stored in a separate namespace column, preserving resource boundaries.
+	prefix string
+	// table is the validated and quoted schema-qualified resource table.
+	table string
+	// timeout caps database calls and transaction lock waits.
 	timeout time.Duration
 }
 
@@ -59,7 +65,8 @@ func WithTable(name string) Option {
 
 // WithOperationTimeout bounds each database operation, including lock waits and
 // schema creation. The default is five seconds. A caller deadline may be earlier.
-// The SQL driver must support context cancellation and network timeouts.
+// The timeout must be positive. The SQL driver must support context cancellation
+// and network timeouts.
 func WithOperationTimeout(timeout time.Duration) Option {
 	return func(d *Driver) error {
 		if timeout <= 0 {
@@ -172,6 +179,7 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 	return result, transitionErr
 }
 
+// validate checks caller cancellation and driver initialization before database I/O.
 func (d *Driver) validate(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -182,6 +190,7 @@ func (d *Driver) validate(ctx context.Context) error {
 	return nil
 }
 
+// Verify the PostgreSQL backend implements the public Driver contract.
 var _ airlock.Driver = (*Driver)(nil)
 
 // Submit atomically submits the whole request without refreshing an existing lease.

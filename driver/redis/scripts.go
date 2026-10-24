@@ -1,13 +1,15 @@
 package redis
 
-// Read pairs GET with backend time. CAS validates everything before its only
-// mutation; no potentially failing command follows SET (Lua has no rollback).
+// readScript pairs GET with backend time in one atomic observation.
 const readScript = `
 local state = redis.call('GET', KEYS[1])
 local now = redis.call('TIME')
 if state == false then return {0, '', now[1], now[2]} end
 return {1, state, now[1], now[2]}
 `
+
+// casScript compares snapshot and time guards before its only mutation.
+// No potentially failing command follows SET because Redis Lua has no rollback.
 const casScript = `
 if #KEYS ~= 1 or #ARGV ~= 5 then return redis.error_reply('invalid arguments') end
 if ARGV[1] ~= '0' and ARGV[1] ~= '1' then return redis.error_reply('invalid existence') end

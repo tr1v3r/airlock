@@ -32,20 +32,29 @@ type PriorityPolicy struct {
 	TenantGroups map[string]string
 }
 
+// priorityQueue holds a group's bounded waiting population and tenant rotation.
 type priorityQueue struct {
-	limit    int
-	queued   int
+	// limit is the group's fixed, non-borrowable pending-request budget.
+	limit int
+	// queued includes all pending requests in the group, including a protected head.
+	queued int
+	// rotation holds nonempty tenant queues in next-selection order.
 	rotation list.List
 }
 
 // priorityState owns a compiled snapshot, retaining no caller-owned maps/slices.
 type priorityState struct {
+	// fallback serves default and unmapped tenants.
 	fallback *priorityQueue
-	tenants  map[string]*priorityQueue
+	// tenants is the immutable explicit tenant-to-group assignment.
+	tenants map[string]*priorityQueue
+	// schedule repeats group pointers by their selection shares.
 	schedule []*priorityQueue
-	cursor   int
+	// cursor identifies the next weighted schedule slot to examine.
+	cursor int
 }
 
+// newPriorityState validates and copies a policy into independent scheduling state.
 func newPriorityState(policy *PriorityPolicy, maxQueued int) (priorityState, error) {
 	if policy == nil {
 		q := &priorityQueue{limit: maxQueued}
@@ -86,6 +95,7 @@ func newPriorityState(policy *PriorityPolicy, maxQueued int) (priorityState, err
 	return state, nil
 }
 
+// group resolves a tenant to its assigned group or the fallback group.
 func (p *priorityState) group(tenant string) *priorityQueue {
 	if q := p.tenants[tenant]; q != nil {
 		return q

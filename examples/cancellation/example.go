@@ -1,3 +1,4 @@
+// Command cancellation demonstrates cancellation while waiting without consuming capacity.
 // Run with: go run ./examples/cancellation
 package main
 
@@ -10,6 +11,7 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
+// main runs the cancellation admission example.
 func main() {
 	lock, err := airlock.New(airlock.Config{Capacity: 1, MaxQueued: 1, MaxQueuedPerTenant: 1})
 	if err != nil {

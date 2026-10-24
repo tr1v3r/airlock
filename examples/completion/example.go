@@ -1,3 +1,4 @@
+// Command completion demonstrates joining admitted work with a caller-owned WaitGroup.
 // Run with: go run ./examples/completion
 package main
 
@@ -10,6 +11,7 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
+// main runs the completion admission example.
 func main() {
 	lock, err := airlock.New(airlock.Config{Capacity: 2, MaxQueued: 1, MaxQueuedPerTenant: 1})
 	if err != nil {

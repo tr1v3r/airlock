@@ -8,9 +8,12 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
+// concurrentOutcome keeps a command result paired with its error for race assertions.
 type concurrentOutcome struct {
+	// result is the protocol reply from one concurrent invocation.
 	result airlock.Result
-	err    error
+	// err retains that invocation's backend or business error.
+	err error
 }
 
 // raceCommands releases a bounded group together and joins every worker before
@@ -38,6 +41,7 @@ func raceCommands(h *harness, commands []airlock.Command) []concurrentOutcome {
 	return outcomes
 }
 
+// raceFanout chooses the bounded contender count for ordinary or stress checks.
 func raceFanout() int {
 	if os.Getenv("AIRLOCK_STRESS") == "1" {
 		return 16
@@ -45,6 +49,7 @@ func raceFanout() int {
 	return 8
 }
 
+// repeatedCommand copies an immutable command for simultaneous replay tests.
 func repeatedCommand(command airlock.Command, count int) []airlock.Command {
 	commands := make([]airlock.Command, count)
 	for i := range commands {
@@ -53,6 +58,7 @@ func repeatedCommand(command airlock.Command, count int) []airlock.Command {
 	return commands
 }
 
+// concurrentIdentity checks duplicate submissions/releases preserve identity and token accounting.
 func concurrentIdentity(h *harness) {
 	r := h.request("holder", h.cfg.Admission.Capacity)
 	outcomes := raceCommands(h, repeatedCommand(airlock.Command{Kind: airlock.Submit, Request: r}, raceFanout()))
@@ -82,6 +88,7 @@ func concurrentIdentity(h *harness) {
 	h.must(airlock.Release, last, g.LeaseID, airlock.Released)
 }
 
+// concurrentOwnerConflict verifies conflicting owners cannot mutate an existing grant.
 func concurrentOwnerConflict(h *harness) {
 	r := h.request("holder", h.cfg.Admission.Capacity)
 	grant := h.must(airlock.Submit, r, "", airlock.Granted)
@@ -112,6 +119,7 @@ func concurrentOwnerConflict(h *harness) {
 	h.must(airlock.Release, r, grant.LeaseID, airlock.Released)
 }
 
+// concurrentCancellation checks submission/cancellation races converge on a terminal tombstone.
 func concurrentCancellation(h *harness) {
 	for _, before := range []bool{true, false} {
 		r := h.request("cancelled", h.cfg.Admission.Capacity)
@@ -136,6 +144,7 @@ func concurrentCancellation(h *harness) {
 	}
 }
 
+// concurrentRenewRelease verifies release cannot be undone by a racing renewal.
 func concurrentRenewRelease(h *harness) {
 	r := h.request("holder", h.cfg.Admission.Capacity)
 	grant := h.must(airlock.Submit, r, "", airlock.Granted)
@@ -172,6 +181,7 @@ func concurrentRenewRelease(h *harness) {
 	h.must(airlock.Release, last, g.LeaseID, airlock.Released)
 }
 
+// cancelledOperations verifies already-canceled contexts do not advance backend state.
 func cancelledOperations(h *harness) {
 	r := h.request("holder", h.cfg.Admission.Capacity)
 	grant := h.must(airlock.Submit, r, "", airlock.Granted)

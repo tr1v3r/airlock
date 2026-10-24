@@ -1,3 +1,4 @@
+// Command tryacquire demonstrates immediate admission with a busy fallback.
 // Run with: go run ./examples/tryacquire
 package main
 
@@ -10,6 +11,7 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
+// run demonstrates immediate admission with a busy fallback.
 func run(ctx context.Context) error {
 	lock, err := airlock.New(airlock.Config{
 		Capacity: 2, MaxQueued: 8, MaxQueuedPerTenant: 4,
@@ -44,6 +46,7 @@ func run(ctx context.Context) error {
 	return nil
 }
 
+// main runs the tryacquire admission example.
 func main() {
 	if err := run(context.Background()); err != nil {
 		log.Fatal(err)
