@@ -23,7 +23,7 @@ case "${1:-}" in
     fi
     ;;
   coverage)
-    packages=$(go list ./... | awk '!/\/examples(\/|$)/ && !/\/internal\/comparison$/')
+    packages=$(go list ./... | awk '!/\/examples(\/|$)/ && !/\/internal\/comparison$/ && !/\/internal\/driverconformance$/')
     coverpkg=$(printf '%s\n' "$packages" | paste -sd, -)
     go test -race -shuffle=on -count=1 -timeout=5m -covermode=atomic -coverpkg="$coverpkg" -coverprofile=coverage.out ./...
     go tool cover -func=coverage.out

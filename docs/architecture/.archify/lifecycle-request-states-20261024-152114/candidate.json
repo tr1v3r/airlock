@@ -1,0 +1,294 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "后端请求生命周期：状态、幂等与回收",
+    "locale": "zh-CN",
+    "output": ".archify/lifecycle-request-states-20261024-152114/request-states.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "link_mode": "local-only"
+    }
+  },
+  "mainPath": [
+    "absent",
+    "queued",
+    "granted",
+    "released",
+    "forgotten"
+  ],
+  "states": [
+    {
+      "id": "absent",
+      "type": "start",
+      "label": "尚无记录",
+      "sublabel": "不是 Status 枚举",
+      "sources": [
+        {
+          "path": "driver_state.go",
+          "line": 92,
+          "end_line": 127
+        }
+      ]
+    },
+    {
+      "id": "queued",
+      "type": "waiting",
+      "label": "Queued",
+      "sublabel": "持久等待；不占 token",
+      "sources": [
+        {
+          "path": "driver_state.go",
+          "line": 73,
+          "end_line": 87
+        },
+        {
+          "path": "driver_state.go",
+          "line": 117,
+          "end_line": 143
+        },
+        {
+          "path": "driver_state.go",
+          "line": 221,
+          "end_line": 228
+        }
+      ]
+    },
+    {
+      "id": "granted",
+      "type": "active",
+      "label": "Granted",
+      "sublabel": "占用全部 weight",
+      "sources": [
+        {
+          "path": "driver_state.go",
+          "line": 131,
+          "end_line": 160
+        },
+        {
+          "path": "driver_state.go",
+          "line": 73,
+          "end_line": 84
+        }
+      ]
+    },
+    {
+      "id": "released",
+      "type": "success",
+      "label": "Released",
+      "sublabel": "匹配租约已释放",
+      "sources": [
+        {
+          "path": "driver_state.go",
+          "line": 144,
+          "end_line": 160
+        },
+        {
+          "path": "driver_state.go",
+          "line": 85,
+          "end_line": 87
+        }
+      ]
+    },
+    {
+      "id": "forgotten",
+      "type": "neutral",
+      "label": "记录已回收",
+      "sublabel": "原 ID 不能重新提交",
+      "sources": [
+        {
+          "path": "driver_state.go",
+          "line": 85,
+          "end_line": 101
+        }
+      ]
+    },
+    {
+      "id": "cancelled",
+      "type": "neutral",
+      "label": "Cancelled",
+      "sublabel": "含先取消后提交",
+      "sources": [
+        {
+          "path": "driver_state.go",
+          "line": 103,
+          "end_line": 108
+        },
+        {
+          "path": "driver_state.go",
+          "line": 131,
+          "end_line": 143
+        },
+        {
+          "path": "driver_state.go",
+          "line": 85,
+          "end_line": 87
+        }
+      ]
+    },
+    {
+      "id": "expired",
+      "type": "failure",
+      "label": "Expired",
+      "sublabel": "等待或租约到期",
+      "sources": [
+        {
+          "path": "driver_state.go",
+          "line": 73,
+          "end_line": 87
+        },
+        {
+          "path": "driver_state.go",
+          "line": 109,
+          "end_line": 111
+        }
+      ]
+    },
+    {
+      "id": "rejected",
+      "type": "failure",
+      "label": "Rejected",
+      "sublabel": "队列拒绝结果稳定",
+      "sources": [
+        {
+          "path": "driver_state.go",
+          "line": 117,
+          "end_line": 121
+        },
+        {
+          "path": "driver_state.go",
+          "line": 85,
+          "end_line": 87
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "id": "absent-queued",
+      "from": "absent",
+      "to": "queued",
+      "label": "Submit 排队"
+    },
+    {
+      "id": "queued-granted",
+      "from": "queued",
+      "to": "granted",
+      "label": "调度选中且容量够"
+    },
+    {
+      "id": "granted-released",
+      "from": "granted",
+      "to": "released",
+      "label": "Release 匹配"
+    },
+    {
+      "id": "released-forgotten",
+      "from": "released",
+      "to": "forgotten",
+      "label": "满足回收条件"
+    },
+    {
+      "id": "absent-granted",
+      "from": "absent",
+      "to": "granted",
+      "label": "可立即授予"
+    },
+    {
+      "id": "absent-cancelled",
+      "from": "absent",
+      "to": "cancelled",
+      "label": "Cancel 先到"
+    },
+    {
+      "id": "absent-expired",
+      "from": "absent",
+      "to": "expired",
+      "label": "到期"
+    },
+    {
+      "id": "absent-rejected",
+      "from": "absent",
+      "to": "rejected",
+      "label": "队列额度满"
+    },
+    {
+      "id": "queued-cancelled",
+      "from": "queued",
+      "to": "cancelled",
+      "label": "Cancel"
+    },
+    {
+      "id": "granted-cancelled",
+      "from": "granted",
+      "to": "cancelled",
+      "label": "Cancel"
+    },
+    {
+      "id": "queued-expired",
+      "from": "queued",
+      "to": "expired",
+      "label": "到期"
+    },
+    {
+      "id": "granted-expired",
+      "from": "granted",
+      "to": "expired",
+      "label": "到期"
+    },
+    {
+      "id": "granted-granted",
+      "from": "granted",
+      "to": "granted",
+      "label": "续租"
+    },
+    {
+      "id": "cancelled-forgotten",
+      "from": "cancelled",
+      "to": "forgotten",
+      "label": "满足回收条件"
+    },
+    {
+      "id": "expired-forgotten",
+      "from": "expired",
+      "to": "forgotten",
+      "label": "满足回收条件"
+    },
+    {
+      "id": "rejected-forgotten",
+      "from": "rejected",
+      "to": "forgotten",
+      "label": "满足回收条件"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "操作驱动时间推进",
+      "items": [
+        "每次 Transition 先处理过期并调度，再执行命令、再次调度。",
+        "没有后台清扫器；回收需同时越过 Finished + Retention 和 SubmitUntil。",
+        "到期边：未授予时检查 WaitUntil，已授予时检查租约 Until。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "幂等与身份",
+      "items": [
+        "同一请求 ID 必须保留原始请求字段；重复 Submit 不延长 TTL。",
+        "终态不能续租复活；Cancel 可以终止尚未交付给客户端的授予。",
+        "Granted 续租自环：仅身份匹配且仍存活的 Renew 更新 Until。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "图外错误",
+      "items": [
+        "配置冲突、历史满、非法命令等不等于 Rejected 状态。",
+        "本图展示合法协议路径；既有记录上的 Observe 等不改状态操作省略。"
+      ]
+    }
+  ]
+}

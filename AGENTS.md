@@ -1,9 +1,24 @@
 # AGENTS.md
 
-Airlock provides single-token tenant admission through New(Config), Airlock,
-Permit, and Stats. It uses bounded waiting queues and round-robin scheduling.
-Pool and Gate are no longer public APIs. Weighted acquisition is not implemented;
-preserve single-token semantics until explicitly changed.
+Airlock provides atomic weighted tenant admission through New(Config), Airlock,
+Permit, and Stats. Acquire/AcquireFor remain single-token; AcquireN/AcquireNFor
+request multiple tokens. It uses bounded waiting queues, tenant round-robin,
+and protected head requests that cannot be bypassed while awaiting capacity.
+TryAcquire/TryAcquireFor and TryAcquireN/TryAcquireNFor never queue or wait for
+capacity; they return ErrWouldBlock when immediate acquisition would bypass a
+waiter or exceed available capacity. They still acquire the internal mutex.
+Optional Config.Priority adds static tenant-to-group mappings, weighted selection
+turns, and reserved group waiting budgets. Group shares count request selections,
+not tokens or execution time; a protected request blocks all groups. Pool and Gate
+are no longer public APIs. Local permits have no lease. The distributed Driver contract, Transition state
+machine and NewShared/Shared/SharedOptions are implemented; memory is the reference
+driver for tests and demos; ordinary local admission uses New(Config).
+NewShared fills zero protocol settings with documented defaults, without changing
+capacity or queue limits. Shared user and custom-driver guides are separate under
+docs/guides; lifecycle supervision is application-owned example code.
+PostgreSQL uses resource/request tables, structured transitions and delta writes;
+Redis uses guarded snapshot CAS
+with backend time. Both are independent modules with explicit deployment limits.
 
 - Keep runtime dependencies limited to the standard library unless justified.
 - Define atomic acquisition, cancellation, weight validation, release accounting,

@@ -1,0 +1,254 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Airlock：两条准入路径与责任边界",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-overview-20261024-152114/overview.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "app",
+      "type": "external",
+      "label": "应用调用方",
+      "sublabel": "选择本地或共享准入",
+      "pos": [
+        40,
+        230
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "examples/hello/example.go",
+          "line": 12,
+          "end_line": 23
+        },
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 22,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "local",
+      "type": "backend",
+      "label": "本地 Airlock",
+      "sublabel": "New(Config)",
+      "pos": [
+        350,
+        80
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 107,
+          "end_line": 117
+        },
+        {
+          "path": "airlock.go",
+          "line": 170,
+          "end_line": 211
+        }
+      ]
+    },
+    {
+      "id": "permit",
+      "type": "backend",
+      "label": "Permit",
+      "sublabel": "无 TTL；显式释放",
+      "pos": [
+        670,
+        80
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 277,
+          "end_line": 295
+        }
+      ]
+    },
+    {
+      "id": "shared",
+      "type": "backend",
+      "label": "共享 Shared",
+      "sublabel": "NewShared + 注入 Driver",
+      "pos": [
+        350,
+        380
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "distributed.go",
+          "line": 104,
+          "end_line": 185
+        }
+      ]
+    },
+    {
+      "id": "lease",
+      "type": "backend",
+      "label": "Lease",
+      "sublabel": "有期限；显式续租与释放",
+      "pos": [
+        670,
+        380
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "distributed.go",
+          "line": 189,
+          "end_line": 192
+        },
+        {
+          "path": "distributed.go",
+          "line": 233,
+          "end_line": 272
+        }
+      ]
+    },
+    {
+      "id": "work",
+      "type": "external",
+      "label": "应用任务",
+      "sublabel": "调用方启动并等待完成",
+      "pos": [
+        1000,
+        230
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "examples/hello/example.go",
+          "line": 17,
+          "end_line": 22
+        },
+        {
+          "path": "driver/memory/examples/lifecycle/main.go",
+          "line": 71,
+          "end_line": 138
+        }
+      ]
+    },
+    {
+      "id": "driver",
+      "type": "database",
+      "label": "Driver 后端",
+      "sublabel": "共享容量；失败不回退",
+      "pos": [
+        350,
+        570
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "driver.go",
+          "line": 14,
+          "end_line": 31
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "app-local",
+      "from": "app",
+      "to": "local",
+      "label": "单进程"
+    },
+    {
+      "id": "local-permit",
+      "from": "local",
+      "to": "permit",
+      "label": "授予"
+    },
+    {
+      "id": "permit-work",
+      "from": "permit",
+      "to": "work",
+      "label": "成功后执行"
+    },
+    {
+      "id": "app-shared",
+      "from": "app",
+      "to": "shared",
+      "label": "共享资源"
+    },
+    {
+      "id": "shared-lease",
+      "from": "shared",
+      "to": "lease",
+      "label": "授予"
+    },
+    {
+      "id": "lease-work",
+      "from": "lease",
+      "to": "work",
+      "label": "有效时执行"
+    },
+    {
+      "id": "shared-driver",
+      "from": "shared",
+      "to": "driver",
+      "label": "协议操作"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "使用者从这里开始",
+      "items": [
+        "单 token 用 Acquire；多 token 用 AcquireN；带租户用 For 变体。",
+        "等待需配置全局及每租户队列上限；零值禁用等待。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "核心边界",
+      "items": [
+        "本地取消只控制等待，成功后的 Permit 必须释放。",
+        "Shared 不自动续租；Done 关闭后应用必须停止工作。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "开发者入口",
+      "items": [
+        "本地调度：airlock.go + priority.go。",
+        "共享协议：distributed.go → Driver → Transition；驱动负责原子提交。"
+      ]
+    }
+  ]
+}

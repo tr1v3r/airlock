@@ -1,6 +1,6 @@
 # 提案 002：本地与分布式 Driver
 
-状态：提案，未实现。核对日期：2026-10-22。配套：[总提案](002-weighted-priority-drivers.md)、[调度契约](002-weighted-scheduling.md)。
+状态：core 契约、客户端与 memory 在当前 PR 实现，详见 [ADR 005](../decisions/005-driver-contract.md)；PostgreSQL 在后续独立 PR 实现（见 [ADR 006](../decisions/006-postgres-driver.md)），Redis 由独立模块实现（见 [ADR 007](../decisions/007-redis-driver.md)）。以下保留原设计方向，API 以当前源码为准。核对日期：2026-10-22。配套：[总提案](002-weighted-priority-drivers.md)、[调度契约](002-weighted-scheduling.md)。
 
 ## 决策
 
@@ -9,7 +9,7 @@
 容量约束是同一资源中有效授权的权重总和不超过 Capacity，不能把申请 n 个令牌实现成 n 次单令牌申请。
 
 本地 `New(Config)` 保持零外部服务、标准库运行时依赖；已有 `Permit.Release()` 保留。
-远端拟提供独立 `NewDistributed(driver, ...)` 和 `Lease.Release(ctx) error`，使用者明确选择网络生命周期。
+远端拟提供独立 `NewShared(driver, ...)` 和 `Lease.Release(ctx) error`，使用者明确选择网络生命周期。
 这是接口方向，不是已实现 API；本次不改变现有方法。
 
 ## 借鉴 anylock 的范围
@@ -49,7 +49,8 @@ memory driver 不维护第二份调度算法：通过根包提供的受控、标
 提交入口校验配置一致性；不同客户端不能以不同容量或优先级配置操作同一个 Resource。
 第一版不支持在线改容量或更改调度策略；各优先级 Turns 总和不得超过 1024。
 
-所有后端采用同一语义，方法名为提案草图：
+所有后端采用同一语义。以下为历史提案草图；当前 Request、LeaseRef 和 Result 签名见
+[已实现的 driver 契约](../decisions/005-driver-contract.md)。
 
 ```go
 type Driver interface {
@@ -164,7 +165,7 @@ PG 默认流复制也是异步；强持久授权要配置同步复制、可靠�
 4. Redis driver：实现等价脚本和 Cluster slot 约束；明确与 PG 不同的持久性及故障切换保证。
 
 两种远端 driver 可以在第二阶段契约稳定后用独立 worktree 并行开发；合入次序建议先 PG，再 Redis。
-目前这四步均为计划，不包含运行时实现或性能结论。
+步骤 1 的本地多令牌与优先级已在当前功能分支实现，见[本地调度契约](002-weighted-scheduling.md)。步骤 2 已在当前 PR 实现；步骤 3 已由 PostgreSQL 独立 PR 实现；步骤 4 已由 Redis 独立 PR 实现，采用 Go 状态机加 Lua 时间窗口 CAS，偏离下文原始的完整 Lua 调度建议。本篇不是远端性能或故障切换验证结论。
 
 | 测试类别 | 验收点 | 环境 |
 | --- | --- | --- |

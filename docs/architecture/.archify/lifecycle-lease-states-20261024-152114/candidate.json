@@ -1,0 +1,197 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "客户端 Lease：有效期与不可逆失效",
+    "locale": "zh-CN",
+    "output": ".archify/lifecycle-lease-states-20261024-152114/lease-states.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "link_mode": "local-only"
+    }
+  },
+  "mainPath": [
+    "received",
+    "valid",
+    "invalid",
+    "cleaned"
+  ],
+  "states": [
+    {
+      "id": "received",
+      "type": "start",
+      "label": "收到授予",
+      "sublabel": "校验身份与 Remaining",
+      "sources": [
+        {
+          "path": "distributed.go",
+          "line": 148,
+          "end_line": 159
+        }
+      ]
+    },
+    {
+      "id": "valid",
+      "type": "active",
+      "label": "本地有效",
+      "sublabel": "以调用起点估计期限",
+      "sources": [
+        {
+          "path": "distributed.go",
+          "line": 150,
+          "end_line": 158
+        },
+        {
+          "path": "distributed.go",
+          "line": 214,
+          "end_line": 226
+        },
+        {
+          "path": "distributed.go",
+          "line": 233,
+          "end_line": 255
+        }
+      ]
+    },
+    {
+      "id": "renewing",
+      "type": "waiting",
+      "label": "续租进行中",
+      "sublabel": "仍受旧期限约束",
+      "sources": [
+        {
+          "path": "distributed.go",
+          "line": 233,
+          "end_line": 255
+        }
+      ]
+    },
+    {
+      "id": "invalid",
+      "type": "failure",
+      "label": "本地永久失效",
+      "sublabel": "Done 关闭；不可复活",
+      "sources": [
+        {
+          "path": "distributed.go",
+          "line": 205,
+          "end_line": 219
+        },
+        {
+          "path": "distributed.go",
+          "line": 248,
+          "end_line": 250
+        },
+        {
+          "path": "distributed.go",
+          "line": 258,
+          "end_line": 272
+        }
+      ]
+    },
+    {
+      "id": "unknown",
+      "type": "waiting",
+      "label": "释放结果未知",
+      "sublabel": "后端可能已经提交",
+      "sources": [
+        {
+          "path": "distributed.go",
+          "line": 258,
+          "end_line": 272
+        }
+      ]
+    },
+    {
+      "id": "cleaned",
+      "type": "success",
+      "label": "后端终态已确认",
+      "sublabel": "Released / Expired / Cancelled",
+      "sources": [
+        {
+          "path": "distributed.go",
+          "line": 260,
+          "end_line": 272
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "id": "received-valid",
+      "from": "received",
+      "to": "valid",
+      "label": "验证通过"
+    },
+    {
+      "id": "valid-invalid",
+      "from": "valid",
+      "to": "invalid",
+      "label": "到期或 Release"
+    },
+    {
+      "id": "valid-renewing",
+      "from": "valid",
+      "to": "renewing",
+      "label": "显式 Renew"
+    },
+    {
+      "id": "renewing-valid",
+      "from": "renewing",
+      "to": "valid",
+      "label": "旧期限前成功"
+    },
+    {
+      "id": "renewing-invalid",
+      "from": "renewing",
+      "to": "invalid",
+      "label": "错误或过期"
+    },
+    {
+      "id": "invalid-cleaned",
+      "from": "invalid",
+      "to": "cleaned",
+      "label": "Release 确认终态"
+    },
+    {
+      "id": "invalid-unknown",
+      "from": "invalid",
+      "to": "unknown",
+      "label": "Release 出错"
+    },
+    {
+      "id": "unknown-cleaned",
+      "from": "unknown",
+      "to": "cleaned",
+      "label": "同一 Lease 重试成功"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "两套事实必须分开",
+      "items": [
+        "本地失效不等于后端已释放；网络失败会产生未知结果。",
+        "释放重试只用于清理，不代表重新获取或重跑业务。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "任务停止归应用",
+      "items": [
+        "Done 关闭或 Valid 为 false 后应用应停止使用资源。",
+        "SDK 不能终止 CPU 工作，也不能给外部写入提供 fencing。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "显式监督",
+      "items": [
+        "没有自动续租；Renew / Release 串行执行。",
+        "调用 Acquire 的 context 取消不会撤销已经交付的 Lease。"
+      ]
+    }
+  ]
+}

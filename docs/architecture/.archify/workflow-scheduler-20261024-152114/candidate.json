@@ -1,0 +1,261 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "调度器：组配额、租户轮转与受保护请求",
+    "locale": "zh-CN",
+    "output": ".archify/workflow-scheduler-20261024-152114/scheduler.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "link_mode": "local-only"
+    },
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "库内逻辑"
+        },
+        "security": {
+          "label": "校验与裁决"
+        },
+        "external": {
+          "label": "业务任务"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "select",
+      "label": "锁内选择"
+    },
+    {
+      "id": "grant",
+      "label": "授予与暂停"
+    }
+  ],
+  "mainPath": [
+    "enter",
+    "existing",
+    "group",
+    "tenant",
+    "fit",
+    "grant"
+  ],
+  "nodes": [
+    {
+      "id": "enter",
+      "type": "backend",
+      "label": "dispatch",
+      "sublabel": "有空闲且有人等待",
+      "lane": "select",
+      "col": 0,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 255,
+          "end_line": 256
+        }
+      ]
+    },
+    {
+      "id": "existing",
+      "type": "backend",
+      "label": "已有 protected？",
+      "sublabel": "优先处理已选请求",
+      "lane": "select",
+      "col": 1,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 257,
+          "end_line": 265
+        }
+      ]
+    },
+    {
+      "id": "group",
+      "type": "backend",
+      "label": "选非空组",
+      "sublabel": "Turns 循环；跳空组",
+      "lane": "select",
+      "col": 2,
+      "sources": [
+        {
+          "path": "priority.go",
+          "line": 49,
+          "end_line": 86
+        },
+        {
+          "path": "priority.go",
+          "line": 96,
+          "end_line": 106
+        }
+      ]
+    },
+    {
+      "id": "tenant",
+      "type": "backend",
+      "label": "取租户队头",
+      "sublabel": "租户移至轮转尾部",
+      "lane": "select",
+      "col": 3,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 258,
+          "end_line": 263
+        }
+      ]
+    },
+    {
+      "id": "fit",
+      "type": "security",
+      "label": "容量足够？",
+      "sublabel": "整份 weight 判断",
+      "lane": "grant",
+      "col": 3,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 265,
+          "end_line": 268
+        }
+      ]
+    },
+    {
+      "id": "grant",
+      "type": "backend",
+      "label": "原子授予",
+      "sublabel": "移出队列并关闭 ready",
+      "lane": "grant",
+      "col": 4,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 269,
+          "end_line": 274
+        }
+      ]
+    },
+    {
+      "id": "pause",
+      "type": "backend",
+      "label": "保留 protected",
+      "sublabel": "暂停所有组的授予",
+      "lane": "grant",
+      "col": 2,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 265,
+          "end_line": 268
+        }
+      ]
+    },
+    {
+      "id": "trigger",
+      "type": "backend",
+      "label": "后续事件再调度",
+      "sublabel": "释放 / 入队 / 取消",
+      "lane": "grant",
+      "col": 0,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 191,
+          "end_line": 208
+        },
+        {
+          "path": "airlock.go",
+          "line": 280,
+          "end_line": 293
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "enter-existing",
+      "from": "enter",
+      "to": "existing",
+      "label": "进入循环"
+    },
+    {
+      "id": "existing-group",
+      "from": "existing",
+      "to": "group",
+      "label": "没有"
+    },
+    {
+      "id": "group-tenant",
+      "from": "group",
+      "to": "tenant",
+      "label": "选择机会"
+    },
+    {
+      "id": "tenant-fit",
+      "from": "tenant",
+      "to": "fit",
+      "label": "保护该请求"
+    },
+    {
+      "id": "existing-fit",
+      "from": "existing",
+      "to": "fit",
+      "label": "已有"
+    },
+    {
+      "id": "fit-grant",
+      "from": "fit",
+      "to": "grant",
+      "label": "足够"
+    },
+    {
+      "id": "fit-pause",
+      "from": "fit",
+      "to": "pause",
+      "label": "不足"
+    },
+    {
+      "id": "grant-enter",
+      "from": "grant",
+      "to": "enter",
+      "label": "继续循环",
+      "role": "return"
+    },
+    {
+      "id": "trigger-enter",
+      "from": "trigger",
+      "to": "enter",
+      "label": "再次调用"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "公平的计量单位",
+      "items": [
+        "Turns 统计请求选择次数，不是 token 数，也不是执行时间。",
+        "选中即消耗租户轮次；随后取消也不退回轮次。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "为什么空闲也不放行",
+      "items": [
+        "protected 防止大请求饥饿；后来的小请求或高优先级组不能绕过。",
+        "取消 protected 会清除保护；后续调度重新选择。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "不是容量隔离",
+      "items": [
+        "组额度预留的是等待空间，不能借用；运行容量仍共享。",
+        "严格隔离可参考 examples/isolation 的独立 Airlock 分区。"
+      ]
+    }
+  ]
+}
