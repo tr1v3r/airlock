@@ -36,7 +36,9 @@ func TestDistributedLeaseLifecycle(t *testing.T) {
 	}
 	wait, cancelWait := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancelWait()
-	if blocked, err := client.Acquire(wait); (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded)) || blocked != nil {
+	// The protocol wait deadline is truncated to milliseconds, so expiry may
+	// win before the context timer fires. Both outcomes must return no lease.
+	if blocked, err := client.Acquire(wait); (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded) && !errors.Is(err, airlock.ErrLeaseLost)) || blocked != nil {
 		t.Fatal(blocked, err)
 	}
 	if err := lease.Renew(context.Background()); err != nil {
