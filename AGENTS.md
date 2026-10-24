@@ -17,7 +17,7 @@ NewShared fills zero protocol settings with documented defaults, without changin
 capacity or queue limits. Shared user and custom-driver guides are separate under
 docs/guides; lifecycle supervision is application-owned example code.
 PostgreSQL uses resource/request tables, structured transitions and delta writes;
-the pre-release snapshot layout is rejected, never migrated. Redis uses guarded snapshot CAS
+Redis uses guarded snapshot CAS
 with backend time. Both are independent modules with explicit deployment limits.
 
 - Keep runtime dependencies limited to the standard library unless justified.

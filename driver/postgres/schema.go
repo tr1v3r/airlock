@@ -6,9 +6,8 @@ import (
 )
 
 // EnsureSchema explicitly creates the two relational tables in one transaction.
-// It rejects the pre-release snapshot layout instead of altering it: the
-// repository has never shipped a release, so there is nothing to migrate. It
-// does not change an existing layout or create a schema. Serialize deployment DDL.
+// It checks required columns without changing existing layouts or creating a
+// schema. Serialize deployment DDL.
 func (d *Driver) EnsureSchema(ctx context.Context) error {
 	if err := d.validate(ctx); err != nil {
 		return err
@@ -28,7 +27,7 @@ func (d *Driver) EnsureSchema(ctx context.Context) error {
 	for _, query := range []string{fmt.Sprintf(`SELECT %s FROM %s WHERE false`, resourceColumns, d.table), fmt.Sprintf(`SELECT %s FROM %s WHERE false`, requestColumns, d.requests)} {
 		rows, e := tx.QueryContext(ctx, query)
 		if e != nil {
-			return fmt.Errorf("airlock/postgres: incompatible schema (legacy snapshot layout detected; drop those tables and re-create): %w", e)
+			return fmt.Errorf("airlock/postgres: incompatible schema: %w", e)
 		}
 		if err = rows.Close(); err != nil {
 			return err

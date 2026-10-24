@@ -54,22 +54,22 @@ func TestIntegrationRelationalDeltaWrites(t *testing.T) {
 	}
 }
 
-func TestIntegrationLegacySnapshotLayoutRejected(t *testing.T) {
+func TestIntegrationMissingColumnsRejected(t *testing.T) {
 	db := integrationDB(t)
-	name := "legacy_" + airlock.NewRequest(time.Now()).Owner
+	name := "incomplete_" + airlock.NewRequest(time.Now()).Owner
 	d, err := New(db, "", WithTable(name), WithOperationTimeout(10*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(fmt.Sprintf(`CREATE TABLE %s(namespace text COLLATE "C" NOT NULL,resource text COLLATE "C" NOT NULL,snapshot bytea NOT NULL,PRIMARY KEY(namespace,resource))`, d.table)); err != nil {
+	if _, err = db.Exec(fmt.Sprintf(`CREATE TABLE %s(namespace text COLLATE "C" NOT NULL,resource text COLLATE "C" NOT NULL,PRIMARY KEY(namespace,resource))`, d.table)); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		_, _ = db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, d.requests))
 		_, _ = db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, d.table))
 	})
-	if err = d.EnsureSchema(context.Background()); err == nil || !strings.Contains(err.Error(), "legacy snapshot layout") {
-		t.Fatalf("legacy schema silently accepted: %v", err)
+	if err = d.EnsureSchema(context.Background()); err == nil || !strings.Contains(err.Error(), "incompatible schema") {
+		t.Fatalf("incomplete schema silently accepted: %v", err)
 	}
 }
 

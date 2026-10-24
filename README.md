@@ -471,9 +471,8 @@ Backend authors can use the separate [custom driver guide](docs/guides/drivers.m
 [module guide](MODULES.md). Redis and PostgreSQL are independent modules with
 backend-specific deployment and failure boundaries documented in their READMEs.
 
-PostgreSQL stores resources and requests in separate tables. The earlier
-snapshot layout was never released and has no migration path: `EnsureSchema`
-rejects those tables instead of converting them.
+PostgreSQL stores resources and requests in separate tables. `EnsureSchema`
+creates missing tables and checks required columns.
 
 `NewShared` performs no backend I/O at construction and does not own connections.
 The former `NewDistributed`, `Distributed`, and `DistributedOptions` names remain

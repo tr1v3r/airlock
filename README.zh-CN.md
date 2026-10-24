@@ -391,8 +391,7 @@ driver 契约、租约客户端和 memory 参考实现已提供，PostgreSQL 和
 [协议取舍](docs/decisions/005-driver-contract.md)和[模块说明](MODULES.md)。
 Redis 与 PostgreSQL 是独立模块，各自 README 说明部署要求和故障边界。
 
-PostgreSQL 使用资源表与请求表分开存储；早期 snapshot 布局从未发布，没有迁移路径，
-`EnsureSchema` 会直接拒绝这些表而不是转换。
+PostgreSQL 使用资源表与请求表分开存储；`EnsureSchema` 创建缺失的表并检查必需列。
 
 `NewShared` 构造时不访问后端，不接管连接。旧名称 `NewDistributed`、`Distributed`、
 `DistributedOptions` 保留为已弃用的兼容入口或别名。旧构造函数同样使用 NewShared 的

@@ -106,6 +106,6 @@ access. Tenant mapping is not authentication.
 `airlock.Request`；续租与释放接收 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`，
 均返回 `(airlock.Result, error)`。
 
-Relational tests also verify request-row write isolation, queue-order preservation on dequeue, and rejection of the pre-release snapshot layout.
+Relational tests also verify request-row write isolation, queue-order preservation on dequeue, and rejection of schemas missing required columns.
 
-多表专用测试还覆盖请求行写入隔离、出队时的队列顺序保留，以及对未发布快照布局的拒绝。
+多表专用测试还覆盖请求行写入隔离、出队时的队列顺序保留，以及对缺失必需列的表结构的拒绝。
