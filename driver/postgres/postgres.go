@@ -1,7 +1,7 @@
 // Package postgres persists Airlock's durable admission protocol in PostgreSQL.
 // Callers own the database pool. New performs no I/O; EnsureSchema is explicit.
 // Commands lock one permanent resource row and evaluate backend time after the
-// lock, then persist the shared state machine's snapshot in the same transaction.
+// lock, then persist resource metadata and changed request rows in the same transaction.
 // Methods require non-nil contexts and follow airlock.Driver recovery rules.
 // An error never authorizes work; a commit response can be lost after persistence.
 package postgres
@@ -27,6 +27,8 @@ type Driver struct {
 	prefix string
 	// table is the validated and quoted schema-qualified resource table.
 	table string
+	// requests is the validated and quoted request table.
+	requests string
 	// timeout caps database calls and transaction lock waits.
 	timeout time.Duration
 }
@@ -35,7 +37,9 @@ type Driver struct {
 type Option func(*Driver) error
 
 // WithTable selects table or schema.table. Unqualified tables use public.
-// Components must be ASCII SQL identifiers of at most 63 bytes; quoting makes
+// The request table is named <table>_requests (default airlock_resources_requests).
+// Schema identifiers allow 63 bytes; table identifiers allow 54 for the suffix.
+// Components must be ASCII SQL identifiers; quoting makes
 // them case-sensitive. Provision the schema separately.
 func WithTable(name string) Option {
 	return func(d *Driver) error {
@@ -47,7 +51,7 @@ func WithTable(name string) Option {
 			return errors.New("airlock/postgres: invalid table name")
 		}
 		for i, part := range parts {
-			if len(part) == 0 || len(part) > 63 {
+			if len(part) == 0 || len(part) > 63 || (i == 1 && len(part) > 54) {
 				return errors.New("airlock/postgres: invalid table name")
 			}
 			for j, c := range part {
@@ -59,6 +63,7 @@ func WithTable(name string) Option {
 			parts[i] = `"` + part + `"`
 		}
 		d.table = strings.Join(parts, ".")
+		d.requests = parts[0] + "." + strings.TrimSuffix(parts[1], `"`) + `_requests"`
 		return nil
 	}
 }
@@ -88,7 +93,7 @@ func New(db *sql.DB, prefix string, options ...Option) (*Driver, error) {
 	if len(prefix) > 256 || !utf8.ValidString(prefix) || strings.ContainsRune(prefix, 0) {
 		return nil, errors.New("airlock/postgres: invalid prefix")
 	}
-	d := &Driver{db: db, prefix: prefix, table: `"public"."airlock_resources"`, timeout: 5 * time.Second}
+	d := &Driver{db: db, prefix: prefix, table: `"public"."airlock_resources"`, requests: `"public"."airlock_resources_requests"`, timeout: 5 * time.Second}
 	for _, option := range options {
 		if option == nil {
 			return nil, errors.New("airlock/postgres: nil option")
@@ -98,29 +103,6 @@ func New(db *sql.DB, prefix string, options ...Option) (*Driver, error) {
 		}
 	}
 	return d, nil
-}
-
-// EnsureSchema explicitly creates a logged table if absent; it does not migrate
-// or validate an existing table. Prefer serialized production migrations, since
-// concurrent DDL can race in PostgreSQL catalogs. Do not add triggers or external
-// writers. Resource rows preserve config and scheduling history and are never
-// deleted automatically. Administrative deletion requires quiescing all clients.
-func (d *Driver) EnsureSchema(ctx context.Context) error {
-	if err := d.validate(ctx); err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(ctx, d.timeout)
-	defer cancel()
-	_, err := d.db.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
- namespace text COLLATE pg_catalog."C" NOT NULL,
- resource text COLLATE pg_catalog."C" NOT NULL,
- snapshot bytea NOT NULL,
- PRIMARY KEY (namespace, resource)
-)`, d.table))
-	if err != nil {
-		return fmt.Errorf("airlock/postgres: schema: %w", err)
-	}
-	return nil
 }
 
 // execute atomically evaluates a command. Business rejections still commit any
@@ -141,34 +123,22 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 		return airlock.Result{}, fmt.Errorf("airlock/postgres: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	key := cmd.Request.Resource
-	if _, err = tx.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (namespace, resource, snapshot) VALUES ($1, $2, $3) ON CONFLICT (namespace, resource) DO NOTHING`, d.table), d.prefix, key, []byte{}); err != nil {
-		return airlock.Result{}, fmt.Errorf("airlock/postgres: initialize: %w", err)
+	state, before, err := d.load(ctx, tx, cmd.Request)
+	if err != nil {
+		return airlock.Result{}, err
 	}
-	var snapshot []byte
-	if err = tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT snapshot FROM %s WHERE namespace = $1 AND resource = $2 FOR UPDATE`, d.table), d.prefix, key).Scan(&snapshot); err != nil {
-		return airlock.Result{}, fmt.Errorf("airlock/postgres: lock: %w", err)
-	}
-	// A separate statement is necessary: expressions in the locking SELECT may
-	// execute before waiting for its lock. Transaction timestamps are also stale.
+	// Evaluate time after the resource lock AND reading its request rows. The
+	// transaction start time must not revive a lease after a long lock wait.
 	var now time.Time
 	if err = tx.QueryRowContext(ctx, `SELECT pg_catalog.clock_timestamp()`).Scan(&now); err != nil {
 		return airlock.Result{}, fmt.Errorf("airlock/postgres: clock: %w", err)
 	}
-	next, result, transitionErr := airlock.Transition(snapshot, now, cmd)
+	next, result, transitionErr := airlock.TransitionState(state, now, cmd)
 	if next == nil {
 		return result, transitionErr
 	}
-	changed, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET snapshot = $3 WHERE namespace = $1 AND resource = $2`, d.table), d.prefix, key, next)
-	if err != nil {
-		return airlock.Result{}, fmt.Errorf("airlock/postgres: persist: %w", err)
-	}
-	count, err := changed.RowsAffected()
-	if err != nil {
-		return airlock.Result{}, fmt.Errorf("airlock/postgres: persist count: %w", err)
-	}
-	if count != 1 {
-		return airlock.Result{}, errors.New("airlock/postgres: resource row disappeared")
+	if err = d.persist(ctx, tx, next, before); err != nil {
+		return airlock.Result{}, err
 	}
 	if err = tx.Commit(); err != nil {
 		return airlock.Result{}, fmt.Errorf("airlock/postgres: commit: %w", err)

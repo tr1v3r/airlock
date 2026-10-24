@@ -32,6 +32,11 @@ LeaseRef 包含原 Request，ID 字段是授予时的 LeaseID。Result 表达生
 
 ## 复用状态机，保持原子边界
 
+存储布局由 driver 决定：多张 SQL 表、快照等都可以，前提是满足同一原子性契约。参考辅助函数不是强制要求。
+`TransitionState(state, backendNow, command)` 接收结构化 `DriverState` 和独立 `DriverRecord`，
+PG 将其映射到关系表。调用时转交输入 maps/records 的独占所有权，报错后也不能复用输入；
+返回非 nil 状态时，即使同时返回业务错误也必须原子持久化。
+
 `Transition(snapshot, backendNow, command)` 不做 I/O，只计算新快照、Result 和业务错误。
 Command/Operation/ValidateCommand 是实现工具，不是公开 Driver 的调用接口。
 直接调用者必须提供完整 ResourceConfig，只有 NewShared 会补齐默认配置。

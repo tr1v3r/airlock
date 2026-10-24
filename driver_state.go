@@ -8,9 +8,10 @@ import (
 	"time"
 )
 
-// durableRecord is the retained lifecycle and recovery identity of one request.
-type durableRecord struct {
-	// Request is immutable; Config is omitted from persisted records and restored from the snapshot.
+// DriverRecord is one request and its lifecycle state in the reference scheduler.
+// Request.Config is omitted in persisted state; DriverState.Config is authoritative.
+type DriverRecord struct {
+	// Request is immutable; Config is omitted from persisted records and restored from DriverState.
 	Request Request
 	// Status distinguishes pending/granted records from retained terminal outcomes.
 	Status Status
@@ -24,16 +25,18 @@ type durableRecord struct {
 	Failure string
 }
 
-// durableSnapshot serializes one resource's accounting, immutable policy and scheduler position.
-type durableSnapshot struct {
-	// Version identifies the serialized protocol schema; currently only version 1 is accepted.
+// DriverState is the structured state of the reference durable scheduler.
+// It is an optional implementation helper, not a storage format required by Driver.
+// Version 1 uses per-tenant FIFO queues, group rotations and a protected head.
+type DriverState struct {
+	// Version identifies the scheduler state version; currently only version 1 is accepted.
 	Version int
-	// Resource binds the snapshot to one logical capacity pool.
+	// Resource binds the state to one logical capacity pool.
 	Resource string
 	// Config is the immutable resource policy shared by all retained records.
 	Config ResourceConfig
 	// Records maps request IDs to queued, granted and terminal outcomes within MaxRecords.
-	Records map[string]*durableRecord
+	Records map[string]*DriverRecord
 	// Rotations preserves each distinct group's tenant selection order.
 	Rotations [][]string
 	// Queues preserves FIFO request IDs within each nonempty tenant queue.
@@ -48,6 +51,9 @@ type durableSnapshot struct {
 	Time time.Time
 }
 
+type durableRecord = DriverRecord
+type durableSnapshot = DriverState
+
 // Transition is the reference durable state machine. snapshot is nil for a new
 // resource; otherwise it must be the last committed output for this resource.
 // Drivers must invoke it inside their atomic boundary, persist nonnil output
@@ -57,6 +63,35 @@ type durableSnapshot struct {
 // closed. State/expiry work is bounded by ResourceConfig.MaxRecords (<=10000).
 // Existing local Airlocks and this machine share enqueue/remove/dispatch logic.
 func Transition(snapshot []byte, now time.Time, cmd Command) ([]byte, Result, error) {
+	if err := ValidateCommand(cmd); err != nil {
+		return nil, Result{}, err
+	}
+	var state *DriverState
+	if len(snapshot) != 0 {
+		state = new(DriverState)
+		if json.Unmarshal(snapshot, state) != nil {
+			return nil, Result{}, ErrCorruptState
+		}
+	}
+	next, result, err := TransitionState(state, now, cmd)
+	if next == nil {
+		return nil, result, err
+	}
+	data, e := json.Marshal(next)
+	if e != nil {
+		return nil, Result{}, ErrCorruptState
+	}
+	return data, result, err
+}
+
+// TransitionState advances structured state without serializing it. A nil state
+// initializes a resource. The caller transfers exclusive ownership of state and
+// its maps/records; input may be modified even on error and must not be reused.
+// Persist every nonnil returned state atomically, including on business errors.
+// A nil return must not be persisted. Backend time and atomicity requirements are
+// identical to Transition. SQL drivers may store records separately and write
+// only changed rows; Driver implementations need not use either helper.
+func TransitionState(state *DriverState, now time.Time, cmd Command) (*DriverState, Result, error) {
 	r := cmd.Request
 	r.SubmitUntil = r.SubmitUntil.UTC()
 	r.WaitUntil = r.WaitUntil.UTC()
@@ -66,10 +101,13 @@ func Transition(snapshot []byte, now time.Time, cmd Command) ([]byte, Result, er
 	}
 	observedNow := now.UTC()
 	now = observedNow.Truncate(time.Millisecond)
-	var s durableSnapshot
-	if len(snapshot) == 0 {
-		s = durableSnapshot{Version: 1, Resource: r.Resource, Config: r.Config, Records: make(map[string]*durableRecord), Queues: make(map[string][]string)}
-	} else if json.Unmarshal(snapshot, &s) != nil || s.Version != 1 || s.Records == nil || s.Revision == 0 || s.Revision == ^uint64(0) || s.Time.IsZero() || now.Before(s.Time) {
+	var s DriverState
+	if state == nil {
+		s = DriverState{Version: 1, Resource: r.Resource, Config: r.Config, Records: make(map[string]*durableRecord), Queues: make(map[string][]string)}
+	} else {
+		s = *state
+	}
+	if state != nil && (s.Version != 1 || s.Records == nil || s.Revision == 0 || s.Revision == ^uint64(0) || s.Time.IsZero() || now.Before(s.Time)) {
 		return nil, Result{}, ErrCorruptState
 	}
 	if s.Resource != r.Resource || !reflect.DeepEqual(s.Config, r.Config) {
@@ -199,11 +237,7 @@ func Transition(snapshot []byte, now time.Time, cmd Command) ([]byte, Result, er
 	for _, rec := range s.Records {
 		rec.Request.Config = ResourceConfig{}
 	}
-	data, e := json.Marshal(s)
-	if e != nil {
-		return nil, Result{}, ErrCorruptState
-	}
-	return data, out, opErr
+	return &s, out, opErr
 }
 
 // admissionError restores a known queue-rejection sentinel, rejecting unknown persisted strings.

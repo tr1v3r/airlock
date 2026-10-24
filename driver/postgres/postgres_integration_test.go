@@ -110,7 +110,7 @@ func TestIntegrationFirstCreationAndIsolation(t *testing.T) {
 	executeStatus(t, a, airlock.Submit, x, "", airlock.Granted)
 	x.Resource = "c"
 	executeStatus(t, b, airlock.Submit, x, "", airlock.Granted)
-	// Arbitrary accepted tenant text survives snapshot storage in bytea, and SQL
+	// Arbitrary accepted tenant text survives relational storage, and SQL
 	// metacharacters are bound data rather than query syntax.
 	x = request(time.Now())
 	x.Resource = "quote';--"
@@ -161,8 +161,8 @@ func TestIntegrationLockWaitDoesNotReviveLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	var snapshot []byte
-	if err := tx.QueryRow(`SELECT snapshot FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.prefix, r.Resource).Scan(&snapshot); err != nil {
+	var revision string
+	if err := tx.QueryRow(`SELECT revision FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.prefix, r.Resource).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
 	var blocker int
