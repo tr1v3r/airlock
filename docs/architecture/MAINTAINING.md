@@ -7,7 +7,7 @@ to it. Each diagram keeps its candidate and HTML in a timestamped `.archify` fol
 
 ## Reproduce
 
-The current artifacts were generated with **Archify 3.1.0**, Node 26.11.1 and
+The current artifacts were generated with **Archify 3.2.0**, Node 26.11.1 and
 Chrome on macOS. Node and Chrome are documentation tooling only, not Airlock
 runtime dependencies. Install/provide Archify separately; the Go module does not
 download it. From the repository root:
