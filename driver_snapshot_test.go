@@ -1,4 +1,4 @@
-package protocol
+package airlock
 
 import "time"
 
@@ -17,7 +17,7 @@ func transitionSnapshot(data []byte, now time.Time, cmd Command) ([]byte, Result
 	}
 	return encoded, result, err
 }
-func transitionStructured(state *State, now time.Time, cmd Command) (*State, Result, error) {
+func transitionStructured(state *DriverState, now time.Time, cmd Command) (*DriverState, Result, error) {
 	next, result, _, err := Transition(state, now, cmd)
 	return next, result, err
 }

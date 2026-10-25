@@ -12,7 +12,6 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/tr1v3r/airlock"
-	"github.com/tr1v3r/airlock/protocol"
 )
 
 func mockDriver(t *testing.T, options ...Option) (*Driver, sqlmock.Sqlmock) {
@@ -42,7 +41,7 @@ func request(now time.Time) airlock.Request {
 	return r
 }
 func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
-	s := protocol.State{Version: 1, Config: request(now).Config, Rotations: [][]string{}}
+	s := airlock.DriverState{Version: 1, Config: request(now).Config, Rotations: [][]string{}}
 	if len(snapshot) > 0 {
 		_ = json.Unmarshal(snapshot, &s)
 	}
@@ -55,7 +54,7 @@ func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
 }
 func requestRows(snapshot []byte) *sqlmock.Rows {
 	rows := sqlmock.NewRows(strings.Split(strings.ReplaceAll(requestColumns, " ", ""), ","))
-	var s protocol.State
+	var s airlock.DriverState
 	_ = json.Unmarshal(snapshot, &s)
 	for _, r := range s.Records {
 		rows.AddRow(r.Request.ID, r.Request.Owner, r.Request.Tenant, r.Request.Weight, r.Request.SubmitUntil.UnixMilli(), r.Request.WaitUntil.UnixMilli(), string(r.Status), r.LeaseID, millis(r.Until), millis(r.Finished), r.Failure, nil)

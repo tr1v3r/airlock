@@ -1,4 +1,4 @@
-package scheduler
+package airlock
 
 import "container/list"
 
@@ -32,84 +32,84 @@ type PriorityPolicy struct {
 	TenantGroups map[string]string
 }
 
-// PriorityQueue holds a group's bounded waiting population and tenant rotation.
-type PriorityQueue struct {
+// priorityQueue holds a group's bounded waiting population and tenant rotation.
+type priorityQueue struct {
 	// limit is the group's fixed, non-borrowable pending-request budget.
-	Limit int
+	limit int
 	// queued includes all pending requests in the group, including a protected head.
-	Queued int
+	queued int
 	// rotation holds nonempty tenant queues in next-selection order.
-	Rotation list.List
+	rotation list.List
 }
 
-// PriorityState owns a compiled snapshot, retaining no caller-owned maps/slices.
-type PriorityState struct {
+// priorityState owns a compiled snapshot, retaining no caller-owned maps/slices.
+type priorityState struct {
 	// fallback serves default and unmapped tenants.
-	Fallback *PriorityQueue
+	fallback *priorityQueue
 	// tenants is the immutable explicit tenant-to-group assignment.
-	Tenants map[string]*PriorityQueue
+	tenants map[string]*priorityQueue
 	// schedule repeats group pointers by their selection shares.
-	Schedule []*PriorityQueue
+	schedule []*priorityQueue
 	// cursor identifies the next weighted schedule slot to examine.
-	Cursor int
+	cursor int
 }
 
 // newPriorityState validates and copies a policy into independent scheduling state.
-func newPriorityState(policy *PriorityPolicy, maxQueued int) (PriorityState, error) {
+func newPriorityState(policy *PriorityPolicy, maxQueued int) (priorityState, error) {
 	if policy == nil {
-		q := &PriorityQueue{Limit: maxQueued}
-		return PriorityState{Fallback: q, Schedule: []*PriorityQueue{q}}, nil
+		q := &priorityQueue{limit: maxQueued}
+		return priorityState{fallback: q, schedule: []*priorityQueue{q}}, nil
 	}
 	const maxTurns = 1024
 	if len(policy.Groups) == 0 || len(policy.Groups) > maxTurns {
-		return PriorityState{}, ErrInvalidConfig
+		return priorityState{}, ErrInvalidConfig
 	}
-	state := PriorityState{Tenants: make(map[string]*PriorityQueue, len(policy.TenantGroups))}
-	groups := make(map[string]*PriorityQueue, len(policy.Groups))
+	state := priorityState{tenants: make(map[string]*priorityQueue, len(policy.TenantGroups))}
+	groups := make(map[string]*priorityQueue, len(policy.Groups))
 	turns, queued := 0, 0
 	for i, spec := range policy.Groups {
 		if spec.Name == "" || groups[spec.Name] != nil || spec.Turns <= 0 || spec.Turns > maxTurns-turns ||
 			(i > 0 && spec.Turns > policy.Groups[i-1].Turns) ||
 			spec.MaxQueued < 0 || spec.MaxQueued > maxQueued-queued {
-			return PriorityState{}, ErrInvalidConfig
+			return priorityState{}, ErrInvalidConfig
 		}
 		turns += spec.Turns
 		queued += spec.MaxQueued
-		q := &PriorityQueue{Limit: spec.MaxQueued}
+		q := &priorityQueue{limit: spec.MaxQueued}
 		groups[spec.Name] = q
 		for j := 0; j < spec.Turns; j++ {
-			state.Schedule = append(state.Schedule, q)
+			state.schedule = append(state.schedule, q)
 		}
 	}
-	state.Fallback = groups[policy.DefaultGroup]
-	if state.Fallback == nil {
-		return PriorityState{}, ErrInvalidConfig
+	state.fallback = groups[policy.DefaultGroup]
+	if state.fallback == nil {
+		return priorityState{}, ErrInvalidConfig
 	}
 	for tenant, name := range policy.TenantGroups {
 		q := groups[name]
 		if tenant == "" || q == nil {
-			return PriorityState{}, ErrInvalidConfig
+			return priorityState{}, ErrInvalidConfig
 		}
-		state.Tenants[tenant] = q
+		state.tenants[tenant] = q
 	}
 	return state, nil
 }
 
-// Group resolves a tenant to its assigned group or the fallback group.
-func (p *PriorityState) Group(tenant string) *PriorityQueue {
-	if q := p.Tenants[tenant]; q != nil {
+// group resolves a tenant to its assigned group or the fallback group.
+func (p *priorityState) group(tenant string) *priorityQueue {
+	if q := p.tenants[tenant]; q != nil {
 		return q
 	}
-	return p.Fallback
+	return p.fallback
 }
 
 // next requires mu and at least one queued request. That invariant bounds the
 // scan to one cycle (at most 1024 slots). Skipped empty groups accumulate no credit.
-func (p *PriorityState) next() *PriorityQueue {
+func (p *priorityState) next() *priorityQueue {
 	for {
-		q := p.Schedule[p.Cursor]
-		p.Cursor = (p.Cursor + 1) % len(p.Schedule)
-		if q.Queued > 0 {
+		q := p.schedule[p.cursor]
+		p.cursor = (p.cursor + 1) % len(p.schedule)
+		if q.queued > 0 {
 			return q
 		}
 	}

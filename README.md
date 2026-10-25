@@ -16,7 +16,7 @@ constants and variables, explaining input constraints, concurrency and lifecycle
 rules, and error handling. Read the comments for your pinned version alongside
 the examples when integrating the SDK.
 
-Start with the [Local API](airlock.go), [shared API](distributed.go), and [driver contract](protocol/driver.go) and [state machine](protocol/transition.go).
+Start with the [Local API](airlock.go), [shared API](distributed.go), and [driver contract](driver.go).
 
 ## Choose an entry point
 

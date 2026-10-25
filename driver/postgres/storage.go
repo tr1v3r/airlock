@@ -10,12 +10,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tr1v3r/airlock/protocol"
+	"github.com/tr1v3r/airlock"
 )
 
-// row is a value copy so protocol.Transition cannot mutate the delta baseline.
+// row is a value copy so Transition cannot mutate the delta baseline.
 type row struct {
-	record   protocol.Record
+	record   airlock.DriverRecord
 	position sql.NullInt64
 }
 
@@ -32,7 +32,7 @@ func instant(n sql.NullInt64) time.Time {
 const resourceColumns = `state_version, config, rotations, protected, cursor, revision, observed_ms`
 const requestColumns = `id, owner, tenant, weight, submit_until_ms, wait_until_ms, status, lease_id, until_ms, finished_ms, failure, queue_position`
 
-func (d *Driver) load(ctx context.Context, tx *sql.Tx, request protocol.Request) (*protocol.State, map[string]row, error) {
+func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) (*airlock.DriverState, map[string]row, error) {
 	config, err := json.Marshal(request.Config)
 	if err != nil {
 		return nil, nil, err
@@ -41,7 +41,7 @@ func (d *Driver) load(ctx context.Context, tx *sql.Tx, request protocol.Request)
 	if err != nil {
 		return nil, nil, fmt.Errorf("airlock/postgres: initialize: %w", err)
 	}
-	s := &protocol.State{Resource: request.Resource, Records: make(map[string]*protocol.Record), Queues: make(map[string][]string)}
+	s := &airlock.DriverState{Resource: request.Resource, Records: make(map[string]*airlock.DriverRecord), Queues: make(map[string][]string)}
 	var rotations []byte
 	var revision string
 	var observed sql.NullInt64
@@ -51,7 +51,7 @@ func (d *Driver) load(ctx context.Context, tx *sql.Tx, request protocol.Request)
 	}
 	s.Revision, err = strconv.ParseUint(revision, 10, 64)
 	if err != nil || json.Unmarshal(config, &s.Config) != nil || json.Unmarshal(rotations, &s.Rotations) != nil {
-		return nil, nil, protocol.ErrCorruptState
+		return nil, nil, airlock.ErrCorruptState
 	}
 	s.Time = instant(observed)
 	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE namespace=$1 AND resource=$2 ORDER BY tenant, queue_position NULLS LAST, id LIMIT 10001`, requestColumns, d.requests), d.prefix, request.Resource)
@@ -61,7 +61,7 @@ func (d *Driver) load(ctx context.Context, tx *sql.Tx, request protocol.Request)
 	defer func() { _ = rows.Close() }()
 	before := make(map[string]row)
 	for rows.Next() {
-		var rec protocol.Record
+		var rec airlock.DriverRecord
 		var submit, wait int64
 		var until, finished, position sql.NullInt64
 		rec.Request.Resource = request.Resource
@@ -72,13 +72,13 @@ func (d *Driver) load(ctx context.Context, tx *sql.Tx, request protocol.Request)
 		rec.Request.SubmitUntil = time.UnixMilli(submit).UTC()
 		rec.Request.WaitUntil = time.UnixMilli(wait).UTC()
 		rec.Until, rec.Finished = instant(until), instant(finished)
-		if (rec.Status == protocol.Queued) != position.Valid {
-			return nil, nil, protocol.ErrCorruptState
+		if (rec.Status == airlock.Queued) != position.Valid {
+			return nil, nil, airlock.ErrCorruptState
 		}
 		if position.Valid {
 			queue := s.Queues[rec.Request.Tenant]
 			if position.Int64 < 0 || (len(queue) > 0 && position.Int64 <= before[queue[len(queue)-1]].position.Int64) {
-				return nil, nil, protocol.ErrCorruptState
+				return nil, nil, airlock.ErrCorruptState
 			}
 			s.Queues[rec.Request.Tenant] = append(queue, rec.Request.ID)
 		}
@@ -90,17 +90,17 @@ func (d *Driver) load(ctx context.Context, tx *sql.Tx, request protocol.Request)
 	}
 	if s.Revision == 0 {
 		if len(before) != 0 || observed.Valid || s.Version != 1 || s.Protected != "" || s.Cursor != 0 || len(s.Rotations) != 0 {
-			return nil, nil, protocol.ErrCorruptState
+			return nil, nil, airlock.ErrCorruptState
 		}
 		if !reflect.DeepEqual(s.Config, request.Config) {
-			return nil, nil, protocol.ErrConfigConflict
+			return nil, nil, airlock.ErrConfigConflict
 		}
 		return nil, before, nil
 	}
 	return s, before, nil
 }
 
-func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *protocol.State, before map[string]row) error {
+func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.DriverState, before map[string]row) error {
 	rotations, err := json.Marshal(s.Rotations)
 	if err != nil {
 		return err
@@ -116,12 +116,12 @@ func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *protocol.State, bef
 			position := before[id].position
 			if !position.Valid {
 				if previous == math.MaxInt64 {
-					return protocol.ErrCorruptState
+					return airlock.ErrCorruptState
 				}
 				position = sql.NullInt64{Int64: previous + 1, Valid: true}
 			}
 			if position.Int64 <= previous {
-				return protocol.ErrCorruptState
+				return airlock.ErrCorruptState
 			}
 			positions[id], previous = position, position.Int64
 		}

@@ -29,7 +29,7 @@ Use identical immutable `ResourceConfig` for all clients of that resource.
 
 Each command uses a short `READ COMMITTED` transaction: insert the resource if
 absent, lock its row, read its request rows, read `clock_timestamp()` in a **subsequent statement**, apply
-core `protocol.Transition`, update resource metadata and changed request rows, then commit. Backend time is read
+core `TransitionState`, update resource metadata and changed request rows, then commit. Backend time is read
 after any lock wait, so an expired lease cannot be revived by a delayed renewal.
 Business rejections still commit expiry and scheduling changes. Transport or
 commit failures return no usable grant; a lost commit response is ambiguous and

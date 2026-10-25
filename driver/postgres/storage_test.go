@@ -11,7 +11,6 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/tr1v3r/airlock"
-	"github.com/tr1v3r/airlock/protocol"
 )
 
 func TestLoadRelationalFailures(t *testing.T) {
@@ -98,8 +97,8 @@ func TestPersistDeltasAndFailures(t *testing.T) {
 			defer func() { _ = tx.Rollback() }()
 			now := time.Now().UTC().Truncate(time.Millisecond)
 			r := request(now)
-			rec := protocol.Record{Request: r, Status: airlock.Queued, Until: r.WaitUntil}
-			state := &protocol.State{Resource: r.Resource, Time: now, Revision: 2, Records: map[string]*protocol.Record{r.ID: &rec}, Queues: map[string][]string{r.Tenant: {r.ID}}}
+			rec := airlock.DriverRecord{Request: r, Status: airlock.Queued, Until: r.WaitUntil}
+			state := &airlock.DriverState{Resource: r.Resource, Time: now, Revision: 2, Records: map[string]*airlock.DriverRecord{r.ID: &rec}, Queues: map[string][]string{r.Tenant: {r.ID}}}
 			m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 			del := m.ExpectExec("DELETE")
 			if failure == "delete" {
@@ -178,7 +177,7 @@ func TestQueuePositionExhaustionFailsClosed(t *testing.T) {
 			defer func() { _ = tx.Rollback() }()
 			m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 			m.ExpectRollback()
-			s := &protocol.State{Queues: map[string][]string{"tenant": {"a", "b"}}}
+			s := &airlock.DriverState{Queues: map[string][]string{"tenant": {"a", "b"}}}
 			before := map[string]row{"a": {position: sql.NullInt64{Int64: math.MaxInt64, Valid: true}}}
 			if mode == "out-of-order" {
 				before["b"] = row{position: sql.NullInt64{Int64: 1, Valid: true}}

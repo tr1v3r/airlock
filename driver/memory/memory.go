@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tr1v3r/airlock/protocol"
+	"github.com/tr1v3r/airlock"
 )
 
 // resource holds one volatile protocol snapshot and its serialization gate.
@@ -36,12 +36,12 @@ type Driver struct {
 func New() *Driver { return &Driver{} }
 
 // execute serializes each resource and uses the shared durable state machine.
-func (d *Driver) execute(ctx context.Context, cmd protocol.Command) (protocol.Result, error) {
+func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Result, error) {
 	if err := ctx.Err(); err != nil {
-		return protocol.Result{}, err
+		return airlock.Result{}, err
 	}
-	if err := protocol.ValidateCommand(cmd); err != nil {
-		return protocol.Result{}, err
+	if err := airlock.ValidateCommand(cmd); err != nil {
+		return airlock.Result{}, err
 	}
 	d.mu.Lock()
 	if d.resources == nil {
@@ -57,53 +57,53 @@ func (d *Driver) execute(ctx context.Context, cmd protocol.Command) (protocol.Re
 	case r.gate <- struct{}{}:
 		defer func() { <-r.gate }()
 	case <-ctx.Done():
-		return protocol.Result{}, ctx.Err()
+		return airlock.Result{}, ctx.Err()
 	}
 	if err := ctx.Err(); err != nil {
-		return protocol.Result{}, err
+		return airlock.Result{}, err
 	}
-	state, err := protocol.DecodeState(r.snapshot)
+	state, err := airlock.DecodeState(r.snapshot)
 	if err != nil {
-		return protocol.Result{}, err
+		return airlock.Result{}, err
 	}
-	next, result, _, err := protocol.Transition(state, time.Now(), cmd)
+	next, result, _, err := airlock.Transition(state, time.Now(), cmd)
 	if next != nil {
-		data, codecErr := protocol.EncodeState(next)
+		data, codecErr := airlock.EncodeState(next)
 		if codecErr != nil {
-			return protocol.Result{}, codecErr
+			return airlock.Result{}, codecErr
 		}
 		r.snapshot = data
 	}
 	if err := ctx.Err(); err != nil {
-		return protocol.Result{}, err
+		return airlock.Result{}, err
 	}
 	return result, err
 }
 
 // Verify the reference backend implements the public Driver contract.
-var _ protocol.Driver = (*Driver)(nil)
+var _ airlock.Driver = (*Driver)(nil)
 
 // Submit atomically submits the whole request without refreshing an existing lease.
-func (d *Driver) Submit(ctx context.Context, request protocol.Request) (protocol.Result, error) {
-	return d.execute(ctx, protocol.Command{Kind: protocol.Submit, Request: request})
+func (d *Driver) Submit(ctx context.Context, request airlock.Request) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Submit, Request: request})
 }
 
 // Observe returns the request outcome after advancing expiry and scheduling.
-func (d *Driver) Observe(ctx context.Context, request protocol.Request) (protocol.Result, error) {
-	return d.execute(ctx, protocol.Command{Kind: protocol.Observe, Request: request})
+func (d *Driver) Observe(ctx context.Context, request airlock.Request) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Observe, Request: request})
 }
 
 // Cancel cancels the request, including a grant or a cancellation before submission.
-func (d *Driver) Cancel(ctx context.Context, request protocol.Request) (protocol.Result, error) {
-	return d.execute(ctx, protocol.Command{Kind: protocol.Cancel, Request: request})
+func (d *Driver) Cancel(ctx context.Context, request airlock.Request) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Cancel, Request: request})
 }
 
 // Renew extends a live lease matching the original request and lease ID.
-func (d *Driver) Renew(ctx context.Context, lease protocol.LeaseRef) (protocol.Result, error) {
-	return d.execute(ctx, protocol.Command{Kind: protocol.Renew, Request: lease.Request, LeaseID: lease.ID})
+func (d *Driver) Renew(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Renew, Request: lease.Request, LeaseID: lease.ID})
 }
 
 // Release ends a matching lease and returns its whole weight at most once.
-func (d *Driver) Release(ctx context.Context, lease protocol.LeaseRef) (protocol.Result, error) {
-	return d.execute(ctx, protocol.Command{Kind: protocol.Release, Request: lease.Request, LeaseID: lease.ID})
+func (d *Driver) Release(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
+	return d.execute(ctx, airlock.Command{Kind: airlock.Release, Request: lease.Request, LeaseID: lease.ID})
 }

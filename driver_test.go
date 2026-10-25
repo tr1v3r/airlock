@@ -1,4 +1,4 @@
-package protocol
+package airlock
 
 import (
 	"errors"
@@ -54,7 +54,7 @@ func TestDriverConfigValidation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			c := stateTestConfig()
 			mutate(&c)
-			if !errors.Is(ValidateConfig(c), ErrInvalidConfig) {
+			if !errors.Is(validConfig(c), ErrInvalidConfig) {
 				t.Fatal("invalid config accepted")
 			}
 		})
@@ -67,7 +67,7 @@ func TestDriverConfigValidation(t *testing.T) {
 	c.MaxRecords = 10000
 	c.Admission.Capacity = 10000
 	c.Admission.MaxQueued = 10000
-	if err := ValidateConfig(c); err != nil {
+	if err := validConfig(c); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -130,7 +130,7 @@ func TestDriverPriorityConfigBounds(t *testing.T) {
 				p.Groups[0].Name = strings.Repeat("g", 257)
 				p.DefaultGroup = p.Groups[0].Name
 			}
-			if err := ValidateConfig(c); !errors.Is(err, ErrInvalidConfig) {
+			if err := validConfig(c); !errors.Is(err, ErrInvalidConfig) {
 				t.Fatalf("got %v", err)
 			}
 		})
@@ -161,7 +161,7 @@ func TestDriverTextEncoding(t *testing.T) {
 			case "mapping":
 				c.Admission.Priority.TenantGroups["a"] = bad
 			}
-			if err := ValidateConfig(c); !errors.Is(err, ErrInvalidConfig) {
+			if err := validConfig(c); !errors.Is(err, ErrInvalidConfig) {
 				t.Fatalf("%s accepted: %v", field, err)
 			}
 		}

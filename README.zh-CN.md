@@ -12,7 +12,7 @@ Airlock 是一个**提供完整源码注释的 SDK**，方便编码 agent 理解
 注释覆盖包、类型、接口、函数、方法、字段、常量和变量，说明参数约束、并发与生命周期规则，以及错误处理方式。
 集成时，请结合示例阅读所固定版本的源码注释。
 
-可从[本地 API](airlock.go)、[共享 API](distributed.go)和[驱动契约](protocol/driver.go)及[状态机](protocol/transition.go)开始。
+可从[本地 API](airlock.go)、[共享 API](distributed.go)和[驱动契约](driver.go)开始。
 
 ## 选择使用入口
 

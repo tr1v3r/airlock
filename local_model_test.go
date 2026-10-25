@@ -1,4 +1,4 @@
-package scheduler
+package airlock
 
 import (
 	"context"
@@ -16,30 +16,30 @@ import (
 // Each public operation is settled before the next event. Concurrent races are
 // exercised separately by TestLocalConcurrentStorm.
 type localModelRequest struct {
-	Tenant string
-	Weight int
+	tenant string
+	weight int
 	state  string
 	err    error
 }
 
 type localModel struct {
-	Cfg        Config
-	Requests   []localModelRequest
+	cfg        Config
+	requests   []localModelRequest
 	queues     map[string][]int
-	Rotation   [][]string
+	rotation   [][]string
 	budgets    []int
 	slots      []int
 	assignment map[string]int
-	Fallback   int
-	Cursor     int
-	Protected  int
-	Used       int
+	fallback   int
+	cursor     int
+	protected  int
+	used       int
 }
 
 func newLocalModel(cfg Config) *localModel {
-	m := &localModel{Cfg: cfg, queues: make(map[string][]int), assignment: make(map[string]int), Protected: -1}
+	m := &localModel{cfg: cfg, queues: make(map[string][]int), assignment: make(map[string]int), protected: -1}
 	if cfg.Priority == nil {
-		m.Rotation = make([][]string, 1)
+		m.rotation = make([][]string, 1)
 		m.budgets = []int{cfg.MaxQueued}
 		m.slots = []int{0}
 		return m
@@ -47,30 +47,30 @@ func newLocalModel(cfg Config) *localModel {
 	groups := make(map[string]int)
 	for i, group := range cfg.Priority.Groups {
 		groups[group.Name] = i
-		m.Rotation = append(m.Rotation, nil)
+		m.rotation = append(m.rotation, nil)
 		m.budgets = append(m.budgets, group.MaxQueued)
 		for range group.Turns {
 			m.slots = append(m.slots, i)
 		}
 	}
-	m.Fallback = groups[cfg.Priority.DefaultGroup]
+	m.fallback = groups[cfg.Priority.DefaultGroup]
 	for tenant, group := range cfg.Priority.TenantGroups {
 		m.assignment[tenant] = groups[group]
 	}
 	return m
 }
 
-func (m *localModel) Group(tenant string) int {
+func (m *localModel) group(tenant string) int {
 	if group, ok := m.assignment[tenant]; ok {
 		return group
 	}
-	return m.Fallback
+	return m.fallback
 }
 
 func (m *localModel) waiting(group int) int {
 	n := 0
 	for tenant, queue := range m.queues {
-		if group < 0 || m.Group(tenant) == group {
+		if group < 0 || m.group(tenant) == group {
 			n += len(queue)
 		}
 	}
@@ -78,42 +78,42 @@ func (m *localModel) waiting(group int) int {
 }
 
 func (m *localModel) arrive(tenant string, weight int, try bool) int {
-	id := len(m.Requests)
-	r := localModelRequest{Tenant: tenant, Weight: weight, state: "pending"}
-	group := m.Group(tenant)
+	id := len(m.requests)
+	r := localModelRequest{tenant: tenant, weight: weight, state: "pending"}
+	group := m.group(tenant)
 	switch {
 	case weight <= 0:
 		r.err = ErrInvalidWeight
-	case weight > m.Cfg.Capacity:
+	case weight > m.cfg.Capacity:
 		r.err = ErrWeightExceedsCapacity
-	case m.waiting(-1) == 0 && weight <= m.Cfg.Capacity-m.Used:
+	case m.waiting(-1) == 0 && weight <= m.cfg.Capacity-m.used:
 		r.state = "granted"
-		m.Used += weight
+		m.used += weight
 	case try:
 		r.err = ErrWouldBlock
-	case m.waiting(-1) >= m.Cfg.MaxQueued:
+	case m.waiting(-1) >= m.cfg.MaxQueued:
 		r.err = ErrQueueFull
 	case m.waiting(group) >= m.budgets[group]:
 		r.err = ErrGroupQueueFull
-	case len(m.queues[tenant]) >= m.Cfg.MaxQueuedPerTenant:
+	case len(m.queues[tenant]) >= m.cfg.MaxQueuedPerTenant:
 		r.err = ErrTenantQueueFull
 	}
 	if r.err != nil {
 		r.state = "rejected"
 	}
-	m.Requests = append(m.Requests, r)
+	m.requests = append(m.requests, r)
 	if r.state == "pending" {
 		if len(m.queues[tenant]) == 0 {
-			m.Rotation[group] = append(m.Rotation[group], tenant)
+			m.rotation[group] = append(m.rotation[group], tenant)
 		}
 		m.queues[tenant] = append(m.queues[tenant], id)
-		m.Schedule()
+		m.schedule()
 	}
 	return id
 }
 
 func (m *localModel) unlink(id int) {
-	tenant := m.Requests[id].Tenant
+	tenant := m.requests[id].tenant
 	q := m.queues[tenant]
 	for i, candidate := range q {
 		if candidate == id {
@@ -125,57 +125,57 @@ func (m *localModel) unlink(id int) {
 		m.queues[tenant] = q
 	} else {
 		delete(m.queues, tenant)
-		group := m.Group(tenant)
-		for i, candidate := range m.Rotation[group] {
+		group := m.group(tenant)
+		for i, candidate := range m.rotation[group] {
 			if candidate == tenant {
-				m.Rotation[group] = append(m.Rotation[group][:i], m.Rotation[group][i+1:]...)
+				m.rotation[group] = append(m.rotation[group][:i], m.rotation[group][i+1:]...)
 				break
 			}
 		}
 	}
-	if m.Protected == id {
-		m.Protected = -1
+	if m.protected == id {
+		m.protected = -1
 	}
 }
 
-func (m *localModel) Schedule() {
-	for m.Used != m.Cfg.Capacity && len(m.queues) != 0 {
-		if m.Protected < 0 {
+func (m *localModel) schedule() {
+	for m.used != m.cfg.Capacity && len(m.queues) != 0 {
+		if m.protected < 0 {
 			// Select by walking the finite declarative slot sequence. Empty
 			// groups earn no credit, and selection consumes both turns now.
-			for len(m.Rotation[m.slots[m.Cursor]]) == 0 {
-				m.Cursor = (m.Cursor + 1) % len(m.slots)
+			for len(m.rotation[m.slots[m.cursor]]) == 0 {
+				m.cursor = (m.cursor + 1) % len(m.slots)
 			}
-			group := m.slots[m.Cursor]
-			m.Cursor = (m.Cursor + 1) % len(m.slots)
-			tenant := m.Rotation[group][0]
-			m.Rotation[group] = append(m.Rotation[group][1:], tenant)
-			m.Protected = m.queues[tenant][0]
+			group := m.slots[m.cursor]
+			m.cursor = (m.cursor + 1) % len(m.slots)
+			tenant := m.rotation[group][0]
+			m.rotation[group] = append(m.rotation[group][1:], tenant)
+			m.protected = m.queues[tenant][0]
 		}
-		id := m.Protected
-		if m.Requests[id].Weight > m.Cfg.Capacity-m.Used {
+		id := m.protected
+		if m.requests[id].weight > m.cfg.Capacity-m.used {
 			return
 		}
 		m.unlink(id)
-		m.Requests[id].state = "granted"
-		m.Used += m.Requests[id].Weight
+		m.requests[id].state = "granted"
+		m.used += m.requests[id].weight
 	}
 }
 
 func (m *localModel) cancel(id int) {
-	if m.Requests[id].state == "pending" {
+	if m.requests[id].state == "pending" {
 		m.unlink(id)
-		m.Requests[id].state = "cancelled"
-		m.Requests[id].err = context.Canceled
-		m.Schedule()
+		m.requests[id].state = "cancelled"
+		m.requests[id].err = context.Canceled
+		m.schedule()
 	}
 }
 
 func (m *localModel) release(id int) {
-	if m.Requests[id].state == "granted" {
-		m.Requests[id].state = "released"
-		m.Used -= m.Requests[id].Weight
-		m.Schedule()
+	if m.requests[id].state == "granted" {
+		m.requests[id].state = "released"
+		m.used -= m.requests[id].weight
+		m.schedule()
 	}
 }
 
@@ -190,27 +190,27 @@ type localModelSnapshot struct {
 
 func (m *localModel) snapshot() localModelSnapshot {
 	s := localModelSnapshot{
-		Stats:  Stats{Capacity: m.Cfg.Capacity, InUse: m.Used, Queued: m.waiting(-1), WaitingTenants: len(m.queues)},
-		Cursor: m.Cursor, Rotation: make([][]string, len(m.Rotation)),
-		Weights: make(map[string][]int), GroupQueue: make([]int, len(m.Rotation)),
+		Stats:  Stats{Capacity: m.cfg.Capacity, InUse: m.used, Queued: m.waiting(-1), WaitingTenants: len(m.queues)},
+		Cursor: m.cursor, Rotation: make([][]string, len(m.rotation)),
+		Weights: make(map[string][]int), GroupQueue: make([]int, len(m.rotation)),
 	}
-	for _, r := range m.Requests {
+	for _, r := range m.requests {
 		if r.state == "granted" {
 			s.Stats.ActivePermits++
 		}
 	}
-	for group, rotation := range m.Rotation {
+	for group, rotation := range m.rotation {
 		s.Rotation[group] = append([]string(nil), rotation...)
 		s.GroupQueue[group] = m.waiting(group)
 	}
 	for tenant, ids := range m.queues {
 		for _, id := range ids {
-			s.Weights[tenant] = append(s.Weights[tenant], m.Requests[id].Weight)
+			s.Weights[tenant] = append(s.Weights[tenant], m.requests[id].weight)
 		}
 	}
-	if m.Protected >= 0 {
-		r := m.Requests[m.Protected]
-		s.Protected = fmt.Sprintf("%q/%d", r.Tenant, r.Weight)
+	if m.protected >= 0 {
+		r := m.requests[m.protected]
+		s.Protected = fmt.Sprintf("%q/%d", r.tenant, r.weight)
 	}
 	return s
 }
@@ -219,33 +219,33 @@ func localActualSnapshot(a *Airlock, cfg Config) localModelSnapshot {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	s := localModelSnapshot{
-		Stats:  Stats{Capacity: a.Cfg.Capacity, InUse: a.Used, ActivePermits: a.Active, Queued: a.Queued, WaitingTenants: len(a.Tenants)},
-		Cursor: a.Priority.Cursor, Weights: make(map[string][]int),
+		Stats:  Stats{Capacity: a.cfg.Capacity, InUse: a.used, ActivePermits: a.active, Queued: a.queued, WaitingTenants: len(a.tenants)},
+		Cursor: a.priority.cursor, Weights: make(map[string][]int),
 	}
-	groups := []*PriorityQueue{a.Priority.Fallback}
+	groups := []*priorityQueue{a.priority.fallback}
 	if cfg.Priority != nil {
 		groups = nil
 		slot := 0
 		for _, spec := range cfg.Priority.Groups {
-			groups = append(groups, a.Priority.Schedule[slot])
+			groups = append(groups, a.priority.schedule[slot])
 			slot += spec.Turns
 		}
 	}
 	for _, group := range groups {
 		var tenants []string
-		for node := group.Rotation.Front(); node != nil; node = node.Next() {
-			tenants = append(tenants, node.Value.(*TenantQueue).ID)
+		for node := group.rotation.Front(); node != nil; node = node.Next() {
+			tenants = append(tenants, node.Value.(*tenantQueue).id)
 		}
 		s.Rotation = append(s.Rotation, tenants)
-		s.GroupQueue = append(s.GroupQueue, group.Queued)
+		s.GroupQueue = append(s.GroupQueue, group.queued)
 	}
-	for tenant, q := range a.Tenants {
-		for node := q.Requests.Front(); node != nil; node = node.Next() {
-			s.Weights[tenant] = append(s.Weights[tenant], node.Value.(*Waiter).Weight)
+	for tenant, q := range a.tenants {
+		for node := q.requests.Front(); node != nil; node = node.Next() {
+			s.Weights[tenant] = append(s.Weights[tenant], node.Value.(*waiter).weight)
 		}
 	}
-	if w := a.Protected; w != nil {
-		s.Protected = fmt.Sprintf("%q/%d", w.Tenant.ID, w.Weight)
+	if w := a.protected; w != nil {
+		s.Protected = fmt.Sprintf("%q/%d", w.tenant.id, w.weight)
 	}
 	return s
 }
@@ -363,7 +363,7 @@ func (r *localModelRun) release(id int) {
 
 func (r *localModelRun) settle() {
 	r.t.Helper()
-	for id, want := range r.m.Requests {
+	for id, want := range r.m.requests {
 		call := r.calls[id]
 		if want.state == "pending" || call.received {
 			continue
@@ -382,7 +382,7 @@ func (r *localModelRun) settle() {
 	// Observe queue count under the implementation mutex, not goroutine order.
 	want := r.m.snapshot()
 	for {
-		got := localActualSnapshot(r.a, r.m.Cfg)
+		got := localActualSnapshot(r.a, r.m.cfg)
 		if got.Stats.Queued == want.Stats.Queued {
 			if !reflect.DeepEqual(got, want) {
 				r.fail("state mismatch\ngot  %+v\nwant %+v", got, want)
@@ -396,7 +396,7 @@ func (r *localModelRun) settle() {
 			runtime.Gosched()
 		}
 	}
-	for id, want := range r.m.Requests {
+	for id, want := range r.m.requests {
 		if want.state == "pending" {
 			select {
 			case got := <-r.calls[id].result:
@@ -420,10 +420,10 @@ func runLocalEvents(t testing.TB, priority bool, events []byte) {
 		switch action {
 		case 0, 1, 2, 3:
 			// Include zero and oversized weights in addition to every legal weight.
-			r.arrive(tenants[arg%len(tenants)], value%(r.m.Cfg.Capacity+2), action == 3)
+			r.arrive(tenants[arg%len(tenants)], value%(r.m.cfg.Capacity+2), action == 3)
 		case 4, 5:
 			var candidates []int
-			for id, request := range r.m.Requests {
+			for id, request := range r.m.requests {
 				if request.state == "pending" || request.state == "granted" {
 					candidates = append(candidates, id)
 				}
@@ -433,7 +433,7 @@ func runLocalEvents(t testing.TB, priority bool, events []byte) {
 			}
 		case 6, 7:
 			var candidates []int
-			for id, request := range r.m.Requests {
+			for id, request := range r.m.requests {
 				if request.state == "granted" {
 					candidates = append(candidates, id)
 				}
@@ -447,7 +447,7 @@ func runLocalEvents(t testing.TB, priority bool, events []byte) {
 	// request must eventually succeed when all preceding holders release.
 	for {
 		id := -1
-		for candidate, request := range r.m.Requests {
+		for candidate, request := range r.m.requests {
 			if request.state == "granted" {
 				id = candidate
 				break
@@ -490,7 +490,7 @@ func TestLocalProtectedArrivalAndCancellationModel(t *testing.T) {
 			r.arrive("L", 1, false)
 			r.cancel(1) // Consume A's selected turn, not B's or the next group slot.
 			r.release(0)
-			for id, request := range r.m.Requests {
+			for id, request := range r.m.requests {
 				if request.state == "granted" {
 					r.release(id)
 				}
@@ -507,28 +507,28 @@ func TestLocalModelMutationSensitivity(t *testing.T) {
 		name   string
 		mutate func(*Airlock) func()
 	}{
-		{"lost capacity", func(a *Airlock) func() { a.Used--; return func() { a.Used++ } }},
-		{"duplicate permit", func(a *Airlock) func() { a.Active++; return func() { a.Active-- } }},
+		{"lost capacity", func(a *Airlock) func() { a.used--; return func() { a.used++ } }},
+		{"duplicate permit", func(a *Airlock) func() { a.active++; return func() { a.active-- } }},
 		{"refunded selection", func(a *Airlock) func() {
-			old := a.Priority.Cursor
-			a.Priority.Cursor = 0
-			return func() { a.Priority.Cursor = old }
+			old := a.priority.cursor
+			a.priority.cursor = 0
+			return func() { a.priority.cursor = old }
 		}},
 		{"lost protection", func(a *Airlock) func() {
-			old := a.Protected
-			a.Protected = nil
-			return func() { a.Protected = old }
+			old := a.protected
+			a.protected = nil
+			return func() { a.protected = old }
 		}},
 		{"FIFO inversion", func(a *Airlock) func() {
-			queue := &a.Tenants["A"].Requests
+			queue := &a.tenants["A"].requests
 			oldHead := queue.Front()
 			queue.MoveToBack(oldHead)
 			return func() { queue.MoveToFront(oldHead) }
 		}},
 		{"lost group entry", func(a *Airlock) func() {
-			group := a.Priority.Group("A")
-			group.Queued--
-			return func() { group.Queued++ }
+			group := a.priority.group("A")
+			group.queued--
+			return func() { group.queued++ }
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -541,7 +541,7 @@ func TestLocalModelMutationSensitivity(t *testing.T) {
 			r.a.mu.Lock()
 			restore := tc.mutate(r.a)
 			r.a.mu.Unlock()
-			changed := localActualSnapshot(r.a, r.m.Cfg)
+			changed := localActualSnapshot(r.a, r.m.cfg)
 			r.a.mu.Lock()
 			restore()
 			r.a.mu.Unlock()
@@ -576,12 +576,12 @@ func TestLocalQueueRecoveryModel(t *testing.T) {
 	r.arrive("M", 1, false)
 	// Anchor expected errors independently of the reference scheduler itself.
 	for id, want := range map[int]error{4: ErrTenantQueueFull, 6: ErrGroupQueueFull, 11: ErrQueueFull, 12: ErrWouldBlock} {
-		if got := r.m.Requests[id].err; !errors.Is(got, want) {
+		if got := r.m.requests[id].err; !errors.Is(got, want) {
 			t.Fatalf("oracle error anchor id=%d: got=%v want=%v", id, got, want)
 		}
 	}
 	r.release(0)
-	for id, request := range r.m.Requests {
+	for id, request := range r.m.requests {
 		if request.state == "granted" {
 			r.release(id)
 		}

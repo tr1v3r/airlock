@@ -5,8 +5,6 @@
 这套图解释已实现的准入机制，并把读者引向可运行示例、源码与回归测试。
 图中文字以中文为主，API 名称保留英文；英文导读覆盖同样的入口与边界。
 
-当前包依赖和统一 `protocol.Transition` 调用流程见[驱动指南](../guides/drivers.zh-CN.md)。下方图集保留其明确标注的源码版本；实现链接指向当前文件。
-
 ## 怎么看
 
 - **使用者**：01 整体架构 → 02 本地准入；使用共享容量时继续 05 租约 → 08 应用监督。
@@ -27,12 +25,12 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 | 限制单进程在途工作 | [hello](../../examples/hello/example.go)、`New(Config)` | 成功后释放；队列零值不等待 |
 | 批量原子占用容量 | [weighted](../../examples/weighted/example.go)、`AcquireNFor` | 不部分授予；大请求保护 |
 | 忙时立即拒绝 | [tryacquire](../../examples/tryacquire/example.go)、`TryAcquireNFor` | 不插队；仍获取 mutex |
-| 租户优先级与等待预算 | [priority](../../examples/priority/example.go)、[internal/scheduler/priority.go](../../internal/scheduler/priority.go) | 按请求选择计量；不保证 token 份额 |
+| 租户优先级与等待预算 | [priority](../../examples/priority/example.go)、[priority.go](../../priority.go) | 按请求选择计量；不保证 token 份额 |
 | 高低优先级容量隔离 | [isolation](../../examples/isolation/example.go) | 独立实例、固定分区；不是借用或抢占 |
 | 多实例共享容量 | [Shared 使用指南](../guides/shared.zh-CN.md)、`NewShared` | 资源配置一致；租约不等于强制停止 |
 | 管理续租与任务停止 | [lifecycle 示例](../../driver/memory/examples/lifecycle/main.go) | 先停止任务及监督，再释放；未知结果只重试清理 |
 | 新增后端 | [自定义驱动指南](../guides/drivers.zh-CN.md)、[Driver](../../driver.go) | 后端时间、原子提交、幂等、未知结果；运行 conformance |
-| 修改调度 / 状态机 | [airlock.go](../../airlock.go)、[protocol/driver_state.go](../../protocol/driver_state.go) | 本地与共享复用调度；同时检查 model / race 测试 |
+| 修改调度 / 状态机 | [airlock.go](../../airlock.go)、[driver_state.go](../../driver_state.go) | 本地与共享复用调度；同时检查 model / race 测试 |
 
 ## 图集
 
@@ -68,9 +66,9 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 ![调度器：组配额、租户轮转与受保护请求](previews/scheduler.png)
 
-实现：[internal/scheduler/priority.go](../../internal/scheduler/priority.go), [airlock.go](../../airlock.go), [examples/isolation/example.go](../../examples/isolation/example.go)
+实现：[priority.go](../../priority.go), [airlock.go](../../airlock.go), [examples/isolation/example.go](../../examples/isolation/example.go)
 
-测试：[priority_test.go](../../priority_test.go), [internal/scheduler/local_model_test.go](../../internal/scheduler/local_model_test.go)
+测试：[priority_test.go](../../priority_test.go), [local_model_test.go](../../local_model_test.go)
 
 ### 04 · 后端请求生命周期：状态、幂等与回收
 
@@ -80,9 +78,9 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 ![后端请求生命周期：状态、幂等与回收](previews/request-states.png)
 
-实现：[protocol/driver_state.go](../../protocol/driver_state.go), [driver.go](../../driver.go)
+实现：[driver_state.go](../../driver_state.go), [driver.go](../../driver.go)
 
-测试：[protocol/driver_state_test.go](../../protocol/driver_state_test.go), [protocol/driver_model_test.go](../../protocol/driver_model_test.go)
+测试：[driver_state_test.go](../../driver_state_test.go), [driver_model_test.go](../../driver_model_test.go)
 
 ### 05 · 客户端 Lease：有效期与不可逆失效
 
@@ -116,7 +114,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 ![驱动实现：原子边界与快照持久化](previews/driver-boundaries.png)
 
-实现：[driver.go](../../driver.go), [protocol/transition.go](../../protocol/transition.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
+实现：[driver.go](../../driver.go), [driver_transition.go](../../driver_transition.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
 
 测试：[internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/window_test.go](../../driver/redis/window_test.go)
 

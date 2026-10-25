@@ -33,14 +33,15 @@ Renew/Release 使用 LeaseRef，包含原 Request 和授予结果的 LeaseID；�
 
 取舍：方法数量增加，但调用点直接表达操作，续租和释放明确要求租约引用，不再由调用者拼装 Kind。
 返回值保留统一 Result：所有操作都需要表达权威终态及可能发生的取消/过期竞态。
+这替换了早期 Execute 契约；自定义 driver 必须实现五个方法，没有旧 Execute 兼容适配器。
 高层 Shared 的申请/释放接口不变，本地 Airlock 不受影响。
 
-protocol 包的 Command、Operation、ValidateCommand 和 Transition 是独立 driver 模块可以复用的状态机工具，
+Command、Operation、ValidateCommand 和 Transition 保留为独立 driver 模块可以复用的状态机工具，
 不是 Driver 调用入口。各内置 driver 的五个方法转入同一私有执行路径，不复制调度逻辑，
 不改变原子边界、幂等身份、TTL、错误优先级或取消语义。
 
-`protocol.Transition(state, backendNow, command)` 返回结构化新状态、Result、CommitWindow 和错误。
-Driver 必须以锁或带时间窗口保护的 CAS 保证整个资源的读、转换、写原子性，新状态非 nil 时即使有业务错误也要提交；
+`Transition(state, backendNow, command)` 返回结构化新状态、Result、CommitWindow 和错误。
+Driver 必须串行化整个资源的读、转换、写，并且在新 snapshot 非 nil 时即使业务错误也要提交；
 例如队满拒绝需要保存，过期回收可能让其他人获得授权。持久化失败不能返回可用授权。
 提交结果可能未知，数据库支持事务也不例外。绝不自动回退到独立的本地容量池。
 
