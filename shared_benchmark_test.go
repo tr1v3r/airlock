@@ -20,6 +20,11 @@ import (
 // O(records) inside Transition, so the matrix varies W (long-lived workers,
 // one tenant each) and H (retained seed records).
 //
+// Scope: every cycle is one single-token AcquireFor plus Release (weight 1),
+// so cycles_per_s and the latency percentiles describe single-token admission
+// only. Multi-token AcquireN, Renew and ClockSkewAllowance behavior is owned
+// by the conformance and clock tests (distributed_*_test.go), not this matrix.
+//
 // Seed survival (the H dimension must persist for the whole run):
 //   - Terminal seeds set SubmitUntil one hour out. Reclamation deletes a
 //     terminal only once BOTH Finished+Retention and SubmitUntil have passed
@@ -429,10 +434,14 @@ type sharedBenchStats struct {
 // from one atomic counter, so the global count is exact and idle workers exit
 // immediately. Worker startup (spawn until parked) and the join stay outside
 // the timed region via ResetTimer/StopTimer; the hot path never stops the
-// timer per cycle. Each worker appends to its own latency slice, lock-free;
-// merging and sorting happen after the join.
+// timer per cycle. The claim number doubles as the index into one sample
+// array allocated before the timer starts: every completed cycle writes its
+// own slot (exactly one writer per slot, no lock, no allocation), so the
+// timed region carries no harness bookkeeping and no merge pass is needed:
+// a worker only skips its slot on a failure, and any failure is Fatal before
+// stats are read. Sorting happens after the join.
 func (e *sharedBenchEnv) run(tb testing.TB) sharedBenchStats {
-	latencies := make([][]time.Duration, e.params.workers)
+	samples := make([]time.Duration, e.params.cycles)
 	var ready, finished sync.WaitGroup
 	start := make(chan struct{})
 	for slot := range e.params.workers {
@@ -444,7 +453,8 @@ func (e *sharedBenchEnv) run(tb testing.TB) sharedBenchStats {
 			ready.Done()
 			<-start
 			for !e.abort.Load() {
-				if e.cursor.Add(1) > e.params.cycles {
+				seq := e.cursor.Add(1)
+				if seq > e.params.cycles {
 					return
 				}
 				cycleStart := time.Now()
@@ -459,7 +469,7 @@ func (e *sharedBenchEnv) run(tb testing.TB) sharedBenchStats {
 					e.fail(slot, "release", err)
 					return
 				}
-				latencies[slot] = append(latencies[slot], waited)
+				samples[seq-1] = waited
 			}
 		}(slot)
 	}
@@ -477,11 +487,7 @@ func (e *sharedBenchEnv) run(tb testing.TB) sharedBenchStats {
 	for err := range e.failures {
 		tb.Fatal(err)
 	}
-	stats := sharedBenchStats{seedRecords: e.seedCount}
-	for _, local := range latencies {
-		stats.latencies = append(stats.latencies, local...)
-		stats.completed += int64(len(local))
-	}
+	stats := sharedBenchStats{completed: int64(len(samples)), latencies: samples, seedRecords: e.seedCount}
 	slices.Sort(stats.latencies)
 	var snapshot durableSnapshot
 	if len(e.driver.snapshot) > 0 {
@@ -595,6 +601,85 @@ func TestSharedBenchmarkSmoke(t *testing.T) {
 			t.Fatalf("%s: steady records %d outside [%d, %d]",
 				p.resource, stats.steadyRecords, stats.seedRecords, stats.seedRecords+int(p.cycles))
 		}
+	}
+}
+
+// TestSharedBenchWindows pins the window derivation (the audit-B1 fix): every
+// output is a whole millisecond (protocol requirement), SubmitWindow stays
+// within its documented floor/ceiling, OperationTimeout respects the one-minute
+// cap, MaxWait equals exactly the documented formula (the uncontended floors
+// max(30s, 2x SubmitWindow), plus the contended queue-depth term
+// 1.25*W^2*transition(records)), and the worst current matrix point stays
+// below the skip threshold while a deeper hypothetical point crosses it, so
+// uncoverable cells skip loudly instead of running invalid.
+func TestSharedBenchWindows(t *testing.T) {
+	for _, p := range []struct {
+		workers, records int
+		contended        bool
+	}{
+		{workers: 1, records: 0, contended: false},
+		{workers: 4, records: 128, contended: false},
+		{workers: 16, records: 1000, contended: true},
+		{workers: 64, records: 5000, contended: true},
+	} {
+		submitWindow, maxWait, operationTimeout := sharedBenchWindows(p.workers, p.records, p.contended)
+		if submitWindow%time.Millisecond != 0 || maxWait%time.Millisecond != 0 || operationTimeout%time.Millisecond != 0 {
+			t.Fatalf("W=%d/R=%d: sub-millisecond window %s/%s/%s",
+				p.workers, p.records, submitWindow, maxWait, operationTimeout)
+		}
+		if submitWindow < sharedBenchSubmitWindowFloor || submitWindow > sharedBenchSubmitWindowCeil {
+			t.Fatalf("W=%d/R=%d: SubmitWindow %s outside [%s, %s]",
+				p.workers, p.records, submitWindow, sharedBenchSubmitWindowFloor, sharedBenchSubmitWindowCeil)
+		}
+		if operationTimeout > time.Minute {
+			t.Fatalf("W=%d/R=%d: OperationTimeout %s exceeds one minute", p.workers, p.records, operationTimeout)
+		}
+		want := max(30*time.Second, 2*submitWindow)
+		if p.contended {
+			gate := time.Duration(p.workers) * sharedBenchTransitionEstimate(p.records)
+			want = max(want, benchCeilMillis(5*gate*time.Duration(p.workers)/4))
+		}
+		if maxWait != want {
+			t.Fatalf("W=%d/R=%d contended=%t: MaxWait %s, want %s", p.workers, p.records, p.contended, maxWait, want)
+		}
+	}
+	// Worst current matrix point: W=256 with H clamped to the MaxRecords
+	// headroom (10000 - 1024 - 6*256 = 7440 seeds) plus 3W live records
+	// derives ~39 minutes and must stay under the skip threshold.
+	clamped := sharedBenchMaxRecords - (sharedBenchHeadroomBase + sharedBenchHeadroomPerWorker*256)
+	if _, maxWait, _ := sharedBenchWindows(256, clamped+3*256, true); maxWait > sharedBenchMaxWaitSkipThreshold {
+		t.Fatalf("worst matrix point derives MaxWait %s, exceeds skip threshold %s",
+			maxWait, sharedBenchMaxWaitSkipThreshold)
+	}
+	// A deeper hypothetical point (W=512 at 9000 records, ~2.9h) must cross
+	// the threshold so such a cell would skip loudly.
+	if _, maxWait, _ := sharedBenchWindows(512, 9000, true); maxWait <= sharedBenchMaxWaitSkipThreshold {
+		t.Fatalf("hypothetical deep point derives MaxWait %s, stays under skip threshold %s",
+			maxWait, sharedBenchMaxWaitSkipThreshold)
+	}
+}
+
+// TestBenchPercentile pins the nearest-rank percentile used by the latency
+// metrics: rank ceil(q*N) clamped to [1,N] on the ascending samples.
+func TestBenchPercentile(t *testing.T) {
+	sorted := []time.Duration{1, 2, 3, 4, 8}
+	for _, p := range []struct {
+		q    float64
+		want time.Duration
+	}{
+		{0.50, 3},  // ceil(2.5) = rank 3
+		{0.80, 4},  // ceil(4.0) = rank 4
+		{0.95, 8},  // ceil(4.75) = rank 5
+		{0.999, 8}, // clamped to N
+		{0.0, 1},   // rank clamped up to 1
+		{1.0, 8},
+	} {
+		if got := benchPercentile(sorted, p.q); got != p.want {
+			t.Fatalf("benchPercentile(q=%g) = %d, want %d", p.q, got, p.want)
+		}
+	}
+	if got := benchPercentile(nil, 0.99); got != 0 {
+		t.Fatalf("benchPercentile(empty) = %d, want 0", got)
 	}
 }
 

@@ -111,19 +111,21 @@ func memoryBenchConfig(workers, capacity, maxQueued int) airlock.ResourceConfig 
 
 // memoryBenchCycles runs the root harness's worker pattern: W long-lived
 // goroutines claim cycles from one atomic counter, self-time each Acquire,
-// release immediately, and append to per-worker lock-free latency slices.
-// Errors travel over a channel and Fatal only in the calling goroutine; the
-// first failure aborts siblings by cancelling the run context. Worker startup
-// and the join stay outside the timed region; the hot path never touches the
-// timer. It returns the completed-cycle count and the merged, sorted
-// latencies.
+// release immediately, and record into one sample array preallocated before
+// the timer starts (the claim number is the slot index, so the hot path never
+// allocates and no merge pass is needed; a worker skips its slot only on a
+// failure, and any failure is Fatal before the return). Errors travel over a
+// channel and Fatal only in the calling goroutine; the first failure aborts
+// siblings by cancelling the run context. Worker startup and the join stay
+// outside the timed region; the hot path never touches the timer. It returns
+// the completed-cycle count and the merged, sorted latencies.
 func memoryBenchCycles(tb testing.TB, client *airlock.Shared, workers int, cycles int64) (int64, []time.Duration) {
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	var cursor atomic.Int64
 	var abort atomic.Bool
 	failures := make(chan error, workers)
-	perWorker := make([][]time.Duration, workers)
+	samples := make([]time.Duration, cycles)
 	var ready, finished sync.WaitGroup
 	start := make(chan struct{})
 	fail := func(slot int, operation string, err error) {
@@ -143,7 +145,8 @@ func memoryBenchCycles(tb testing.TB, client *airlock.Shared, workers int, cycle
 			ready.Done()
 			<-start
 			for !abort.Load() {
-				if cursor.Add(1) > cycles {
+				seq := cursor.Add(1)
+				if seq > cycles {
 					return
 				}
 				cycleStart := time.Now()
@@ -158,7 +161,7 @@ func memoryBenchCycles(tb testing.TB, client *airlock.Shared, workers int, cycle
 					fail(slot, "release", err)
 					return
 				}
-				perWorker[slot] = append(perWorker[slot], waited)
+				samples[seq-1] = waited
 			}
 		}(slot)
 	}
@@ -175,14 +178,8 @@ func memoryBenchCycles(tb testing.TB, client *airlock.Shared, workers int, cycle
 	for err := range failures {
 		tb.Fatal(err)
 	}
-	var completed int64
-	var latencies []time.Duration
-	for _, local := range perWorker {
-		latencies = append(latencies, local...)
-		completed += int64(len(local))
-	}
-	slices.Sort(latencies)
-	return completed, latencies
+	slices.Sort(samples)
+	return int64(len(samples)), samples
 }
 
 // memoryBenchPercentile uses the nearest-rank method on sorted samples: rank

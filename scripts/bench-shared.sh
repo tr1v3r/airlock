@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # bench-shared.sh — Shared 基准矩阵执行器(task-3)。
 #
 # 逐 cell 执行 root 模块内部 benchDriver 矩阵(BenchmarkShared{Uncontended,
@@ -7,7 +7,8 @@
 # raw 输出为 bench-results/shared-bench.csv 与 summary.md 骨架。
 #
 # 硬性要求(bench-results/audit.md §4 + lead 补充条件,全部强制):
-#   * POSIX sh + `set -eu` + `set -o pipefail`;任何管道都不吞 go test 退出码。
+#   * bash + `set -euo pipefail`(对齐 scripts/check.sh 等的约定;pipefail 非
+#     POSIX,/bin/sh 为 dash 的系统上会直接报错);任何管道都不吞 go test 退出码。
 #   * 子基准正则用斜杠形式且每组件锚定,如 'BenchmarkSharedContended/W=64$/H=0$'
 #     (go 按 '/' 拆分后对各组件做非锚定子串匹配:只锚定末组件不够,'W=1' 会
 #     子串命中 'W=16'——实测证实;连字符形式则静默跑空)。
@@ -45,8 +46,7 @@
 #                      各 family 的 go test -timeout(默认 80m/20m/20m/10m;
 #                      contended 下限 80m = 2x ~39min 派生 MaxWait)。
 
-set -eu
-set -o pipefail
+set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"

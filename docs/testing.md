@@ -167,6 +167,24 @@ AIRLOCK_BENCH_LARGE=1 GOWORK=off go test -run '^$' \
   -bench '^BenchmarkTransitionScale$/^R=1000$/^M=(0|1000)$/^Q=0$' -benchmem -benchtime=3x .
 ```
 
+The Shared matrix benchmark (`shared_benchmark_test.go` in the root module plus
+the black-box `driver/memory` comparison) measures client-layer cycle
+throughput and Acquire-tail latency across workers W, retained history H, and
+uncontended/contended families, on single-token AcquireFor/Release cycles.
+Run it through `scripts/bench-shared.sh` (race smoke first, then the audited
+per-cell matrix with fixed `-benchtime=Nx`; contended cells need `N >= 4*W`
+to reach steady queue depth; plain time-based benchtime truncates the
+shallow-queue ramp and inflates throughput). Raw output, CSV, summary and the
+methodology audit land in `bench-results/`, which is gitignored local
+evidence, not committed content.
+
+Shared 矩阵基准(根模块 `shared_benchmark_test.go` 加 `driver/memory` 黑盒对照)
+测量客户端层周期吞吐与 Acquire 尾延迟,维度为 W×H×(无争用/争用),周期为单 token
+的 AcquireFor+Release。经 `scripts/bench-shared.sh` 执行(先 race 冒烟,再按审计
+结论逐 cell 固定 `-benchtime=Nx`;争用族需 `N >= 4*W` 才到稳态排队深度,时间型
+benchtime 会截在浅队列爬坡段、虚增吞吐)。原始输出、CSV、汇总与方法学审计落在
+`bench-results/`(已 gitignore 的本地证据,不入库)。
+
 ## Isolated service fixtures and ownership
 
 See [module commands](../MODULES.md) for real-backend environment variables.
