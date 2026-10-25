@@ -6,6 +6,8 @@ These diagrams explain implemented behavior and route readers to runnable exampl
 source contracts and regression tests. Diagram prose is Chinese with unchanged API
 names; this English guide covers the same entry points and limits.
 
+The current package dependency and unified `protocol.Transition` call flow are documented in the [driver guide](../guides/drivers.md). The diagrams below retain their explicitly pinned source revision; implementation links point to the current files.
+
 ## Reading paths
 
 - **Users**: 01 overview → 02 local admission; for shared capacity, continue with 05 lease → 08 supervision.
@@ -29,12 +31,12 @@ line numbers belong to the pinned snapshot, not the moving `dev` branch.
 | Bound local in-flight work | [hello](../../examples/hello/example.go), `New(Config)` | Release successful permits; zero queue limits disable waiting |
 | Acquire a whole weighted allocation | [weighted](../../examples/weighted/example.go), `AcquireNFor` | No partial grants; protected large requests |
 | Reject immediately when busy | [tryacquire](../../examples/tryacquire/example.go), `TryAcquireNFor` | No bypassing waiters; still takes the mutex |
-| Tenant priorities and waiting budgets | [priority example](../../examples/priority/example.go), [priority.go](../../priority.go) | Shares count selections, not token usage |
+| Tenant priorities and waiting budgets | [priority example](../../examples/priority/example.go), [internal/scheduler/priority.go](../../internal/scheduler/priority.go) | Shares count selections, not token usage |
 | Isolate execution capacity | [isolation](../../examples/isolation/example.go) | Separate instances and fixed partitions; no borrowing/preemption |
 | Share capacity across instances | [Shared guide](../guides/shared.md), `NewShared` | Same resource config; expiry cannot stop work |
 | Supervise renewals and task shutdown | [lifecycle example](../../driver/memory/examples/lifecycle/main.go) | Stop work and join supervisors before release; retry only cleanup |
 | Add a backend | [Driver guide](../guides/drivers.md), [Driver](../../driver.go) | Backend time, atomic commit, idempotency, unknown outcomes; run conformance |
-| Change scheduling / state transitions | [airlock.go](../../airlock.go), [driver_state.go](../../driver_state.go) | Shared scheduler; exercise model and race tests |
+| Change scheduling / state transitions | [airlock.go](../../airlock.go), [protocol/driver_state.go](../../protocol/driver_state.go) | Shared scheduler; exercise model and race tests |
 
 ## Diagrams
 
@@ -70,9 +72,9 @@ Understand request fairness, priority turns and head-of-line blocking.
 
 ![Fair scheduling and protected heads](previews/scheduler.png)
 
-Implementation: [priority.go](../../priority.go), [airlock.go](../../airlock.go), [examples/isolation/example.go](../../examples/isolation/example.go)
+Implementation: [internal/scheduler/priority.go](../../internal/scheduler/priority.go), [airlock.go](../../airlock.go), [examples/isolation/example.go](../../examples/isolation/example.go)
 
-Tests: [priority_test.go](../../priority_test.go), [local_model_test.go](../../local_model_test.go)
+Tests: [priority_test.go](../../priority_test.go), [internal/scheduler/local_model_test.go](../../internal/scheduler/local_model_test.go)
 
 ### 04 · Authoritative request lifecycle
 
@@ -82,9 +84,9 @@ Trace persistent states, cancellation tombstones and retention.
 
 ![Authoritative request lifecycle](previews/request-states.png)
 
-Implementation: [driver_state.go](../../driver_state.go), [driver.go](../../driver.go)
+Implementation: [protocol/driver_state.go](../../protocol/driver_state.go), [driver.go](../../driver.go)
 
-Tests: [driver_state_test.go](../../driver_state_test.go), [driver_model_test.go](../../driver_model_test.go)
+Tests: [protocol/driver_state_test.go](../../protocol/driver_state_test.go), [protocol/driver_model_test.go](../../protocol/driver_model_test.go)
 
 ### 05 · Client lease lifecycle
 
@@ -118,7 +120,7 @@ Locate the atomic boundary and the actual snapshot writer.
 
 ![Driver atomicity and persistence](previews/driver-boundaries.png)
 
-Implementation: [driver.go](../../driver.go), [driver_optimistic.go](../../driver_optimistic.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
+Implementation: [driver.go](../../driver.go), [protocol/transition.go](../../protocol/transition.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
 
 Tests: [internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/window_test.go](../../driver/redis/window_test.go)
 
