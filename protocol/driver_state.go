@@ -1,17 +1,17 @@
-package airlock
+package protocol
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"github.com/tr1v3r/airlock/internal/scheduler"
 	"reflect"
 	"time"
 )
 
-// DriverRecord is one request and its lifecycle state in the reference scheduler.
-// Request.Config is omitted in persisted state; DriverState.Config is authoritative.
-type DriverRecord struct {
-	// Request is immutable; Config is omitted from persisted records and restored from DriverState.
+// Record is one request and its lifecycle state in the reference scheduler.
+// Request.Config is omitted in persisted state; State.Config is authoritative.
+type Record struct {
+	// Request is immutable; Config is omitted from persisted records and restored from State.
 	Request Request
 	// Status distinguishes pending/granted records from retained terminal outcomes.
 	Status Status
@@ -25,10 +25,10 @@ type DriverRecord struct {
 	Failure string
 }
 
-// DriverState is the structured state of the reference durable scheduler.
+// State is the structured state of the reference durable scheduler.
 // It is an optional implementation helper, not a storage format required by Driver.
 // Version 1 uses per-tenant FIFO queues, group rotations and a protected head.
-type DriverState struct {
+type State struct {
 	// Version identifies the scheduler state version; currently only version 1 is accepted.
 	Version int
 	// Resource binds the state to one logical capacity pool.
@@ -36,7 +36,7 @@ type DriverState struct {
 	// Config is the immutable resource policy shared by all retained records.
 	Config ResourceConfig
 	// Records maps request IDs to queued, granted and terminal outcomes within MaxRecords.
-	Records map[string]*DriverRecord
+	Records map[string]*Record
 	// Rotations preserves each distinct group's tenant selection order.
 	Rotations [][]string
 	// Queues preserves FIFO request IDs within each nonempty tenant queue.
@@ -51,47 +51,11 @@ type DriverState struct {
 	Time time.Time
 }
 
-type durableRecord = DriverRecord
-type durableSnapshot = DriverState
+type durableRecord = Record
+type durableSnapshot = State
 
-// Transition is the reference durable state machine. snapshot is nil for a new
-// resource; otherwise it must be the last committed output for this resource.
-// Drivers must invoke it inside their atomic boundary, persist nonnil output
-// even on business errors, and return a result only after commit. No I/O occurs.
-// Snapshots are versioned opaque JSON, not a caller-editable configuration API.
-// Time must come from the backend after locking. Backward clock movement fails
-// closed. State/expiry work is bounded by ResourceConfig.MaxRecords (<=10000).
-// Existing local Airlocks and this machine share enqueue/remove/dispatch logic.
-func Transition(snapshot []byte, now time.Time, cmd Command) ([]byte, Result, error) {
-	if err := ValidateCommand(cmd); err != nil {
-		return nil, Result{}, err
-	}
-	var state *DriverState
-	if len(snapshot) != 0 {
-		state = new(DriverState)
-		if json.Unmarshal(snapshot, state) != nil {
-			return nil, Result{}, ErrCorruptState
-		}
-	}
-	next, result, err := TransitionState(state, now, cmd)
-	if next == nil {
-		return nil, result, err
-	}
-	data, e := json.Marshal(next)
-	if e != nil {
-		return nil, Result{}, ErrCorruptState
-	}
-	return data, result, err
-}
-
-// TransitionState advances structured state without serializing it. A nil state
-// initializes a resource. The caller transfers exclusive ownership of state and
-// its maps/records; input may be modified even on error and must not be reused.
-// Persist every nonnil returned state atomically, including on business errors.
-// A nil return must not be persisted. Backend time and atomicity requirements are
-// identical to Transition. SQL drivers may store records separately and write
-// only changed rows; Driver implementations need not use either helper.
-func TransitionState(state *DriverState, now time.Time, cmd Command) (*DriverState, Result, error) {
+// transition mutates exclusively owned structured state.
+func transition(state *State, now time.Time, cmd Command) (*State, Result, error) {
 	r := cmd.Request
 	r.SubmitUntil = r.SubmitUntil.UTC()
 	r.WaitUntil = r.WaitUntil.UTC()
@@ -101,9 +65,9 @@ func TransitionState(state *DriverState, now time.Time, cmd Command) (*DriverSta
 	}
 	observedNow := now.UTC()
 	now = observedNow.Truncate(time.Millisecond)
-	var s DriverState
+	var s State
 	if state == nil {
-		s = DriverState{Version: 1, Resource: r.Resource, Config: r.Config, Records: make(map[string]*durableRecord), Queues: make(map[string][]string)}
+		s = State{Version: 1, Resource: r.Resource, Config: r.Config, Records: make(map[string]*durableRecord), Queues: make(map[string][]string)}
 	} else {
 		s = *state
 	}
@@ -130,11 +94,11 @@ func TransitionState(state *DriverState, now time.Time, cmd Command) (*DriverSta
 	for id, rec := range s.Records {
 		if (rec.Status == Queued || rec.Status == Granted) && !now.Before(rec.Until) {
 			if rec.Status == Queued {
-				g.remove(waiters[id])
+				g.Remove(waiters[id])
 				delete(waiters, id)
 			} else {
-				g.used -= rec.Request.Weight
-				g.active--
+				g.Used -= rec.Request.Weight
+				g.Active--
 			}
 			rec.Status = Expired
 			rec.Finished = now
@@ -166,12 +130,12 @@ func TransitionState(state *DriverState, now time.Time, cmd Command) (*DriverSta
 			case !now.Before(r.WaitUntil):
 				rec.Status = Expired
 				rec.Finished = now
-			case g.queued == 0 && r.Weight <= g.cfg.Capacity-g.used:
-				g.used += r.Weight
-				g.active++
+			case g.Queued == 0 && r.Weight <= g.Cfg.Capacity-g.Used:
+				g.Used += r.Weight
+				g.Active++
 				grant(rec, now)
 			default:
-				w, e := g.enqueue(r.Tenant, r.Weight)
+				w, e := g.Enqueue(r.Tenant, r.Weight)
 				if e != nil {
 					rec.Status = Rejected
 					rec.Finished = now
@@ -187,12 +151,12 @@ func TransitionState(state *DriverState, now time.Time, cmd Command) (*DriverSta
 		switch cmd.Kind {
 		case Cancel:
 			if rec.Status == Queued {
-				g.remove(waiters[r.ID])
+				g.Remove(waiters[r.ID])
 				delete(waiters, r.ID)
 			}
 			if rec.Status == Granted {
-				g.used -= r.Weight
-				g.active--
+				g.Used -= r.Weight
+				g.Active--
 			}
 			if rec.Status == Queued || rec.Status == Granted {
 				rec.Status = Cancelled
@@ -207,8 +171,8 @@ func TransitionState(state *DriverState, now time.Time, cmd Command) (*DriverSta
 				if cmd.Kind == Renew {
 					rec.Until = now.Add(r.Config.LeaseTTL)
 				} else {
-					g.used -= r.Weight
-					g.active--
+					g.Used -= r.Weight
+					g.Active--
 					rec.Status = Released
 					rec.Finished = now
 				}
@@ -281,10 +245,10 @@ func validRecord(r *durableRecord, at time.Time) bool {
 }
 
 // dispatch applies shared scheduling and converts newly granted waiters into durable leases.
-func (s *durableSnapshot) dispatch(g *Airlock, ws map[string]*waiter, now time.Time) {
-	g.dispatch()
+func (s *durableSnapshot) dispatch(g *scheduler.Airlock, ws map[string]*scheduler.Waiter, now time.Time) {
+	g.Dispatch()
 	for id, w := range ws {
-		if w.granted {
+		if w.Granted {
 			grant(s.Records[id], now)
 			delete(ws, id)
 		}
@@ -292,10 +256,10 @@ func (s *durableSnapshot) dispatch(g *Airlock, ws map[string]*waiter, now time.T
 }
 
 // groups deduplicates the weighted schedule in configured group order.
-func groups(g *Airlock) []*priorityQueue {
-	var result []*priorityQueue
-	seen := make(map[*priorityQueue]bool)
-	for _, q := range g.priority.schedule {
+func groups(g *scheduler.Airlock) []*scheduler.PriorityQueue {
+	var result []*scheduler.PriorityQueue
+	seen := make(map[*scheduler.PriorityQueue]bool)
+	for _, q := range g.Priority.Schedule {
 		if !seen[q] {
 			seen[q] = true
 			result = append(result, q)
@@ -305,22 +269,22 @@ func groups(g *Airlock) []*priorityQueue {
 }
 
 // capture saves tenant FIFO order, group rotations and the protected request for later restoration.
-func (s *durableSnapshot) capture(g *Airlock, ws map[string]*waiter) {
-	ids := make(map[*waiter]string, len(ws))
+func (s *durableSnapshot) capture(g *scheduler.Airlock, ws map[string]*scheduler.Waiter) {
+	ids := make(map[*scheduler.Waiter]string, len(ws))
 	for id, w := range ws {
 		ids[w] = id
 	}
-	s.Protected = ids[g.protected]
-	s.Cursor = g.priority.cursor
+	s.Protected = ids[g.Protected]
+	s.Cursor = g.Priority.Cursor
 	s.Rotations = nil
 	s.Queues = make(map[string][]string)
 	for _, group := range groups(g) {
 		tenants := []string{}
-		for e := group.rotation.Front(); e != nil; e = e.Next() {
-			tq := e.Value.(*tenantQueue)
-			tenants = append(tenants, tq.id)
-			for n := tq.requests.Front(); n != nil; n = n.Next() {
-				s.Queues[tq.id] = append(s.Queues[tq.id], ids[n.Value.(*waiter)])
+		for e := group.Rotation.Front(); e != nil; e = e.Next() {
+			tq := e.Value.(*scheduler.TenantQueue)
+			tenants = append(tenants, tq.ID)
+			for n := tq.Requests.Front(); n != nil; n = n.Next() {
+				s.Queues[tq.ID] = append(s.Queues[tq.ID], ids[n.Value.(*scheduler.Waiter)])
 			}
 		}
 		s.Rotations = append(s.Rotations, tenants)
@@ -330,14 +294,14 @@ func (s *durableSnapshot) capture(g *Airlock, ws map[string]*waiter) {
 // restore receives the Config validated by ValidateCommand and matched against
 // the snapshot by Transition. Each record is assigned that same Config before
 // restoration; only its identity, deadlines, weight and lifecycle need checking.
-func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
-	g, err := New(s.Config.Admission)
+func (s *durableSnapshot) restore() (*scheduler.Airlock, map[string]*scheduler.Waiter, error) {
+	g, err := newScheduler(s.Config.Admission)
 	if err != nil {
 		return nil, nil, ErrCorruptState
 	}
-	ws := make(map[string]*waiter)
+	ws := make(map[string]*scheduler.Waiter)
 	qs := groups(g)
-	if s.Cursor < 0 || s.Cursor >= len(g.priority.schedule) || (len(s.Rotations) != 0 && len(s.Rotations) != len(qs)) || len(s.Records) > s.Config.MaxRecords {
+	if s.Cursor < 0 || s.Cursor >= len(g.Priority.Schedule) || (len(s.Rotations) != 0 && len(s.Rotations) != len(qs)) || len(s.Records) > s.Config.MaxRecords {
 		return nil, nil, ErrCorruptState
 	}
 	for id, r := range s.Records {
@@ -346,17 +310,17 @@ func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 		}
 		switch r.Status {
 		case Granted:
-			g.used += r.Request.Weight
-			g.active++
+			g.Used += r.Request.Weight
+			g.Active++
 		case Queued, Cancelled, Released, Expired, Rejected:
 		}
 	}
-	if g.used > g.cfg.Capacity {
+	if g.Used > g.Cfg.Capacity {
 		return nil, nil, ErrCorruptState
 	}
 	for i, rotation := range s.Rotations {
 		for _, tenant := range rotation {
-			if g.tenants[tenant] != nil || g.priority.group(tenant) != qs[i] || len(s.Queues[tenant]) == 0 {
+			if g.Tenants[tenant] != nil || g.Priority.Group(tenant) != qs[i] || len(s.Queues[tenant]) == 0 {
 				return nil, nil, ErrCorruptState
 			}
 			for _, id := range s.Queues[tenant] {
@@ -364,7 +328,7 @@ func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 				if r == nil || r.Status != Queued || r.Request.Tenant != tenant || ws[id] != nil {
 					return nil, nil, ErrCorruptState
 				}
-				w, e := g.enqueue(tenant, r.Request.Weight)
+				w, e := g.Enqueue(tenant, r.Request.Weight)
 				if e != nil {
 					return nil, nil, ErrCorruptState
 				}
@@ -377,15 +341,15 @@ func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 			return nil, nil, ErrCorruptState
 		}
 	}
-	if len(g.tenants) != len(s.Queues) {
+	if len(g.Tenants) != len(s.Queues) {
 		return nil, nil, ErrCorruptState
 	}
 	if s.Protected != "" {
-		g.protected = ws[s.Protected]
-		if g.protected == nil || g.protected.tenant.requests.Front().Value != g.protected {
+		g.Protected = ws[s.Protected]
+		if g.Protected == nil || g.Protected.Tenant.Requests.Front().Value != g.Protected {
 			return nil, nil, ErrCorruptState
 		}
 	}
-	g.priority.cursor = s.Cursor
+	g.Priority.Cursor = s.Cursor
 	return g, ws, nil
 }

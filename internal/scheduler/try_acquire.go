@@ -1,4 +1,4 @@
-package airlock
+package scheduler
 
 // TryAcquire atomically acquires one token for the shared default tenant without
 // joining a queue or waiting for capacity. If capacity is insufficient or any
@@ -28,16 +28,16 @@ func (g *Airlock) TryAcquireN(n int) (*Permit, error) {
 	if n <= 0 {
 		return nil, ErrInvalidWeight
 	}
-	if n > g.cfg.Capacity {
+	if n > g.Cfg.Capacity {
 		return nil, ErrWeightExceedsCapacity
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.queued != 0 || n > g.cfg.Capacity-g.used {
+	if g.Queued != 0 || n > g.Cfg.Capacity-g.Used {
 		return nil, ErrWouldBlock
 	}
-	g.used += n
-	g.active++
+	g.Used += n
+	g.Active++
 	return &Permit{owner: g, weight: n}, nil
 }
 

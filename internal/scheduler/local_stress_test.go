@@ -1,4 +1,4 @@
-package airlock
+package scheduler
 
 import (
 	"context"
@@ -29,8 +29,8 @@ func localWaitQueued(ctx context.Context, t *testing.T, a *Airlock, want int) {
 
 func localCheckConcurrentAccounting(t *testing.T, a *Airlock, active *atomic.Int64, weight int) {
 	t.Helper()
-	if held := active.Add(int64(weight)); held > int64(a.cfg.Capacity) {
-		t.Errorf("business tokens=%d exceed capacity=%d", held, a.cfg.Capacity)
+	if held := active.Add(int64(weight)); held > int64(a.Cfg.Capacity) {
+		t.Errorf("business tokens=%d exceed capacity=%d", held, a.Cfg.Capacity)
 	}
 	s := a.Stats() // A mutex-protected, internally consistent implementation view.
 	if s.InUse < weight || s.InUse > s.Capacity || s.ActivePermits < 1 || s.ActivePermits > s.InUse || s.Queued < 0 || s.WaitingTenants > s.Queued {
@@ -103,8 +103,8 @@ func localConcurrentWave(t *testing.T, a *Airlock, workers int) {
 		wg.Wait()
 	}()
 	type outcome struct {
-		id      int
-		granted bool
+		ID      int
+		Granted bool
 		err     error
 	}
 	outcomes := make(chan outcome, workers)
@@ -117,7 +117,7 @@ func localConcurrentWave(t *testing.T, a *Airlock, workers int) {
 			defer wg.Done()
 			defer requestCancel()
 			<-start
-			weight := i%a.cfg.Capacity + 1
+			weight := i%a.Cfg.Capacity + 1
 			tenant := fmt.Sprint(i % 24)
 			var p *Permit
 			var acquireErr error
@@ -189,17 +189,17 @@ func localConcurrentWave(t *testing.T, a *Airlock, workers int) {
 	for range workers {
 		select {
 		case result := <-outcomes:
-			if seen[result.id] {
-				t.Errorf("request=%d reached a terminal state twice", result.id)
+			if seen[result.ID] {
+				t.Errorf("request=%d reached a terminal state twice", result.ID)
 			}
-			seen[result.id] = true
+			seen[result.ID] = true
 			switch {
-			case result.err == nil && result.granted:
+			case result.err == nil && result.Granted:
 				granted++
-			case errors.Is(result.err, context.Canceled) && !result.granted && result.id%3 == 0:
+			case errors.Is(result.err, context.Canceled) && !result.Granted && result.ID%3 == 0:
 				cancelled++
 			default:
-				t.Errorf("request=%d unexpected terminal result: granted=%v err=%v", result.id, result.granted, result.err)
+				t.Errorf("request=%d unexpected terminal result: granted=%v err=%v", result.ID, result.Granted, result.err)
 			}
 		case <-ctx.Done():
 			t.Fatalf("storm did not finish: granted=%d cancelled=%d stats=%+v: %v", granted, cancelled, a.Stats(), ctx.Err())
@@ -214,12 +214,12 @@ func localConcurrentWave(t *testing.T, a *Airlock, workers int) {
 	if got := active.Load(); got != 0 {
 		t.Errorf("business token leak: %d", got)
 	}
-	if got := a.Stats(); got != (Stats{Capacity: a.cfg.Capacity}) {
+	if got := a.Stats(); got != (Stats{Capacity: a.Cfg.Capacity}) {
 		t.Fatalf("post-storm queue/permit leak: %+v", got)
 	}
 	// Reuse every token after each wave, rather than only constructing a fresh
 	// limiter; catches accounting that would strand subsequent requests.
-	p, err := a.TryAcquireN(a.cfg.Capacity)
+	p, err := a.TryAcquireN(a.Cfg.Capacity)
 	if err != nil || p == nil {
 		t.Fatalf("cannot reuse full capacity after storm: permit=%v err=%v", p != nil, err)
 	}

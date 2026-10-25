@@ -1,62 +1,18 @@
+// Package airlock provides weighted tenant admission locally and through shared drivers.
 package airlock
 
 import (
-	"container/list"
 	"context"
-	"errors"
-	"sync"
-)
 
-var (
-	// ErrInvalidConfig reports invalid limits or a priority policy.
-	ErrInvalidConfig = errors.New("airlock: invalid configuration")
-	// ErrInvalidTenant reports an empty explicitly supplied tenant ID.
-	ErrInvalidTenant = errors.New("airlock: empty tenant")
-	// ErrInvalidWeight reports a nonpositive requested token count.
-	ErrInvalidWeight = errors.New("airlock: invalid weight")
-	// ErrWeightExceedsCapacity reports a request larger than the fixed capacity.
-	ErrWeightExceedsCapacity = errors.New("airlock: weight exceeds capacity")
-	// ErrQueueFull reports that the global waiting queue is full.
-	ErrQueueFull = errors.New("airlock: queue full")
-	// ErrGroupQueueFull reports that the tenant's priority group waiting queue is full.
-	ErrGroupQueueFull = errors.New("airlock: priority group queue full")
-	// ErrTenantQueueFull reports that the tenant's waiting queue is full.
-	ErrTenantQueueFull = errors.New("airlock: tenant queue full")
-	// ErrWouldBlock reports that TryAcquire cannot grant capacity immediately
-	// without bypassing a queued request. The attempt does not join the queue.
-	ErrWouldBlock = errors.New("airlock: acquisition would block")
+	"github.com/tr1v3r/airlock/internal/scheduler"
 )
 
 // Config defines fixed limits for an Airlock. Queue limits count pending
 // requests, not granted permits. Zero queue limits disable waiting.
-type Config struct {
-	// Capacity is the positive maximum number of held tokens.
-	Capacity int
-	// MaxQueued is the nonnegative maximum number of pending requests.
-	MaxQueued int
-	// MaxQueuedPerTenant is nonnegative and must not exceed MaxQueued.
-	// It does not limit a tenant's number of held tokens or permits.
-	MaxQueuedPerTenant int
-	// Priority optionally enables fixed weighted selection between groups of
-	// tenants. Nil preserves a single group with tenant round-robin scheduling.
-	Priority *PriorityPolicy
-}
+type Config = scheduler.Config
 
-// Stats is a consistent snapshot, not a completion barrier. Capacity and InUse
-// count tokens; ActivePermits counts granted, unreleased permits, and Queued
-// counts pending requests, including a protected head request.
-type Stats struct {
-	// Capacity is the fixed token limit configured at construction.
-	Capacity int
-	// InUse counts held tokens, including all tokens in each weighted permit.
-	InUse int
-	// ActivePermits counts grants not yet released, regardless of their weights.
-	ActivePermits int
-	// Queued counts pending requests, including a protected head waiting for its full weight.
-	Queued int
-	// WaitingTenants counts distinct tenants with pending requests, including the default tenant.
-	WaitingTenants int
-}
+// Stats returns a consistent snapshot, not a completion barrier.
+type Stats = scheduler.Stats
 
 // Airlock controls weighted admission with FIFO waiting within each tenant
 // and round-robin selection across nonempty tenant queues within each priority
@@ -71,77 +27,61 @@ type Stats struct {
 // requests rejected before queueing. Running work is never preempted. One tenant
 // may hold every token when others are idle. Use New; the zero value is not usable.
 // An Airlock is safe for concurrent use and must not be copied.
-type Airlock struct {
-	// mu protects all mutable scheduling and accounting state.
-	mu sync.Mutex
-	// cfg holds immutable limits; Priority is compiled into priority rather than retained.
-	cfg Config
-	// used counts held tokens; queued counts pending requests across all tenants.
-	used, queued int
-	// active counts granted allocations awaiting release.
-	active int
-	// protected is the selected head that no later request may bypass.
-	protected *waiter
-	// tenants indexes nonempty waiting queues; empty keys represent the default tenant.
-	tenants map[string]*tenantQueue
-	// priority owns group budgets and the weighted selection cursor.
-	priority priorityState
-}
-
-// tenantQueue connects one nonempty tenant FIFO to its group rotation.
-type tenantQueue struct {
-	// id is the exact tenant key, empty only for the default tenant.
-	id string
-	// group owns this tenant's waiting budget and rotation.
-	group *priorityQueue
-	// turn is this queue's node in the group rotation.
-	turn *list.Element
-	// requests stores pending waiters in FIFO order, including any protected head.
-	requests list.List
-}
-
-// waiter tracks one pending atomic allocation under the owning Airlock mutex.
-type waiter struct {
-	// ready closes after a full grant; cancellation removes the waiter without closing it.
-	ready chan struct{}
-	// granted records the winning grant transition under the Airlock mutex.
-	granted bool
-	// weight is the positive token count requested atomically.
-	weight int
-	// node links the waiter into its tenant's FIFO.
-	node *list.Element
-	// tenant owns the waiter's queue and group accounting.
-	tenant *tenantQueue
-}
+type Airlock struct{ scheduler *scheduler.Airlock }
 
 // Permit must not be copied. Release is idempotent, including concurrent calls.
 // Cancellation after a successful Acquire does not release it automatically.
 // Obtain permits from an Acquire or TryAcquire method; a zero-value Permit
 // holds no capacity.
-type Permit struct {
-	// once returns capacity at most once, even under concurrent Release calls.
-	once sync.Once
-	// owner receives released capacity; it is cleared after release.
-	owner *Airlock
-	// weight is the complete token allocation returned by Release.
-	weight int
-}
+type Permit = scheduler.Permit
+
+// PriorityGroup reserves waiting space and selection opportunities for a group
+// of tenants. It does not reserve execution capacity or preempt running work.
+type PriorityGroup = scheduler.PriorityGroup
+
+// PriorityPolicy maps trusted tenant IDs to fixed priority groups. New snapshots
+// the configuration; later changes to these maps or slices have no effect.
+// Callers must not mutate the policy concurrently with New.
+type PriorityPolicy = scheduler.PriorityPolicy
+
+// ErrInvalidConfig reports invalid limits or a priority policy.
+var ErrInvalidConfig = scheduler.ErrInvalidConfig
+
+// ErrInvalidTenant reports an empty explicitly supplied tenant ID.
+var ErrInvalidTenant = scheduler.ErrInvalidTenant
+
+// ErrInvalidWeight reports a nonpositive requested token count.
+var ErrInvalidWeight = scheduler.ErrInvalidWeight
+
+// ErrWeightExceedsCapacity reports a request larger than the fixed capacity.
+var ErrWeightExceedsCapacity = scheduler.ErrWeightExceedsCapacity
+
+// ErrQueueFull reports that the global waiting queue is full.
+var ErrQueueFull = scheduler.ErrQueueFull
+
+// ErrGroupQueueFull reports that the tenant's priority group waiting queue is full.
+var ErrGroupQueueFull = scheduler.ErrGroupQueueFull
+
+// ErrTenantQueueFull reports that the tenant's waiting queue is full.
+var ErrTenantQueueFull = scheduler.ErrTenantQueueFull
+
+// ErrWouldBlock reports that TryAcquire cannot grant capacity immediately
+// without bypassing a queued request. The attempt does not join the queue.
+var ErrWouldBlock = scheduler.ErrWouldBlock
 
 // New constructs an Airlock, or returns ErrInvalidConfig for invalid limits or
 // priority policy. It snapshots the policy. It has no unlimited mode; limits,
 // tenant assignments and selection shares cannot be changed after creation.
-func New(cfg Config) (*Airlock, error) {
-	if cfg.Capacity <= 0 || cfg.MaxQueued < 0 || cfg.MaxQueuedPerTenant < 0 || cfg.MaxQueuedPerTenant > cfg.MaxQueued {
-		return nil, ErrInvalidConfig
-	}
-	priority, err := newPriorityState(cfg.Priority, cfg.MaxQueued)
+func New(c Config) (*Airlock, error) {
+	s, err := scheduler.New(c)
 	if err != nil {
 		return nil, err
 	}
-	// Retain only the compiled immutable policy, not caller-owned collections.
-	cfg.Priority = nil
-	return &Airlock{cfg: cfg, tenants: make(map[string]*tenantQueue), priority: priority}, nil
+	return &Airlock{scheduler: s}, nil
 }
+
+// Stats returns a consistent snapshot, not a completion barrier.
+func (a *Airlock) Stats() Stats { return a.scheduler.Stats() }
 
 // Acquire atomically acquires one slot for a shared default tenant, distinct
 // from every named tenant. It obeys the same queue limits and scheduling rules
@@ -156,8 +96,8 @@ func New(cfg Config) (*Airlock, error) {
 // A grant that wins may return success even after ctx is cancelled; the caller
 // must release every successful permit. An error retains no token.
 // Cancellation does not stop admitted work.
-func (g *Airlock) Acquire(ctx context.Context) (*Permit, error) {
-	return g.AcquireN(ctx, 1)
+func (a *Airlock) Acquire(ctx context.Context) (*Permit, error) {
+	return a.scheduler.Acquire(ctx)
 }
 
 // AcquireFor acquires one slot for tenantID, using the same cancellation,
@@ -165,8 +105,8 @@ func (g *Airlock) Acquire(ctx context.Context) (*Permit, error) {
 // returns ErrInvalidTenant before cancellation or capacity is checked.
 // IDs are exact strings supplied by the caller. Use trusted, bounded IDs:
 // this package neither authenticates tenants nor limits their string length.
-func (g *Airlock) AcquireFor(ctx context.Context, tenantID string) (*Permit, error) {
-	return g.AcquireNFor(ctx, tenantID, 1)
+func (a *Airlock) AcquireFor(ctx context.Context, tenant string) (*Permit, error) {
+	return a.scheduler.AcquireFor(ctx, tenant)
 }
 
 // AcquireN atomically acquires n tokens for the default tenant. A nil context
@@ -174,158 +114,49 @@ func (g *Airlock) AcquireFor(ctx context.Context, tenantID string) (*Permit, err
 // ErrWeightExceedsCapacity. Weight validation precedes cancellation checks.
 // It never holds a partial allocation. The queue and cancellation rules of
 // Acquire apply, and the returned Permit releases all n tokens at once.
-func (g *Airlock) AcquireN(ctx context.Context, n int) (*Permit, error) {
-	return g.acquire(ctx, "", n)
+func (a *Airlock) AcquireN(ctx context.Context, n int) (*Permit, error) {
+	return a.scheduler.AcquireN(ctx, n)
 }
 
 // AcquireNFor atomically acquires n tokens for tenantID. Validation checks nil
 // context, then tenant ID, then weight, before cancellation or capacity.
 // Tenant identity rules are the same as AcquireFor; all other rules are those
 // of AcquireN.
-func (g *Airlock) AcquireNFor(ctx context.Context, tenantID string, n int) (*Permit, error) {
-	if ctx == nil {
-		panic("airlock: nil context")
-	}
-	if tenantID == "" {
-		return nil, ErrInvalidTenant
-	}
-	return g.acquire(ctx, tenantID, n)
+func (a *Airlock) AcquireNFor(ctx context.Context, tenant string, n int) (*Permit, error) {
+	return a.scheduler.AcquireNFor(ctx, tenant, n)
 }
 
-// acquire implements validated local admission; empty tenant is reserved for the default tenant.
-func (g *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, error) {
-	if ctx == nil {
-		panic("airlock: nil context")
-	}
-	if n <= 0 {
-		return nil, ErrInvalidWeight
-	}
-	if n > g.cfg.Capacity {
-		return nil, ErrWeightExceedsCapacity
-	}
-	g.mu.Lock()
-	if err := ctx.Err(); err != nil {
-		g.mu.Unlock()
-		return nil, err
-	}
-	if n <= g.cfg.Capacity-g.used && g.queued == 0 {
-		g.used += n
-		g.active++
-		g.mu.Unlock()
-		return &Permit{owner: g, weight: n}, nil
-	}
-	w, err := g.enqueue(tenant, n)
-	if err != nil {
-		g.mu.Unlock()
-		return nil, err
-	}
-	g.dispatch()
-	g.mu.Unlock()
-	select {
-	case <-w.ready:
-		return &Permit{owner: g, weight: n}, nil
-	case <-ctx.Done():
-		g.mu.Lock()
-		if w.granted {
-			g.mu.Unlock()
-			return &Permit{owner: g, weight: n}, nil
-		}
-		g.remove(w)
-		g.dispatch()
-		g.mu.Unlock()
-		return nil, ctx.Err()
-	}
+// TryAcquire atomically acquires one token for the shared default tenant without
+// joining a queue or waiting for capacity. If capacity is insufficient or any
+// request is queued, it returns a nil permit and ErrWouldBlock without changing
+// admission state. It never bypasses waiting requests, even when tokens are idle.
+//
+// Queue limits do not affect TryAcquire. The method has no context because it
+// does not wait for capacity, but it still acquires the internal mutex and is
+// not wait-free. A successful permit must be released, as with Acquire.
+func (a *Airlock) TryAcquire() (*Permit, error) {
+	return a.scheduler.TryAcquire()
 }
 
-// enqueue shares admission and queue accounting with the durable state machine.
-// The caller serializes access and handles immediate admission first.
-func (g *Airlock) enqueue(tenant string, n int) (*waiter, error) {
-	if g.queued >= g.cfg.MaxQueued {
-		return nil, ErrQueueFull
-	}
-	group := g.priority.group(tenant)
-	if group.queued >= group.limit {
-		return nil, ErrGroupQueueFull
-	}
-	tq := g.tenants[tenant]
-	if g.cfg.MaxQueuedPerTenant == 0 || (tq != nil && tq.requests.Len() >= g.cfg.MaxQueuedPerTenant) {
-		return nil, ErrTenantQueueFull
-	}
-	if tq == nil {
-		tq = &tenantQueue{id: tenant, group: group}
-		tq.turn = group.rotation.PushBack(tq)
-		g.tenants[tenant] = tq
-	}
-	w := &waiter{ready: make(chan struct{}), tenant: tq, weight: n}
-	w.node = tq.requests.PushBack(w)
-	g.queued++
-	group.queued++
-	return w, nil
+// TryAcquireFor attempts to acquire one token for tenantID, with the same rules
+// as TryAcquire. An empty ID returns ErrInvalidTenant before checking capacity.
+// Tenant IDs follow the same trust and identity rules as AcquireFor.
+func (a *Airlock) TryAcquireFor(tenant string) (*Permit, error) {
+	return a.scheduler.TryAcquireFor(tenant)
 }
 
-// remove requires mu. Empty tenant indexes are reclaimed immediately.
-func (g *Airlock) remove(w *waiter) {
-	if g.protected == w {
-		g.protected = nil
-	}
-	tq := w.tenant
-	tq.requests.Remove(w.node)
-	g.queued--
-	tq.group.queued--
-	if tq.requests.Len() == 0 {
-		tq.group.rotation.Remove(tq.turn)
-		delete(g.tenants, tq.id)
-	}
+// TryAcquireN attempts to acquire all n tokens for the default tenant, with the
+// same rules as TryAcquire. Nonpositive n returns ErrInvalidWeight; n greater
+// than Capacity returns ErrWeightExceedsCapacity. Validation precedes checking
+// availability. Failure never holds a partial allocation. The returned permit
+// releases all n tokens together.
+func (a *Airlock) TryAcquireN(n int) (*Permit, error) {
+	return a.scheduler.TryAcquireN(n)
 }
 
-// dispatch grants whole requests in selection order until capacity blocks the protected head.
-// The caller must serialize access; a selected turn is consumed even if later canceled.
-func (g *Airlock) dispatch() {
-	for g.used < g.cfg.Capacity && g.queued > 0 {
-		if g.protected == nil {
-			group := g.priority.next()
-			tq := group.rotation.Front().Value.(*tenantQueue)
-			g.protected = tq.requests.Front().Value.(*waiter)
-			// Selection consumes this tenant's turn, even if it later cancels.
-			// Keep its queue indexed until the selected request is removed.
-			group.rotation.MoveToBack(tq.turn)
-		}
-		w := g.protected
-		if w.weight > g.cfg.Capacity-g.used {
-			return
-		}
-		g.remove(w)
-		g.used += w.weight
-		g.active++
-		w.granted = true
-		close(w.ready)
-	}
-}
-
-// Release returns all tokens held by the permit and dispatches waiting requests.
-// Subsequent calls, including concurrent calls, are no-ops. A nil or zero Permit
-// is a no-op.
-func (p *Permit) Release() {
-	if p == nil {
-		return
-	}
-	p.once.Do(func() {
-		g := p.owner
-		if g == nil {
-			return
-		}
-		g.mu.Lock()
-		g.used -= p.weight
-		g.active--
-		g.dispatch()
-		g.mu.Unlock()
-		p.owner = nil // a released permit need not retain the Airlock and its queues
-	})
-}
-
-// Stats returns a consistent snapshot, not a completion barrier.
-func (g *Airlock) Stats() Stats {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return Stats{Capacity: g.cfg.Capacity, InUse: g.used, ActivePermits: g.active, Queued: g.queued, WaitingTenants: len(g.tenants)}
+// TryAcquireNFor attempts to acquire all n tokens for tenantID. It validates the
+// nonempty tenant ID before weight or capacity, then follows TryAcquireN. Like
+// TryAcquireFor, it neither queues nor changes a tenant's rotation position.
+func (a *Airlock) TryAcquireNFor(tenant string, n int) (*Permit, error) {
+	return a.scheduler.TryAcquireNFor(tenant, n)
 }

@@ -20,7 +20,7 @@ func TestConflictingCommandsRollbackWithoutPersist(t *testing.T) {
 				d, mock := mockDriver(t)
 				now := time.Now().UTC().Truncate(time.Millisecond)
 				r := request(now)
-				snapshot, grant, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+				snapshot, grant, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
 				if err != nil || grant.Status != airlock.Granted {
 					t.Fatalf("seed: %+v err=%v", grant, err)
 				}
@@ -48,7 +48,7 @@ func TestBackwardBackendClockRollsBackValidSnapshot(t *testing.T) {
 	d, mock := mockDriver(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	r := request(now)
-	snapshot, grant, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	snapshot, grant, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
 	if err != nil || grant.Status != airlock.Granted {
 		t.Fatalf("seed: %+v err=%v", grant, err)
 	}

@@ -35,24 +35,57 @@ authorizes work, even if the write may have committed.
 
 ## Reuse the state machine and preserve the atomic boundary
 
-Storage layout is a driver choice: SQL tables, snapshots, or another representation
-are all allowed when the same atomic contract holds. The reference helpers are optional.
-`TransitionState(state, backendNow, command)` accepts a structured `DriverState`
-with separate `DriverRecord` entries; PG maps these to relational rows. It takes
-exclusive ownership of the input maps/records, which must not be reused even on
-error. Persist every nonnil returned state, including on business errors.
+The `protocol` package owns commands, lifecycle records and the reference state
+machine. The root `airlock` package exposes the application API and aliases the
+Driver contract. Both local admission and the protocol reuse `internal/scheduler`
+for FIFO queues, tenant rotation, priority selection and protected heads.
 
-`Transition(snapshot, backendNow, command)` computes a new snapshot, Result and
-business error without I/O. Command/Operation/ValidateCommand are implementation
-helpers, not the public Driver call interface. Direct callers must provide a
-complete ResourceConfig; only NewShared resolves default configuration.
+```text
+application -> airlock.Shared -> Driver business methods
+                                  | read / lock or CAS
+                                  v
+                            protocol.Transition
+                                  |
+                            internal/scheduler
+                                  ^
+application -> airlock.Airlock ----|
+```
 
-Serialize the whole resource's read, transition and commit. Use backend time after
-obtaining exclusive access; optimistic backends must enforce the time window
-returned by TransitionOptimistic in the atomic publication step. Commit a non-nil
-next snapshot even with a business error: rejection records and expiry/scheduling
-changes are still authoritative. Return a usable result only after successful
-commit, and honor context cancellation. No fallback to a separate local pool.
+All three drivers call the same entry point:
+
+```go
+func Transition(state *State, now time.Time, cmd Command) (
+    next *State, result Result, window CommitWindow, err error,
+)
+```
+
+Import `github.com/tr1v3r/airlock/protocol` to implement a driver. `State` contains
+`Record` entries and the scheduling layout. A nil input initializes a resource.
+The caller transfers exclusive ownership of all input maps and records; input
+must not be reused even on error. Transition performs no I/O. Persist every
+nonnil next state, including on business errors, and return a usable result only
+after commit. A nil next state must not be persisted.
+
+| Driver | Read and transition | Publication |
+| --- | --- | --- |
+| memory | Hold the resource gate; DecodeState, then Transition with local time | EncodeState and replace the snapshot before releasing the gate |
+| PostgreSQL | Lock the resource row; load records; obtain database time; Transition | Write changed rows and commit while holding the transaction lock |
+| Redis | Atomically read snapshot and server time; DecodeState, then Transition | EncodeState; Lua checks the exact original snapshot and CommitWindow before publishing |
+
+`CommitWindow.NotBefore` is inclusive and `Before` is exclusive (zero means no
+upper bound). The window includes original and resulting lease/queue deadlines,
+submission validity boundaries and retention deadlines. In particular, renewal
+must retain the original lease expiry as a publication bound. Redis retries only
+confirmed CAS or time-window misses after a fresh read. A transport error is an
+ambiguous outcome and must not be treated as a conflict. Lock-based drivers may
+ignore the window while maintaining exclusive access through commit.
+
+`DecodeState` and `EncodeState` are codecs, not state transitions. SQL drivers may
+map State and Record directly to rows. Custom drivers can implement the same
+business contract with their own state machine and storage representation.
+`ValidateCommand` checks input before allocating resources or opening transactions.
+Direct protocol callers supply a complete ResourceConfig; NewShared alone resolves
+defaults. Honor context cancellation and never fall back to an independent pool.
 
 The [memory reference](../../driver/memory/memory.go),
 [PostgreSQL adapter](../../driver/postgres/postgres.go) and
@@ -63,5 +96,4 @@ cannot demonstrate persistence, network failure or failover behavior.
 
 Read the full [contract and decisions](../decisions/005-driver-contract.md) before
 implementing an adapter. [Module boundaries](../../MODULES.md) describe independent
-module pins and verification. The old Execute(ctx, Command) driver interface is
-removed; custom drivers implement the five methods above.
+module pins and verification.

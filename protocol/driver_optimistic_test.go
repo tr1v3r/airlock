@@ -1,4 +1,4 @@
-package airlock
+package protocol
 
 import (
 	"bytes"
@@ -26,8 +26,8 @@ func TestCommitWindowBoundaries(t *testing.T) {
 
 func optimisticPlan(t *testing.T, data []byte, now time.Time, cmd Command) ([]byte, Result, CommitWindow, error) {
 	t.Helper()
-	next, res, window, err := TransitionOptimistic(data, now, cmd)
-	reference, result, referenceErr := Transition(data, now, cmd)
+	next, res, window, err := transitionOptimistic(data, now, cmd)
+	reference, result, referenceErr := transitionSnapshot(data, now, cmd)
 	if !bytes.Equal(next, reference) || res != result || !errors.Is(err, referenceErr) {
 		t.Fatalf("optimistic evaluation differs from serial transition: %v vs %v", err, referenceErr)
 	}

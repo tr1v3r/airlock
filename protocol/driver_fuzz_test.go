@@ -1,4 +1,4 @@
-package airlock
+package protocol
 
 import (
 	"bytes"
@@ -33,7 +33,7 @@ func TestTransitionRestoredRequestFieldValidation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			next, _, err := Transition(data, s.Time, cmd)
+			next, _, err := transitionSnapshot(data, s.Time, cmd)
 			if next != nil || !errors.Is(err, ErrCorruptState) {
 				t.Fatalf("invalid restored fields accepted: next=%t error=%v", next != nil, err)
 			}
@@ -54,11 +54,11 @@ func FuzzTransitionSnapshot(f *testing.F) {
 			t.Skip()
 		}
 		original := append([]byte(nil), input...)
-		next, result, err := Transition(input, now, cmd)
+		next, result, err := transitionSnapshot(input, now, cmd)
 		if !bytes.Equal(input, original) {
 			t.Fatal("transition mutated caller's snapshot")
 		}
-		again, res, e := Transition(input, now, cmd)
+		again, res, e := transitionSnapshot(input, now, cmd)
 		if !bytes.Equal(next, again) || res != result || !errors.Is(e, err) {
 			t.Fatal("same snapshot/command/time was nondeterministic")
 		}
@@ -68,7 +68,7 @@ func FuzzTransitionSnapshot(f *testing.F) {
 			}
 			return
 		}
-		if _, _, e := Transition(next, now, cmd); errors.Is(e, ErrCorruptState) || errors.Is(e, ErrConfigConflict) {
+		if _, _, e := transitionSnapshot(next, now, cmd); errors.Is(e, ErrCorruptState) || errors.Is(e, ErrConfigConflict) {
 			t.Fatalf("committed snapshot cannot be restored: %v", e)
 		}
 		var s durableSnapshot
@@ -124,8 +124,8 @@ func checkOptimisticWindow(t testing.TB, offset, span uint16, queued bool) {
 		t.Fatal(err)
 	}
 	now := s.Time.Add(time.Duration(offset%1000) * time.Microsecond)
-	next, result, window, err := TransitionOptimistic(data, now, cmd)
-	plain, reference, referenceErr := Transition(data, now, cmd)
+	next, result, window, err := transitionOptimistic(data, now, cmd)
+	plain, reference, referenceErr := transitionSnapshot(data, now, cmd)
 	if err != nil || referenceErr != nil || !bytes.Equal(next, plain) || result != reference {
 		t.Fatalf("optimistic differs from transition: %v/%v", err, referenceErr)
 	}
@@ -135,7 +135,7 @@ func checkOptimisticWindow(t testing.TB, offset, span uint16, queued bool) {
 		t.Fatalf("incorrect publication bounds: %+v want [%v,%v)", window, now, deadline)
 	}
 	later := now.Add(deadline.Sub(now) / 2)
-	laterData, laterResult, _, err := TransitionOptimistic(data, later, cmd)
+	laterData, laterResult, _, err := transitionOptimistic(data, later, cmd)
 	if err != nil || laterResult.Status != result.Status {
 		t.Fatalf("within-window observation changed lifecycle: %+v/%+v %v", result, laterResult, err)
 	}

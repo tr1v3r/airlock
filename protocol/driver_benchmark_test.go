@@ -1,4 +1,4 @@
-package airlock
+package protocol
 
 import (
 	"fmt"
@@ -28,9 +28,9 @@ func benchmarkTransitionScale(b *testing.B, optimistic bool) {
 						var result Result
 						var err error
 						if optimistic {
-							next, result, _, err = TransitionOptimistic(data, now, cmd)
+							next, result, _, err = transitionOptimistic(data, now, cmd)
 						} else {
-							next, result, err = Transition(data, now, cmd)
+							next, result, err = transitionSnapshot(data, now, cmd)
 						}
 						if err != nil || len(next) == 0 || result.Revision != 2 {
 							b.Fatalf("invalid transition: %+v %v", result, err)

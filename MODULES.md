@@ -7,7 +7,7 @@
 | `driver/redis` | `github.com/tr1v3r/airlock/driver/redis` | Core and go-redis/v9 |
 | `driver/postgres` | `github.com/tr1v3r/airlock/driver/postgres` | Core and database/sql; pgx/sqlmock are test-only |
 
-The root module contains local admission, the durable protocol, `Transition`, and
+The root module contains local admission, the `protocol` package with its unified `Transition`, and
 `NewShared`. It does not import drivers. Memory is the Shared contract test/demo reference; use New(Config) for ordinary local admission. Memory has no persistence and does
 not share resources across driver instances. PostgreSQL and Redis are implemented in independent modules; installing core must not pull in their client dependencies.
 

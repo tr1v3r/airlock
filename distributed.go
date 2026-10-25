@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
+
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 // SharedOptions specifies one backend resource and bounded network polling.
@@ -55,7 +59,7 @@ func NewShared(d Driver, options SharedOptions) (*Shared, error) {
 	if d == nil || options.Resource == "" || !validText(options.Resource) || len(options.Resource) > 256 || options.OperationTimeout <= 0 || options.OperationTimeout > time.Minute || options.PollInterval <= 0 || options.PollInterval > time.Minute {
 		return nil, ErrInvalidConfig
 	}
-	if err := validConfig(options.Config); err != nil {
+	if err := protocol.ValidateConfig(options.Config); err != nil {
 		return nil, err
 	}
 	allowance := options.ClockSkewAllowance
@@ -159,7 +163,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 			return nil, ErrLeaseLost
 		}
 	}
-	if err := validRequest(r); err != nil {
+	if err := protocol.ValidateCommand(Command{Kind: Submit, Request: r}); err != nil {
 		return nil, err
 	}
 	operation := func(ctx context.Context) (Result, error) { return d.driver.Submit(ctx, r) }
@@ -322,3 +326,5 @@ func (l *Lease) Release(ctx context.Context) error {
 	}
 	return err
 }
+
+func validText(s string) bool { return utf8.ValidString(s) && !strings.ContainsRune(s, 0) }

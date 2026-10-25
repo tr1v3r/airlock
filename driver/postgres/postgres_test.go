@@ -12,6 +12,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 func mockDriver(t *testing.T, options ...Option) (*Driver, sqlmock.Sqlmock) {
@@ -41,7 +42,7 @@ func request(now time.Time) airlock.Request {
 	return r
 }
 func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
-	s := airlock.DriverState{Version: 1, Config: request(now).Config, Rotations: [][]string{}}
+	s := protocol.State{Version: 1, Config: request(now).Config, Rotations: [][]string{}}
 	if len(snapshot) > 0 {
 		_ = json.Unmarshal(snapshot, &s)
 	}
@@ -54,7 +55,7 @@ func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
 }
 func requestRows(snapshot []byte) *sqlmock.Rows {
 	rows := sqlmock.NewRows(strings.Split(strings.ReplaceAll(requestColumns, " ", ""), ","))
-	var s airlock.DriverState
+	var s protocol.State
 	_ = json.Unmarshal(snapshot, &s)
 	for _, r := range s.Records {
 		rows.AddRow(r.Request.ID, r.Request.Owner, r.Request.Tenant, r.Request.Weight, r.Request.SubmitUntil.UnixMilli(), r.Request.WaitUntil.UnixMilli(), string(r.Status), r.LeaseID, millis(r.Until), millis(r.Finished), r.Failure, nil)
@@ -224,7 +225,7 @@ func TestBusinessErrorCommitsMaintenance(t *testing.T) {
 	d, m := mockDriver(t)
 	now := time.Now()
 	r := request(now)
-	initial, _, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	initial, _, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +246,7 @@ func TestAmbiguousCommitRecovery(t *testing.T) {
 	cmd := airlock.Command{Kind: airlock.Submit, Request: r}
 	// Model a server-side commit whose response is lost. Transition is deterministic
 	// for a request, so the separately computed durable snapshot is authoritative.
-	durable, granted, err := airlock.Transition(nil, now, cmd)
+	durable, granted, err := transitionSnapshot(nil, now, cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
