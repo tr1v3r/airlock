@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "75ab0c4ed5f6a137d988b983e07dd94d6f2305fa",
+      "revision": "fb877d0ca2e47e638b6e464e3a222b70751f4dc9",
       "link_mode": "local-only"
     }
   },
@@ -26,7 +26,7 @@
       "sublabel": "校验身份与 Remaining",
       "sources": [
         {
-          "path": "distributed.go",
+          "path": "shared.go",
           "line": 197,
           "end_line": 212
         }
@@ -39,17 +39,17 @@
       "sublabel": "以调用起点估计期限",
       "sources": [
         {
-          "path": "distributed.go",
+          "path": "shared.go",
           "line": 202,
           "end_line": 211
         },
         {
-          "path": "distributed.go",
+          "path": "shared.go",
           "line": 289,
           "end_line": 302
         },
         {
-          "path": "distributed.go",
+          "path": "shared.go",
           "line": 307,
           "end_line": 334
         }
@@ -62,7 +62,7 @@
       "sublabel": "仍受旧期限约束",
       "sources": [
         {
-          "path": "distributed.go",
+          "path": "shared.go",
           "line": 307,
           "end_line": 334
         }
@@ -75,17 +75,17 @@
       "sublabel": "Done 关闭；不可复活",
       "sources": [
         {
-          "path": "distributed.go",
+          "path": "shared.go",
           "line": 279,
           "end_line": 296
         },
         {
-          "path": "distributed.go",
+          "path": "shared.go",
           "line": 326,
           "end_line": 328
         },
         {
-          "path": "distributed.go",
+          "path": "shared.go",
           "line": 336,
           "end_line": 353
         }
@@ -98,7 +98,7 @@
       "sublabel": "后端可能已经提交",
       "sources": [
         {
-          "path": "distributed.go",
+          "path": "shared.go",
           "line": 336,
           "end_line": 353
         }
@@ -111,7 +111,7 @@
       "sublabel": "Released / Expired / Cancelled",
       "sources": [
         {
-          "path": "distributed.go",
+          "path": "shared.go",
           "line": 340,
           "end_line": 353
         }

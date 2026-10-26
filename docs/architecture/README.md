@@ -18,7 +18,7 @@ can also be downloaded and opened independently. The graph and viewer are inline
 no server is needed. The viewer supports search, node focus, light/dark themes and
 PNG/SVG export. PNGs are static browser previews, not substitutes for the explorable HTML.
 Source evidence is pinned to
-[`75ab0c4`](https://github.com/tr1v3r/airlock/tree/75ab0c4ed5f6a137d988b983e07dd94d6f2305fa),
+[`fb877d0`](https://github.com/tr1v3r/airlock/tree/fb877d0ca2e47e638b6e464e3a222b70751f4dc9),
 the package-structure refactor that introduced `protocol/` and `internal/scheduler/`;
 diagram line numbers belong to the pinned snapshot, not the moving branch.
 
