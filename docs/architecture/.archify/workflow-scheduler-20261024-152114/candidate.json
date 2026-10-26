@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "revision": "ca393a3031c310c21515cec04e98b4f009f50e08",
       "link_mode": "local-only"
     },
     "legend": {
@@ -54,8 +54,8 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 255,
-          "end_line": 256
+          "line": 309,
+          "end_line": 313
         }
       ]
     },
@@ -69,8 +69,8 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 257,
-          "end_line": 265
+          "line": 313,
+          "end_line": 320
         }
       ]
     },
@@ -84,13 +84,13 @@
       "sources": [
         {
           "path": "priority.go",
-          "line": 49,
-          "end_line": 86
+          "line": 73,
+          "end_line": 88
         },
         {
           "path": "priority.go",
-          "line": 96,
-          "end_line": 106
+          "line": 117,
+          "end_line": 125
         }
       ]
     },
@@ -104,8 +104,8 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 258,
-          "end_line": 263
+          "line": 314,
+          "end_line": 319
         }
       ]
     },
@@ -119,8 +119,8 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 265,
-          "end_line": 268
+          "line": 322,
+          "end_line": 325
         }
       ]
     },
@@ -134,8 +134,8 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 269,
-          "end_line": 274
+          "line": 327,
+          "end_line": 333
         }
       ]
     },
@@ -149,8 +149,8 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 265,
-          "end_line": 268
+          "line": 322,
+          "end_line": 325
         }
       ]
     },
@@ -158,19 +158,24 @@
       "id": "trigger",
       "type": "backend",
       "label": "后续事件再调度",
-      "sublabel": "释放 / 入队 / 取消",
+      "sublabel": "释放 / 入队 / 取消 / Resize",
       "lane": "grant",
       "col": 0,
       "sources": [
         {
           "path": "airlock.go",
-          "line": 191,
-          "end_line": 208
+          "line": 227,
+          "end_line": 236
         },
         {
           "path": "airlock.go",
-          "line": 280,
-          "end_line": 293
+          "line": 340,
+          "end_line": 358
+        },
+        {
+          "path": "airlock.go",
+          "line": 372,
+          "end_line": 402
         }
       ]
     }
@@ -254,7 +259,7 @@
       "title": "不是容量隔离",
       "items": [
         "组额度预留的是等待空间，不能借用；运行容量仍共享。",
-        "严格隔离可参考 examples/isolation 的独立 Airlock 分区。"
+        "Resize 扩容后按同一公平策略继续调度；严格隔离可参考 examples/isolation。"
       ]
     }
   ]

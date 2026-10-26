@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "revision": "ca393a3031c310c21515cec04e98b4f009f50e08",
       "link_mode": "local-only"
     }
   },
@@ -21,13 +21,13 @@
       "sources": [
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 22,
+          "line": 23,
           "end_line": 41
         },
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 167,
-          "end_line": 180
+          "line": 189,
+          "end_line": 207
         }
       ]
     },
@@ -38,14 +38,14 @@
       "sublabel": "截止时间与轮询",
       "sources": [
         {
-          "path": "distributed.go",
-          "line": 90,
-          "end_line": 185
+          "path": "shared.go",
+          "line": 129,
+          "end_line": 236
         },
         {
-          "path": "distributed.go",
-          "line": 233,
-          "end_line": 272
+          "path": "shared.go",
+          "line": 299,
+          "end_line": 350
         }
       ]
     },
@@ -58,12 +58,12 @@
         {
           "path": "driver.go",
           "line": 14,
-          "end_line": 31
+          "end_line": 36
         },
         {
           "path": "driver/postgres/postgres.go",
-          "line": 123,
-          "end_line": 172
+          "line": 131,
+          "end_line": 182
         }
       ]
     },
@@ -74,14 +74,14 @@
       "sublabel": "纯状态转换",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 40,
-          "end_line": 89
+          "path": "shared_state.go",
+          "line": 56,
+          "end_line": 96
         },
         {
-          "path": "driver_state.go",
-          "line": 92,
-          "end_line": 187
+          "path": "shared_state.go",
+          "line": 98,
+          "end_line": 223
         }
       ]
     }
@@ -131,20 +131,20 @@
       "to": "adapter",
       "y": 405,
       "label": "PollInterval 后 Observe",
-      "note": "Queued 时重复；ctx 取消可打断"
+      "note": "Queued 时重复；免维护期只读快查；ctx 取消可打断"
     },
     {
       "id": "advance",
       "from": "adapter",
       "to": "machine",
-      "y": 475,
+      "y": 485,
       "label": "推进过期与调度"
     },
     {
       "id": "granted",
       "from": "machine",
       "to": "adapter",
-      "y": 520,
+      "y": 530,
       "label": "可授予时返回 Granted",
       "variant": "return"
     },
@@ -152,7 +152,7 @@
       "id": "remaining",
       "from": "adapter",
       "to": "client",
-      "y": 565,
+      "y": 575,
       "label": "提交后返回 Remaining",
       "variant": "return"
     },
@@ -160,7 +160,7 @@
       "id": "lease",
       "from": "client",
       "to": "caller",
-      "y": 610,
+      "y": 620,
       "label": "校验通过后交付 Lease",
       "variant": "return",
       "note": "deadline = 调用起点 + Remaining"
@@ -169,28 +169,28 @@
       "id": "release",
       "from": "caller",
       "to": "client",
-      "y": 680,
+      "y": 690,
       "label": "工作停止后 Release(ctx)"
     },
     {
       "id": "release-driver",
       "from": "client",
       "to": "adapter",
-      "y": 725,
+      "y": 735,
       "label": "先本地失效，再 Release"
     },
     {
       "id": "release-state",
       "from": "adapter",
       "to": "machine",
-      "y": 770,
+      "y": 780,
       "label": "验证身份并归还 weight"
     },
     {
       "id": "released",
       "from": "machine",
       "to": "adapter",
-      "y": 815,
+      "y": 825,
       "label": "新快照 + Released",
       "variant": "return"
     },
@@ -198,7 +198,7 @@
       "id": "release-commit",
       "from": "adapter",
       "to": "client",
-      "y": 860,
+      "y": 870,
       "label": "提交后返回终态",
       "variant": "return"
     },
@@ -206,7 +206,7 @@
       "id": "done",
       "from": "client",
       "to": "caller",
-      "y": 905,
+      "y": 915,
       "label": "返回清理结果",
       "variant": "return"
     }
@@ -233,6 +233,7 @@
       "title": "一致性责任",
       "items": [
         "图中 Driver 将状态转换包在事务或受保护 CAS 内；只在提交后返回。",
+        "免维护期 Observe 只读返回、不推进 Revision；到期才走完整 Transition。",
         "Redis CAS 冲突会重新读取并计算；传输错误不能当成冲突重试。"
       ]
     }

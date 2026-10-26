@@ -14,7 +14,7 @@
       "driver.go"
     ],
     "tests": [
-      "airlock_contract_test.go",
+      "airlock_test.go",
       "shared_test.go"
     ],
     "preview": "previews/overview.png"
@@ -68,12 +68,12 @@
     "question": "哪些状态能续租、取消和回收？",
     "question_en": "Trace persistent states, cancellation tombstones and retention.",
     "sources": [
-      "driver_state.go",
+      "shared_state.go",
       "driver.go"
     ],
     "tests": [
-      "driver_state_test.go",
-      "driver_model_test.go"
+      "shared_state_test.go",
+      "shared_state_property_test.go"
     ],
     "preview": "previews/request-states.png"
   },
@@ -126,13 +126,14 @@
     "question_en": "Locate the atomic boundary and the actual snapshot writer.",
     "sources": [
       "driver.go",
-      "driver_optimistic.go",
+      "driver_transition.go",
+      "shared_observation.go",
       "driver/postgres/postgres.go",
       "driver/redis/scripts.go"
     ],
     "tests": [
       "internal/driverconformance/conformance.go",
-      "driver/redis/window_test.go"
+      "driver/redis/cas_test.go"
     ],
     "preview": "previews/driver-boundaries.png"
   },

@@ -1,6 +1,6 @@
 {
   "archify_version": "3.2.0",
-  "source_revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+  "source_revision": "ca393a3031c310c21515cec04e98b4f009f50e08",
   "automated_browser_scope": "Four desktop light-theme viewports; dark-theme endpoints; READ/Still state.",
   "preview_capture": "Full-page Chrome screenshot at 1440 CSS pixels wide; light theme; no screenshot cropping.",
   "index_checks": "No horizontal overflow at 1440 and 390 CSS pixels; all images loaded.",
@@ -8,9 +8,9 @@
     {
       "slug": "overview",
       "candidate": ".archify/architecture-overview-20261024-152114/candidate.json",
-      "candidate_sha256": "2594aa1a94909a89592f339e6c4564d85e1110df3673ff5ff21a4fa9ec52bd1b",
+      "candidate_sha256": "eb85126f1ab26f6eeaf3ee2e71b08bbfc76f149e0d905b26af21b18d28b76949",
       "html": ".archify/architecture-overview-20261024-152114/overview.html",
-      "html_sha256": "ebd97d0442e9dfa2dcf65e06d2723de015102aeaa35bb5f674d10c63d5e71065",
+      "html_sha256": "ede76116e1a8931213136442d6a2daceaed42026eb2d517cb8d8e1c8a36f5535",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -18,16 +18,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/overview.png",
-      "preview_sha256": "08cd41f4e38dfd6f915fc2cb45aac3aca1e2e777e4abe73857cea7d1f17db988",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "94b63a3c1988dd60473ea4726baea51cf40b18a096d91d58364a962ee24aa43e",
+      "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
       "route_advisory": {}
     },
     {
       "slug": "local-admission",
       "candidate": ".archify/workflow-local-admission-20261024-152114/candidate.json",
-      "candidate_sha256": "43f0bb808ffb9c3e86a14423eee14611ddb70c7cae7e27bc09023c715580b222",
+      "candidate_sha256": "921466a749a46ed0f676154f9207c99bfdb6a14d8e612fc6e9e2e7445a00a311",
       "html": ".archify/workflow-local-admission-20261024-152114/local-admission.html",
-      "html_sha256": "ad69b71cd790c741fb7fab14e77ecbf976e835c6becded97b1b6a6954b865696",
+      "html_sha256": "920ca9b1cad6893be2d7fc5e3abf8e027440174f86cac79b38dc9f54d3b39fab",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -35,16 +35,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/local-admission.png",
-      "preview_sha256": "46ecb6125ab5969f6b9cbb79bec27a0e47c4ade743f57abfdec594c3acc5be6b",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "a20da4d540b3fdbe91f7c350996d5a5460561a114a05fb16ee8d9a5ef9f7dfd3",
+      "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
       "route_advisory": {}
     },
     {
       "slug": "scheduler",
       "candidate": ".archify/workflow-scheduler-20261024-152114/candidate.json",
-      "candidate_sha256": "f28101183e9c60229a475d0335660ee89278e78fd9edf2c3c2b250c1ff13e7ad",
+      "candidate_sha256": "87e8dd86e995058da86b97c0ad7b7cad0cfc589e16a422e65c93a0bbcd900067",
       "html": ".archify/workflow-scheduler-20261024-152114/scheduler.html",
-      "html_sha256": "31be44ed5b01528e98e6a7d82bb4ae57e52b5ce2fc5e4e7942baf482ab937fcd",
+      "html_sha256": "92c147a9109609c711af81ec5499514ab3d7d8fd3075658f69ee23ebdb7d90ef",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -52,16 +52,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/scheduler.png",
-      "preview_sha256": "8528d6a46c0e427c450242c58cdd724bb7a339b5e8048f0b86f7aeea5889b1ca",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "8d058c0eedf5fed7248d68c5aa1f7af61ed957a4e497691e8136d9ebec6325e3",
+      "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
       "route_advisory": {}
     },
     {
       "slug": "request-states",
       "candidate": ".archify/lifecycle-request-states-20261024-152114/candidate.json",
-      "candidate_sha256": "2f772e33ee481b4d6ab73e723fb37240d80884d40f1be8085aeb541757f0ace2",
+      "candidate_sha256": "3f2d5f9ffdc0a72b7cb947abbf6439fb249b6e6cdc29bc031d62a4fea77744e1",
       "html": ".archify/lifecycle-request-states-20261024-152114/request-states.html",
-      "html_sha256": "da24dbc0008cda69e62b801bbf09aa77db619015ad871bc9afe2adad33884113",
+      "html_sha256": "1c259ec212b456b85b1d8c94c6075cd798586355e11f1510c199a1e232cd5336",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -69,8 +69,8 @@
         "browser-check": "pass"
       },
       "preview": "previews/request-states.png",
-      "preview_sha256": "db97525c043a960d2860dd86ffda46bacdb9de107d276be01a83f4c7a62d113f",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "3360416ea098eea011c44afc87aa32ec4c2bdbe030e345f1cae50f80582cd1b9",
+      "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
       "route_advisory": {
         "resolvedCrossovers": 16,
         "routesOverSuggestedStretch": 1
@@ -79,9 +79,9 @@
     {
       "slug": "lease-states",
       "candidate": ".archify/lifecycle-lease-states-20261024-152114/candidate.json",
-      "candidate_sha256": "6ebe84c00527c2a086f21bafc7372d86d7ba3c2d484ce63a9ae0abc510d48892",
+      "candidate_sha256": "44082fbbb20930df61977b7e5050380b8a7de4ab055b1b7a9cd9bf12de3fe8fc",
       "html": ".archify/lifecycle-lease-states-20261024-152114/lease-states.html",
-      "html_sha256": "089b22de5aca0c3d9ba542955a02791ad93c1974d26e52c085c299b955c3dfd4",
+      "html_sha256": "cc093bd44cea433a3c7e0b24b0846d93e816d2c8a91cf8256c6fe964bfd74eab",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -89,16 +89,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/lease-states.png",
-      "preview_sha256": "d88fa807473d523c7b9ed32d20498b048228464bbb6f9bf13cc3dcf6e36b5c24",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "ce3e95a5d746910002a03dc421263e960f824857c8f36242f7c7176c8f8d4861",
+      "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
       "route_advisory": {}
     },
     {
       "slug": "shared-sequence",
       "candidate": ".archify/sequence-shared-sequence-20261024-152114/candidate.json",
-      "candidate_sha256": "22b2d7def94ddbb3cb97b6039b9222538bb9089ed078210a483dcc3e10a4f368",
+      "candidate_sha256": "d88724644425ee04e8e53bc01ac17a8c3e1066613bed41b2f34b0ab94c980834",
       "html": ".archify/sequence-shared-sequence-20261024-152114/shared-sequence.html",
-      "html_sha256": "19158e0c66e666e5b591ea174f86e9e439cad1da214cd11bfd44e0c0f3ed2eb9",
+      "html_sha256": "f2c656e3490447d9e4589487f2f32e3727bb6398cdf9920517838359fc60065e",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -106,16 +106,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/shared-sequence.png",
-      "preview_sha256": "f6f85ca3d2f3d5319f38cb6264a7bb68c28237244c793e4ea8821e2c137366ba",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "b1ffbfa522ce19a3c2ca8b52e90320991038a56677b3437afad40518c0dfc20f",
+      "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
       "route_advisory": {}
     },
     {
       "slug": "driver-boundaries",
       "candidate": ".archify/architecture-driver-boundaries-20261024-152114/candidate.json",
-      "candidate_sha256": "1cc95c01e09e5ace48a1e4f525c8d2472add125f9cea63866a4f026a1467e0c7",
+      "candidate_sha256": "fce01b0c45719ba3b28cd2276f4fe2aa49b95e6f73ce36342bf766185b37b663",
       "html": ".archify/architecture-driver-boundaries-20261024-152114/driver-boundaries.html",
-      "html_sha256": "1cec97283c7ad13ad2f0f335725ae244554aaa2529de2ed5615746920a89aaec",
+      "html_sha256": "948c01eb4d81b228ec5862add5500cb52e0e796110bf12a49df13597b4078d5a",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -123,16 +123,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/driver-boundaries.png",
-      "preview_sha256": "3d6ccaa0027cee64ed8f066ff1ac59d6f9ff781284e0fba12ab36654d2d98f55",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "7a0c17c46243e7152b173b784b80f1b481e55d5cb720c93d59c1b12524fccc18",
+      "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
       "route_advisory": {}
     },
     {
       "slug": "application-lifecycle",
       "candidate": ".archify/workflow-application-lifecycle-20261024-152114/candidate.json",
-      "candidate_sha256": "56e66b1cbc5d1060072387760fe5b6166f967ba36c2e4f867382b445a6048f6d",
+      "candidate_sha256": "8de3d0ac334214eee176e24051f612978c1f02fecf588df36ee1d2f06f8b3770",
       "html": ".archify/workflow-application-lifecycle-20261024-152114/application-lifecycle.html",
-      "html_sha256": "d9114ddd3d139fb4dd4c1f8c8c3fba9af4201b0febeeaaf931f89439a3d4469d",
+      "html_sha256": "bf702eeca8b3618056fc02415d456d6fea4c0316a514d7ffd651c4b4ee2596ac",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -140,8 +140,8 @@
         "browser-check": "pass"
       },
       "preview": "previews/application-lifecycle.png",
-      "preview_sha256": "1a806f52a0aba6aa073bce511d12b3b98e27e76895b5c3d211deba00f0004721",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "eec06a683e1782719e8ca46af8c4b0f7ec6eb8949acc5d123d6c5755c16f7089",
+      "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
       "route_advisory": {}
     }
   ]
