@@ -3,16 +3,22 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/tr1v3r/airlock/protocol"
+	"github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/tr1v3r/airlock"
 	"github.com/tr1v3r/airlock/internal/driverconformance"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 func integrationDB(t *testing.T) *sql.DB {
@@ -33,9 +39,9 @@ func integrationDB(t *testing.T) *sql.DB {
 	}
 	return db
 }
-func integrationDriver(t *testing.T, db *sql.DB, prefix string, options ...Option) *Driver {
+func integrationDriver(t *testing.T, db *sql.DB, namespace string, options ...Option) *Driver {
 	t.Helper()
-	d, err := New(db, prefix, options...)
+	d, err := New(db, namespace, options...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +50,7 @@ func integrationDriver(t *testing.T, db *sql.DB, prefix string, options ...Optio
 	}
 	return d
 }
-func uniquePrefix() string { return "test-" + protocol.NewRequest(time.Now()).Owner }
+func uniqueNamespace() string { return "test-" + protocol.NewRequest(time.Now()).Owner }
 func executeStatus(t *testing.T, d *Driver, kind protocol.Operation, r protocol.Request, lease string, status protocol.Status) protocol.Result {
 	t.Helper()
 	got, err := driverconformance.Invoke(context.Background(), d, protocol.Command{Kind: kind, Request: r, LeaseID: lease})
@@ -56,14 +62,14 @@ func executeStatus(t *testing.T, d *Driver, kind protocol.Operation, r protocol.
 
 func TestIntegrationConformance(t *testing.T) {
 	db := integrationDB(t)
-	prefix := uniquePrefix()
-	driverconformance.Run(t, func(t *testing.T) protocol.Driver { return integrationDriver(t, db, prefix) })
+	namespace := uniqueNamespace()
+	driverconformance.Run(t, func(t *testing.T) protocol.Driver { return integrationDriver(t, db, namespace) })
 }
 
 func TestIntegrationFirstCreationAndIsolation(t *testing.T) {
 	db1, db2 := integrationDB(t), integrationDB(t)
-	prefix := uniquePrefix()
-	d1, d2 := integrationDriver(t, db1, prefix), integrationDriver(t, db2, prefix)
+	namespace := uniqueNamespace()
+	d1, d2 := integrationDriver(t, db1, namespace), integrationDriver(t, db2, namespace)
 	r := request(time.Now())
 	r.Config.Admission.Capacity = 3
 	var wg sync.WaitGroup
@@ -102,11 +108,11 @@ func TestIntegrationFirstCreationAndIsolation(t *testing.T) {
 	if grants != 3 {
 		t.Fatalf("grants=%d want3", grants)
 	}
-	// Independent namespace columns prevent ambiguous prefix/resource concatenation.
+	// Independent namespace columns prevent ambiguous namespace/resource concatenation.
 	x := request(time.Now())
 	x.Resource = "bc"
-	a := integrationDriver(t, db1, prefix+"a")
-	b := integrationDriver(t, db2, prefix+"ab")
+	a := integrationDriver(t, db1, namespace+"a")
+	b := integrationDriver(t, db2, namespace+"ab")
 	executeStatus(t, a, protocol.Submit, x, "", protocol.Granted)
 	x.Resource = "c"
 	executeStatus(t, b, protocol.Submit, x, "", protocol.Granted)
@@ -120,8 +126,8 @@ func TestIntegrationFirstCreationAndIsolation(t *testing.T) {
 
 func TestIntegrationPersistentPriorityCursor(t *testing.T) {
 	db1, db2 := integrationDB(t), integrationDB(t)
-	prefix := uniquePrefix()
-	d := integrationDriver(t, db1, prefix)
+	namespace := uniqueNamespace()
+	d := integrationDriver(t, db1, namespace)
 	holder := request(time.Now())
 	holder.Config.Admission.Priority = &protocol.PriorityPolicy{Groups: []protocol.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 4}, {Name: "low", Turns: 1, MaxQueued: 4}}, DefaultGroup: "low", TenantGroups: map[string]string{"h": "high"}}
 	held := executeStatus(t, d, protocol.Submit, holder, "", protocol.Granted)
@@ -135,7 +141,7 @@ func TestIntegrationPersistentPriorityCursor(t *testing.T) {
 	h1, h2, h3, l1, l2 := makeQueued("h"), makeQueued("h"), makeQueued("h"), makeQueued("l"), makeQueued("l")
 	current, lease := holder, held.LeaseID
 	for i, next := range []protocol.Request{h1, h2, l1, h3, l2} {
-		rebuilt, err := New(db2, prefix)
+		rebuilt, err := New(db2, namespace)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -152,7 +158,7 @@ func TestIntegrationPersistentPriorityCursor(t *testing.T) {
 
 func TestIntegrationLockWaitDoesNotReviveLease(t *testing.T) {
 	db, observer := integrationDB(t), integrationDB(t)
-	d := integrationDriver(t, db, uniquePrefix())
+	d := integrationDriver(t, db, uniqueNamespace())
 	r := request(time.Now())
 	r.Config.LeaseTTL = 300 * time.Millisecond
 	grant := executeStatus(t, d, protocol.Submit, r, "", protocol.Granted)
@@ -162,7 +168,7 @@ func TestIntegrationLockWaitDoesNotReviveLease(t *testing.T) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var revision string
-	if err := tx.QueryRow(`SELECT revision FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.prefix, r.Resource).Scan(&revision); err != nil {
+	if err := tx.QueryRow(`SELECT revision FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.namespace, r.Resource).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
 	var blocker int
@@ -205,7 +211,7 @@ func TestIntegrationLockWaitDoesNotReviveLease(t *testing.T) {
 
 func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 	db := integrationDB(t)
-	d := integrationDriver(t, db, uniquePrefix())
+	d := integrationDriver(t, db, uniqueNamespace())
 	r := request(time.Now())
 	executeStatus(t, d, protocol.Submit, r, "", protocol.Granted)
 	tx, err := db.BeginTx(context.Background(), nil)
@@ -213,7 +219,7 @@ func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`SELECT 1 FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.prefix, r.Resource); err != nil {
+	if _, err := tx.Exec(`SELECT 1 FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.namespace, r.Resource); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
@@ -236,8 +242,8 @@ func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 
 func TestIntegrationAbandonedClientsReclaimed(t *testing.T) {
 	db1, db2 := integrationDB(t), integrationDB(t)
-	prefix := uniquePrefix()
-	d1, d2 := integrationDriver(t, db1, prefix), integrationDriver(t, db2, prefix)
+	namespace := uniqueNamespace()
+	d1, d2 := integrationDriver(t, db1, namespace), integrationDriver(t, db2, namespace)
 	holder := request(time.Now())
 	holder.Config.LeaseTTL = 100 * time.Millisecond
 	executeStatus(t, d1, protocol.Submit, holder, "", protocol.Granted)
@@ -262,7 +268,7 @@ func TestIntegrationAbandonedClientsReclaimed(t *testing.T) {
 
 func TestIntegrationTerminatedConnectionFailsClosed(t *testing.T) {
 	db, admin := integrationDB(t), integrationDB(t)
-	d := integrationDriver(t, db, uniquePrefix())
+	d := integrationDriver(t, db, uniqueNamespace())
 	r := request(time.Now())
 	r.Config.LeaseTTL = 10 * time.Second
 	held := executeStatus(t, d, protocol.Submit, r, "", protocol.Granted)
@@ -271,7 +277,7 @@ func TestIntegrationTerminatedConnectionFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`SELECT 1 FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.prefix, r.Resource); err != nil {
+	if _, err := tx.Exec(`SELECT 1 FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.namespace, r.Resource); err != nil {
 		t.Fatal(err)
 	}
 	var blocker int
@@ -317,4 +323,239 @@ func TestIntegrationTerminatedConnectionFailsClosed(t *testing.T) {
 	if recovered.LeaseID != held.LeaseID || recovered.Remaining > held.Remaining {
 		t.Fatalf("failed command changed lease: before=%+v after=%+v", held, recovered)
 	}
+}
+
+func TestIntegrationShared(t *testing.T) {
+	d := integrationDriver(t, integrationDB(t), uniqueNamespace())
+	client, err := airlock.NewShared(d, airlock.SharedOptions{Resource: "client-lifecycle", Config: protocol.ResourceConfig{Admission: airlock.Config{Capacity: 2, MaxQueued: 4, MaxQueuedPerTenant: 4}, LeaseTTL: 5 * time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 30}, OperationTimeout: time.Second, PollInterval: 10 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	acquisition, cancel := context.WithCancel(context.Background())
+	lease, err := client.AcquireNFor(acquisition, "online", 2)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	cancel()
+	if !lease.Valid() {
+		t.Fatal("acquisition context revoked delivered lease")
+	}
+	waiting, stop := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	_, err = client.AcquireFor(waiting, "batch")
+	stop()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("bounded wait: %v", err)
+	}
+	if err := lease.Renew(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.Release(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-lease.Done():
+	default:
+		t.Fatal("released lease still usable")
+	}
+	replacement, err := client.AcquireN(context.Background(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := replacement.Release(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIntegrationRelationalDeltaWrites(t *testing.T) {
+	db := integrationDB(t)
+	d := integrationDriver(t, db, uniqueNamespace())
+	first := request(time.Now())
+	first.Config.Admission.Capacity = 2
+	first.Config.LeaseTTL = 30 * time.Second
+	a := executeStatus(t, d, protocol.Submit, first, "", protocol.Granted)
+	second := first
+	id := protocol.NewRequest(first.SubmitUntil)
+	second.ID, second.Owner = id.ID, id.Owner
+	b := executeStatus(t, d, protocol.Submit, second, "", protocol.Granted)
+	readVersion := func(r protocol.Request) string {
+		var version string
+		if err := db.QueryRow(`SELECT xmin::text FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, r.Resource, r.ID).Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		return version
+	}
+	va, vb := readVersion(first), readVersion(second)
+	// Polling changes the resource revision but must not rewrite either request.
+	executeStatus(t, d, protocol.Observe, first, "", protocol.Granted)
+	if readVersion(first) != va || readVersion(second) != vb {
+		t.Fatal("Observe rewrote unchanged requests")
+	}
+	time.Sleep(2 * time.Millisecond)
+	executeStatus(t, d, protocol.Renew, second, b.LeaseID, protocol.Granted)
+	if readVersion(first) != va || readVersion(second) == vb {
+		t.Fatal("Renew did not restrict writes to its request")
+	}
+	vb = readVersion(second)
+	executeStatus(t, d, protocol.Release, first, a.LeaseID, protocol.Released)
+	if readVersion(second) != vb {
+		t.Fatal("Release rewrote unrelated request")
+	}
+	var tenant, status string
+	var weight int
+	if err := db.QueryRow(`SELECT tenant,weight,status FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, first.Resource, first.ID).Scan(&tenant, &weight, &status); err != nil {
+		t.Fatal(err)
+	}
+	if tenant != first.Tenant || weight != first.Weight || status != "released" {
+		t.Fatal(tenant, weight, status)
+	}
+}
+
+func TestIntegrationMissingColumnsRejected(t *testing.T) {
+	db := integrationDB(t)
+	name := "incomplete_" + protocol.NewRequest(time.Now()).Owner
+	d, err := New(db, "", WithTable(name), WithOperationTimeout(10*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(fmt.Sprintf(`CREATE TABLE %s(namespace text COLLATE "C" NOT NULL,resource text COLLATE "C" NOT NULL,PRIMARY KEY(namespace,resource))`, d.table)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, d.requests))
+		_, _ = db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, d.table))
+	})
+	if err = d.EnsureSchema(context.Background()); err == nil || !strings.Contains(err.Error(), "incompatible schema") {
+		t.Fatalf("incomplete schema silently accepted: %v", err)
+	}
+}
+
+func TestIntegrationDequeuePreservesFollowerRows(t *testing.T) {
+	db := integrationDB(t)
+	d := integrationDriver(t, db, uniqueNamespace())
+	holder := request(time.Now())
+	holder.Config.LeaseTTL = 30 * time.Second
+	held := executeStatus(t, d, protocol.Submit, holder, "", protocol.Granted)
+	var queued []protocol.Request
+	for i := 0; i < 3; i++ {
+		r := holder
+		id := protocol.NewRequest(r.SubmitUntil)
+		r.ID, r.Owner = id.ID, id.Owner
+		executeStatus(t, d, protocol.Submit, r, "", protocol.Queued)
+		queued = append(queued, r)
+	}
+	var version string
+	tail := queued[2]
+	if err := db.QueryRow(`SELECT xmin::text FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, tail.Resource, tail.ID).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	executeStatus(t, d, protocol.Release, holder, held.LeaseID, protocol.Released)
+	var after string
+	var position int64
+	if err := db.QueryRow(`SELECT xmin::text,queue_position FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, tail.Resource, tail.ID).Scan(&after, &position); err != nil {
+		t.Fatal(err)
+	}
+	if after != version || position != 2 {
+		t.Fatalf("follower rewritten/reindexed: %s -> %s position %d", version, after, position)
+	}
+	// Reading a queue whose first position is no longer zero must preserve FIFO.
+	for i := 0; i < 2; i++ {
+		got := executeStatus(t, d, protocol.Observe, queued[i], "", protocol.Granted)
+		executeStatus(t, d, protocol.Release, queued[i], got.LeaseID, protocol.Released)
+	}
+	executeStatus(t, d, protocol.Observe, tail, "", protocol.Granted)
+}
+
+// The database really commits; only its driver-level acknowledgement is dropped.
+// This is a deterministic reply-loss boundary, not a TCP partition simulation.
+type replyLossConnector struct {
+	driver.Connector
+	armed atomic.Bool
+}
+
+func (c *replyLossConnector) Connect(ctx context.Context) (driver.Conn, error) {
+	conn, err := c.Connector.Connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &replyLossConn{Conn: conn, armed: &c.armed}, nil
+}
+
+type replyLossConn struct {
+	driver.Conn
+	armed *atomic.Bool
+}
+
+func (c *replyLossConn) BeginTx(ctx context.Context, options driver.TxOptions) (driver.Tx, error) {
+	tx, err := c.Conn.(driver.ConnBeginTx).BeginTx(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	return &replyLossTx{Tx: tx, armed: c.armed}, nil
+}
+func (c *replyLossConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	return c.Conn.(driver.ExecerContext).ExecContext(ctx, query, args)
+}
+func (c *replyLossConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	return c.Conn.(driver.QueryerContext).QueryContext(ctx, query, args)
+}
+
+type replyLossTx struct {
+	driver.Tx
+	armed *atomic.Bool
+}
+
+func (tx *replyLossTx) Commit() error {
+	if err := tx.Tx.Commit(); err != nil {
+		return err
+	}
+	if tx.armed.Swap(false) {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func TestIntegrationCommittedResponseLoss(t *testing.T) {
+	normalDB := integrationDB(t)
+	base, err := stdlib.GetDefaultDriver().(driver.DriverContext).OpenConnector(os.Getenv("AIRLOCK_POSTGRES_DSN"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	connector := &replyLossConnector{Connector: base}
+	faultyDB := sql.OpenDB(connector)
+	t.Cleanup(func() { _ = faultyDB.Close() })
+	namespace := uniqueNamespace()
+	faulty := integrationDriver(t, faultyDB, namespace)
+	observer := integrationDriver(t, normalDB, namespace)
+	r := request(time.Now())
+	r.Config.LeaseTTL = 5 * time.Second
+	r.Config.Admission.Capacity = 2
+	r.Weight = 2
+	unknown := func(kind protocol.Operation, lease string) {
+		t.Helper()
+		connector.armed.Store(true)
+		result, e := driverconformance.Invoke(context.Background(), faulty, protocol.Command{Kind: kind, Request: r, LeaseID: lease})
+		if !errors.Is(e, io.ErrUnexpectedEOF) || result != (protocol.Result{}) {
+			t.Fatalf("unknown %s exposed result: %+v %v", kind, result, e)
+		}
+	}
+	unknown(protocol.Submit, "")
+	grant := executeStatus(t, observer, protocol.Observe, r, "", protocol.Granted)
+	retry := executeStatus(t, observer, protocol.Submit, r, "", protocol.Granted)
+	if retry.LeaseID != grant.LeaseID || retry.Remaining > grant.Remaining {
+		t.Fatal("lost Submit response caused a second grant/extended TTL")
+	}
+	other := r
+	identity := protocol.NewRequest(r.SubmitUntil)
+	other.ID, other.Owner = identity.ID, identity.Owner
+	other.Weight = 1
+	executeStatus(t, observer, protocol.Submit, other, "", protocol.Queued)
+	unknown(protocol.Renew, grant.LeaseID)
+	renewed := executeStatus(t, observer, protocol.Observe, r, "", protocol.Granted)
+	if renewed.LeaseID != grant.LeaseID {
+		t.Fatal("renew changed identity")
+	}
+	unknown(protocol.Release, grant.LeaseID)
+	executeStatus(t, observer, protocol.Release, r, grant.LeaseID, protocol.Released)
+	next := executeStatus(t, observer, protocol.Observe, other, "", protocol.Granted)
+	executeStatus(t, observer, protocol.Release, other, next.LeaseID, protocol.Released)
 }

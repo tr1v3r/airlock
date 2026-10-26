@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tr1v3r/airlock/protocol"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 // clockStateDriver uses the real state machine with a stable backend clock
@@ -226,7 +227,7 @@ type deadlineOutcomeDriver struct {
 }
 
 func (d *deadlineOutcomeDriver) Observe(ctx context.Context, r protocol.Request) (protocol.Result, error) {
-	// Advance backend time to the immutable queue deadline. The real protocol.ApplySnapshot
+	// Advance backend time to the immutable queue deadline. The real protocol.Transition
 	// must expire the queued request before the caller's timer is signalled.
 	d.offset = time.Until(r.WaitUntil)
 	result, err := d.clockStateDriver.Observe(ctx, r)

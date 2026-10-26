@@ -11,8 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tr1v3r/airlock"
 	"golang.org/x/sync/semaphore"
+
+	"github.com/tr1v3r/airlock"
 )
 
 type priorityArrival struct {

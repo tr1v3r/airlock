@@ -30,6 +30,19 @@ GOWORK=off go vet ./...
 bash scripts/driver-check.sh
 ```
 
+Import formatting is configured in the root `.golangci.yml`: standard library,
+third-party dependencies, then `github.com/tr1v3r/airlock` packages. CI checks every
+module. From the repository root, apply the same formatting locally with:
+
+```sh
+golangci-lint fmt
+for manifest in driver/*/go.mod; do
+  (cd "$(dirname "$manifest")" && golangci-lint fmt --config ../../.golangci.yml)
+done
+```
+
+Use `fmt --diff` to check without rewriting files. CI pins golangci-lint v2.13.2.
+
 The driver check runs each module with `GOWORK=off`, verifies tidy, dependencies,
 race tests, vet and per-file coverage. Shared backend contract tests live in
 `internal/driverconformance`; this test helper is excluded from SDK statement

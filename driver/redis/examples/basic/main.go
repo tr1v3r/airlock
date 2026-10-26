@@ -10,6 +10,7 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
+
 	"github.com/tr1v3r/airlock"
 	redisdriver "github.com/tr1v3r/airlock/driver/redis"
 	"github.com/tr1v3r/airlock/protocol"

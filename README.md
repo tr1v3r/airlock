@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A Go 1.25+ library for weighted, tenant-aware concurrency admission.
+A Go 1.26+ library for weighted, tenant-aware concurrency admission.
 It provides FIFO waiting within each tenant, round-robin selection across waiting
 tenants, optional priority groups with weighted selection and reserved waiting
 budgets, and global/per-tenant queue limits. Runtime dependencies are standard
@@ -16,7 +16,7 @@ constants and variables, explaining input constraints, concurrency and lifecycle
 rules, and error handling. Read the comments for your pinned version alongside
 the examples when integrating the SDK.
 
-Start with the [Local API](airlock.go), [shared API](distributed.go), and [driver contract](protocol/driver.go).
+Start with the [Local API](airlock.go), [shared API](shared.go), and [driver contract](protocol/driver.go).
 
 ## Choose an entry point
 
@@ -49,10 +49,12 @@ Explore the [architecture atlas](docs/architecture/README.md) for eight source-b
 
 ## Installation
 
-All modules require **Go 1.25+**. The PostgreSQL module forced this floor when
-its pgx and x/text dependencies were upgraded over reachable security advisories
-(the fixed versions need Go 1.25); core, memory and Redis adopted the same
-minimum so the repository ships one toolchain requirement and a single CI matrix.
+All modules require **Go 1.26+**. Go 1.25 first became the floor when the
+PostgreSQL module upgraded pgx and x/text over reachable security advisories;
+the move to 1.26 follows the dependency updates go-redis v9.23.0 and
+golang.org/x/sync v0.24.0, which both declare `go 1.26.0`. All modules keep
+the same minimum so the repository ships one toolchain requirement and a
+single CI matrix.
 
 ```sh
 go get github.com/tr1v3r/airlock@dev
@@ -129,6 +131,8 @@ stop on lease loss. Longer work needs explicit renewal.
 Start with the [Shared guide](docs/guides/shared.md) for backend setup, a runnable
 hello example, a complete cancellation/renewal/cleanup example, and advanced
 settings. You do not need to learn the Driver protocol to use Shared.
+
+One driver can serve multiple independent Resources. See the [namespace, Resource and Tenant guide](docs/guides/shared.md#namespace-resource-and-tenant) for sharing boundaries and a multi-resource example.
 
 ## Immediate acquisition
 
@@ -390,7 +394,7 @@ only explicitly inapplicable installation/extended jobs may be skipped (see the
   them together because analyzer support can lag Go export-format changes.
   Compatibility tests and vulnerability scans still track stable Go.
 - Module tidiness/checksums and standard-library-only runtime dependencies are enforced.
-- Tests run without cache and in shuffled order on Linux (Go 1.25,
+- Tests run without cache and in shuffled order on Linux (Go 1.26,
   previous stable, and stable), plus macOS and Windows (stable). `GOTOOLCHAIN=local`
   prevents automatic toolchain upgrades from hiding minimum-version failures.
   Root and independent driver modules run separately on every entry.

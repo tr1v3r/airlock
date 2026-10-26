@@ -20,7 +20,7 @@ func newStateHarness(t *testing.T) *stateHarness {
 }
 func (h *stateHarness) call(kind Operation, r Request, lease string, wantErr error) Result {
 	h.t.Helper()
-	data, res, err := ApplySnapshot(h.data, h.now, Command{Kind: kind, Request: r, LeaseID: lease})
+	data, res, err := transitionSnapshot(h.data, h.now, Command{Kind: kind, Request: r, LeaseID: lease})
 	if !errors.Is(err, wantErr) {
 		h.t.Fatalf("%s %s: got %v want %v", kind, r.Tenant, err, wantErr)
 	}
@@ -44,7 +44,7 @@ func expectState(t *testing.T, r Result, want Status) {
 	}
 }
 
-func TestApplySnapshotLeaseLifecycle(t *testing.T) {
+func TestTransitionLeaseLifecycle(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	r := stateTestRequest(h.now, cfg, "a", 3)
@@ -80,7 +80,7 @@ func TestApplySnapshotLeaseLifecycle(t *testing.T) {
 	expectState(t, h.call(Submit, third, "", nil), Granted)
 }
 
-func TestApplySnapshotCancelBeforeSubmitAndActive(t *testing.T) {
+func TestTransitionCancelBeforeSubmitAndActive(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	r := stateTestRequest(h.now, cfg, "a", 3)
@@ -98,7 +98,7 @@ func TestApplySnapshotCancelBeforeSubmitAndActive(t *testing.T) {
 	expectState(t, h.call(Cancel, queued, "", nil), Cancelled)
 }
 
-func TestApplySnapshotRecoveryHistoryAndLateSubmission(t *testing.T) {
+func TestTransitionRecoveryHistoryAndLateSubmission(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	cfg.LeaseTTL = time.Minute
@@ -138,7 +138,7 @@ func TestApplySnapshotRecoveryHistoryAndLateSubmission(t *testing.T) {
 	h.call(Submit, changed, "", ErrInvalidRequest)
 }
 
-func TestApplySnapshotExpirySweepsBeforeDispatch(t *testing.T) {
+func TestTransitionExpirySweepsBeforeDispatch(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	holder := stateTestRequest(h.now, cfg, "hold", 3)
@@ -159,7 +159,7 @@ func TestApplySnapshotExpirySweepsBeforeDispatch(t *testing.T) {
 	expectState(t, h.call(Submit, r, "", nil), Expired)
 }
 
-func TestApplySnapshotErrorIdentityAndMaintenance(t *testing.T) {
+func TestTransitionErrorIdentityAndMaintenance(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	r := stateTestRequest(h.now, cfg, "a", 1)
@@ -190,7 +190,7 @@ func TestApplySnapshotErrorIdentityAndMaintenance(t *testing.T) {
 	h.call(Operation("invalid"), r, "", ErrInvalidRequest)
 }
 
-func TestApplySnapshotStableAdmissionRejections(t *testing.T) {
+func TestTransitionStableAdmissionRejections(t *testing.T) {
 	cases := []struct {
 		name   string
 		modify func(*ResourceConfig)
@@ -223,7 +223,7 @@ func TestApplySnapshotStableAdmissionRejections(t *testing.T) {
 	}
 }
 
-func TestApplySnapshotTenantRoundRobinAcrossSnapshots(t *testing.T) {
+func TestTransitionTenantRoundRobinAcrossSnapshots(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	cfg.Admission.Capacity = 1
@@ -258,7 +258,7 @@ func TestApplySnapshotTenantRoundRobinAcrossSnapshots(t *testing.T) {
 	}
 }
 
-func TestApplySnapshotPriorityFullCycles(t *testing.T) {
+func TestTransitionPriorityFullCycles(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	cfg.Admission.Capacity = 1
@@ -291,7 +291,7 @@ func TestApplySnapshotPriorityFullCycles(t *testing.T) {
 	}
 }
 
-func TestApplySnapshotProtectedHeadSurvivesRestartAndCancellation(t *testing.T) {
+func TestTransitionProtectedHeadSurvivesRestartAndCancellation(t *testing.T) {
 	for _, cancel := range []bool{false, true} {
 		t.Run(fmt.Sprint(cancel), func(t *testing.T) {
 			h := newStateHarness(t)
@@ -329,7 +329,7 @@ func TestApplySnapshotProtectedHeadSurvivesRestartAndCancellation(t *testing.T) 
 	}
 }
 
-func TestApplySnapshotCorruptSnapshots(t *testing.T) {
+func TestTransitionCorruptSnapshots(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	holder := stateTestRequest(h.now, cfg, "holder", 3)
@@ -375,14 +375,14 @@ func TestApplySnapshotCorruptSnapshots(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, _, err := ApplySnapshot(data, h.now, Command{Kind: Observe, Request: holder})
+			out, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: holder})
 			if !errors.Is(err, ErrCorruptState) || out != nil {
 				t.Fatalf("got data=%t err=%v", out != nil, err)
 			}
 		})
 	}
 	for _, data := range [][]byte{[]byte("{"), []byte("null")} {
-		if _, _, err := ApplySnapshot(data, h.now, Command{Kind: Observe, Request: holder}); !errors.Is(err, ErrCorruptState) {
+		if _, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: holder}); !errors.Is(err, ErrCorruptState) {
 			t.Fatal(err)
 		}
 	}
@@ -422,7 +422,7 @@ func TestDurableRestoreRejectsInvalidLimits(t *testing.T) {
 	}
 }
 
-func TestApplySnapshotSnapshotsAreDeterministic(t *testing.T) {
+func TestTransitionSnapshotsAreDeterministic(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	holder := stateTestRequest(h.now, cfg, "hold", 3)
@@ -433,28 +433,28 @@ func TestApplySnapshotSnapshotsAreDeterministic(t *testing.T) {
 	}
 	original := append([]byte(nil), h.data...)
 	h.now = h.now.Add(time.Second)
-	data, result, err := ApplySnapshot(original, h.now, Command{Kind: Observe, Request: holder})
+	data, result, err := transitionSnapshot(original, h.now, Command{Kind: Observe, Request: holder})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 20; i++ {
-		got, res, e := ApplySnapshot(original, h.now, Command{Kind: Observe, Request: holder})
+		got, res, e := transitionSnapshot(original, h.now, Command{Kind: Observe, Request: holder})
 		if e != nil || !reflect.DeepEqual(got, data) || res != result {
 			t.Fatal("map iteration changed scheduler output")
 		}
 	}
 }
 
-func TestApplySnapshotUnrepresentableBackendTime(t *testing.T) {
+func TestTransitionUnrepresentableBackendTime(t *testing.T) {
 	h := newStateHarness(t)
 	r := stateTestRequest(h.now, stateTestConfig(), "a", 1)
-	out, _, err := ApplySnapshot(nil, time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), Command{Kind: Submit, Request: r})
+	out, _, err := transitionSnapshot(nil, time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), Command{Kind: Submit, Request: r})
 	if !errors.Is(err, ErrCorruptState) || out != nil {
 		t.Fatalf("unserializable time committed: %v", err)
 	}
 }
 
-func TestApplySnapshotRejectsCorruptLifecycleFields(t *testing.T) {
+func TestTransitionRejectsCorruptLifecycleFields(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	cfg.Admission.MaxQueued = 2
@@ -512,7 +512,7 @@ func TestApplySnapshotRejectsCorruptLifecycleFields(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, _, err := ApplySnapshot(data, h.now, Command{Kind: Observe, Request: active})
+			out, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: active})
 			if !errors.Is(err, ErrCorruptState) || out != nil {
 				t.Fatalf("corrupt lifecycle accepted: output=%t error=%v", out != nil, err)
 			}
@@ -520,18 +520,101 @@ func TestApplySnapshotRejectsCorruptLifecycleFields(t *testing.T) {
 	}
 }
 
-func TestApplySnapshotRemainingIncludesFractionalBackendTime(t *testing.T) {
+func TestTransitionRemainingIncludesFractionalBackendTime(t *testing.T) {
 	now := time.Unix(1000, 900000)
 	r := stateTestRequest(now.Truncate(time.Millisecond), stateTestConfig(), "", 1)
-	data, result, err := ApplySnapshot(nil, now, Command{Kind: Submit, Request: r})
+	data, result, err := transitionSnapshot(nil, now, Command{Kind: Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Remaining != r.Config.LeaseTTL-900*time.Microsecond {
 		t.Fatalf("optimistic TTL: %s", result.Remaining)
 	}
-	_, result, err = ApplySnapshot(data, now.Add(100*time.Millisecond), Command{Kind: Observe, Request: r})
+	_, result, err = transitionSnapshot(data, now.Add(100*time.Millisecond), Command{Kind: Observe, Request: r})
 	if err != nil || result.Remaining != r.Config.LeaseTTL-100*time.Millisecond-900*time.Microsecond {
 		t.Fatalf("observation TTL: %s %v", result.Remaining, err)
+	}
+}
+
+func TestTransitionStateStorageIndependence(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	r := NewRequest(now.Add(time.Second))
+	r.Resource, r.Weight, r.WaitUntil = "structured", 1, now.Add(time.Second)
+	r.Config = ResourceConfig{Admission: Config{Capacity: 1, MaxQueued: 2, MaxQueuedPerTenant: 2}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 8}
+	other := r
+	id := NewRequest(r.SubmitUntil)
+	other.ID, other.Owner = id.ID, id.Owner
+	var state *State
+	var snapshot []byte
+	var lease string
+	for _, command := range []Command{{Kind: Submit, Request: r}, {Kind: Submit, Request: other}, {Kind: Observe, Request: other}, {Kind: Renew, Request: r}, {Kind: Release, Request: r}, {Kind: Cancel, Request: other}} {
+		command.LeaseID = lease
+		before := append([]byte(nil), snapshot...)
+		next, result, err := transitionStructured(state, now, command)
+		data, want, wantErr := transitionSnapshot(before, now, command)
+		if !reflect.DeepEqual(result, want) || err != wantErr {
+			t.Fatalf("%s: %+v %v != %+v %v", command.Kind, result, err, want, wantErr)
+		}
+		encoded, marshalErr := json.Marshal(next)
+		if marshalErr != nil || string(encoded) != string(data) {
+			t.Fatalf("structured/wire state mismatch: %s %s %v", encoded, data, marshalErr)
+		}
+		state, snapshot = next, data
+		if command.Request.ID == r.ID {
+			lease = result.LeaseID
+		}
+		now = now.Add(time.Millisecond)
+	}
+}
+
+func TestTransitionStateRejectsInvalidInput(t *testing.T) {
+	if next, result, err := transitionStructured(nil, time.Now(), Command{}); next != nil || result != (Result{}) || err != ErrInvalidConfig {
+		t.Fatalf("%+v %+v %v", next, result, err)
+	}
+}
+
+func transitionSnapshot(data []byte, now time.Time, cmd Command) ([]byte, Result, error) {
+	return ApplySnapshot(data, now, cmd)
+}
+func transitionStructured(state *State, now time.Time, cmd Command) (*State, Result, error) {
+	return ApplyCommand(state, now, cmd)
+}
+func transitionOptimistic(data []byte, now time.Time, cmd Command) ([]byte, Result, CommitWindow, error) {
+	return ApplyOptimistic(data, now, cmd)
+}
+
+func TestEncodeStateRejectsNil(t *testing.T) {
+	if data, err := EncodeState(nil); data != nil || err != ErrCorruptState {
+		t.Fatalf("nil transition output must not be persisted: %s %v", data, err)
+	}
+}
+
+func TestDecodeStateRejectsInvalidSnapshots(t *testing.T) {
+	for name, data := range map[string][]byte{"empty": nil, "blank": {}, "malformed": {0x7f}} {
+		if state, err := DecodeState(data); state != nil || err != ErrCorruptState {
+			t.Fatalf("%s snapshot decoded: %+v %v", name, state, err)
+		}
+	}
+}
+
+func TestEncodeDecodeStateRoundTrip(t *testing.T) {
+	h := newStateHarness(t)
+	cfg := stateTestConfig()
+	first := h.call(Submit, stateTestRequest(h.now, cfg, "codec", 1), "", nil)
+	expectState(t, first, Granted)
+	s := h.snapshot()
+	encoded, err := EncodeState(&s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeState(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(*decoded, s) {
+		t.Fatalf("codec round trip changed state: %+v != %+v", *decoded, s)
+	}
+	if data, err := EncodeState(nil); data != nil || err != ErrCorruptState {
+		t.Fatalf("nil state encoded: %s %v", data, err)
 	}
 }

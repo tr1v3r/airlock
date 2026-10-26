@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tr1v3r/airlock/protocol"
 	"github.com/tr1v3r/airlock/internal/driverconformance"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 func TestConformance(t *testing.T) {
@@ -75,5 +75,29 @@ func TestCancellationAtAtomicBoundary(t *testing.T) {
 		if (len(stored) > 0) != (at == 3) {
 			t.Fatalf("commit state at boundary %d", at)
 		}
+	}
+}
+
+func TestCorruptSnapshotIsNotPublished(t *testing.T) {
+	for _, snapshot := range []string{"not-json", "{}"} {
+		t.Run(snapshot, func(t *testing.T) {
+			request := memoryRequest("corrupt")
+			stored := &resource{gate: make(chan struct{}, 1), snapshot: []byte(snapshot)}
+			d := &Driver{resources: map[string]*resource{request.Resource: stored}}
+			result, err := d.Submit(context.Background(), request)
+			if !errors.Is(err, protocol.ErrCorruptState) || result != (protocol.Result{}) {
+				t.Fatalf("corrupt state authorized work: %+v %v", result, err)
+			}
+			if string(stored.snapshot) != snapshot {
+				t.Fatal("failed transition replaced committed snapshot")
+			}
+			// A failed read/transition must release the gate for subsequent recovery.
+			select {
+			case stored.gate <- struct{}{}:
+				<-stored.gate
+			default:
+				t.Fatal("failed transition retained the resource gate")
+			}
+		})
 	}
 }

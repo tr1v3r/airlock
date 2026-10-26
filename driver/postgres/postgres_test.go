@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+
+	"github.com/tr1v3r/airlock/internal/driverconformance"
 	"github.com/tr1v3r/airlock/protocol"
 )
 
@@ -77,9 +79,9 @@ func TestConfiguration(t *testing.T) {
 		t.Fatal("nil db accepted")
 	}
 	db := new(sql.DB)
-	for _, prefix := range []string{"\x00", "\xff", strings.Repeat("a", 257)} {
-		if _, err := New(db, prefix); err == nil {
-			t.Fatal("invalid prefix accepted")
+	for _, namespace := range []string{"\x00", "\xff", strings.Repeat("a", 257)} {
+		if _, err := New(db, namespace); err == nil {
+			t.Fatal("invalid namespace accepted")
 		}
 	}
 	for _, options := range [][]Option{{nil}, {WithOperationTimeout(0)}, {WithOperationTimeout(-time.Second)}} {
@@ -224,7 +226,7 @@ func TestBusinessErrorCommitsMaintenance(t *testing.T) {
 	d, m := mockDriver(t)
 	now := time.Now()
 	r := request(now)
-	initial, _, err := protocol.ApplySnapshot(nil, now, protocol.Command{Kind: protocol.Submit, Request: r})
+	initial, _, err := transitionSnapshot(nil, now, protocol.Command{Kind: protocol.Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +247,7 @@ func TestAmbiguousCommitRecovery(t *testing.T) {
 	cmd := protocol.Command{Kind: protocol.Submit, Request: r}
 	// Model a server-side commit whose response is lost. Transition is deterministic
 	// for a request, so the separately computed durable snapshot is authoritative.
-	durable, granted, err := protocol.ApplySnapshot(nil, now, cmd)
+	durable, granted, err := transitionSnapshot(nil, now, cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,4 +277,58 @@ func TestOperationDeadline(t *testing.T) {
 	if time.Since(started) > time.Second {
 		t.Fatal("operation was not bounded")
 	}
+}
+
+// A structurally valid stored grant must not be overwritten by an identity or
+// configuration conflict. Unlike business rejections that perform maintenance,
+// these transitions return no next snapshot and the transaction must roll back.
+func TestConflictingCommandsRollbackWithoutPersist(t *testing.T) {
+	for _, conflict := range []string{"owner", "configuration"} {
+		for _, operation := range []protocol.Operation{protocol.Submit, protocol.Observe, protocol.Cancel, protocol.Renew, protocol.Release} {
+			t.Run(conflict+"/"+string(operation), func(t *testing.T) {
+				d, mock := mockDriver(t)
+				now := time.Now().UTC().Truncate(time.Millisecond)
+				r := request(now)
+				snapshot, grant, err := transitionSnapshot(nil, now, protocol.Command{Kind: protocol.Submit, Request: r})
+				if err != nil || grant.Status != protocol.Granted {
+					t.Fatalf("seed: %+v err=%v", grant, err)
+				}
+				wrong := r
+				want := protocol.ErrRequestConflict
+				if conflict == "owner" {
+					wrong.Owner = protocol.NewRequest(now).Owner
+				} else {
+					wrong.Config.Admission.Capacity++
+					want = protocol.ErrConfigConflict
+				}
+				beforeTransition(mock, snapshot, now.Add(time.Millisecond))
+				// No UPDATE or COMMIT expectation: either would fail this test.
+				mock.ExpectRollback()
+				got, err := driverconformance.Invoke(context.Background(), d, protocol.Command{Kind: operation, Request: wrong, LeaseID: grant.LeaseID})
+				if !errors.Is(err, want) || got != (protocol.Result{}) {
+					t.Fatalf("conflicting %s exposed result: %+v err=%v want=%v", operation, got, err, want)
+				}
+			})
+		}
+	}
+}
+
+func TestBackwardBackendClockRollsBackValidSnapshot(t *testing.T) {
+	d, mock := mockDriver(t)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	r := request(now)
+	snapshot, grant, err := transitionSnapshot(nil, now, protocol.Command{Kind: protocol.Submit, Request: r})
+	if err != nil || grant.Status != protocol.Granted {
+		t.Fatalf("seed: %+v err=%v", grant, err)
+	}
+	beforeTransition(mock, snapshot, now.Add(-time.Millisecond))
+	mock.ExpectRollback()
+	got, err := d.Renew(context.Background(), protocol.LeaseRef{Request: r, ID: grant.LeaseID})
+	if !errors.Is(err, protocol.ErrCorruptState) || got != (protocol.Result{}) {
+		t.Fatalf("backward clock returned usable renewal: %+v err=%v", got, err)
+	}
+}
+
+func transitionSnapshot(data []byte, now time.Time, cmd protocol.Command) ([]byte, protocol.Result, error) {
+	return protocol.ApplySnapshot(data, now, cmd)
 }

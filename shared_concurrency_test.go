@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/tr1v3r/airlock/protocol"
 	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 func sharedConcurrentOptions(clients int) SharedOptions {

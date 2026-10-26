@@ -12,7 +12,8 @@ and adapter maintenance.
 
 
 ```go
-driver, err := postgres.New(db, "my-service",
+namespace := "my-service"
+driver, err := postgres.New(db, namespace,
     postgres.WithOperationTimeout(2*time.Second),
     postgres.WithTable("public.airlock_resources"))
 // Handle err. New does not connect or execute DDL, and never closes db.
@@ -24,7 +25,8 @@ See the complete [example](example_test.go),
 [driver contract](../../docs/decisions/005-driver-contract.md), and the PostgreSQL
 tradeoffs in the repository's decisions directory. Multiple processes share
 capacity only when they use the same database, table, namespace and resource.
-Namespace and resource are separate columns, avoiding concatenation collisions.
+The `namespace` argument to `New` is fixed for that driver. Namespace and resource
+are separate columns, avoiding concatenation collisions.
 Use identical immutable `ResourceConfig` for all clients of that resource.
 
 Each command uses a short `READ COMMITTED` transaction: insert the resource if
@@ -86,6 +88,9 @@ and active work before deleting its request rows and resource row. Prohibit
 external writes, protocol-changing triggers, unlogged/temporary tables, and
 incompatible schema changes. Request rows contain owner secrets; restrict database
 access. Tenant mapping is not authentication.
+
+`New(db, namespace, options...)` 的第二个参数绑定 driver 的命名空间。
+同一个 driver 可以管理多个独立 Resource；namespace 与 resource 分列存储，不改变表名。
 
 终态请求由后续操作回收，资源行永久保留。需要管理资源总数，删除请求及资源行前必须停止所有相关
 客户端及业务。禁止外部写入、改变协议的 trigger、unlogged/临时表和不兼容结构变更。

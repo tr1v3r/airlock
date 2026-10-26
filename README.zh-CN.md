@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-面向 Go 1.25+ 的多令牌、按租户并发准入库。
+面向 Go 1.26+ 的多令牌、按租户并发准入库。
 提供租户内 FIFO、等待租户间轮转、可选的优先级组加权选择与独立等待额度，以及全局和每租户排队上限。
 运行时仅依赖标准库；goroutine、结果、错误和任务完成由调用方管理。
 
@@ -12,7 +12,7 @@ Airlock 是一个**提供完整源码注释的 SDK**，方便编码 agent 理解
 注释覆盖包、类型、接口、函数、方法、字段、常量和变量，说明参数约束、并发与生命周期规则，以及错误处理方式。
 集成时，请结合示例阅读所固定版本的源码注释。
 
-可从[本地 API](airlock.go)、[共享 API](distributed.go)和[驱动契约](protocol/driver.go)开始。
+可从[本地 API](airlock.go)、[共享 API](shared.go)和[驱动契约](protocol/driver.go)开始。
 
 ## 选择使用入口
 
@@ -42,9 +42,10 @@ waiter 细节保持内部；driver 只需满足协议契约，不强制使用参
 
 ## 安装
 
-所有模块统一要求 **Go 1.25+**。PostgreSQL 模块因 pgx/x-text 依赖升级修复可达
-安全漏洞（修复版本需要 Go 1.25）而率先触及该下限；core、memory 与 Redis 随后
-采用同一最低版本，仓库保持单一工具链要求与统一 CI 矩阵。
+所有模块统一要求 **Go 1.26+**。Go 1.25 下限源于 PostgreSQL 模块为修复可达
+安全漏洞升级 pgx/x-text；此次升至 1.26 跟随依赖更新 go-redis v9.23.0 与
+golang.org/x/sync v0.24.0（两者均声明 `go 1.26.0`）。全部模块保持同一
+最低版本，仓库保持单一工具链要求与统一 CI 矩阵。
 
 ```sh
 go get github.com/tr1v3r/airlock@dev
@@ -118,6 +119,8 @@ Shared 返回 Lease，默认有效期 30 秒，释放使用 `lease.Release(ctx) 
 
 [Shared 使用指南](docs/guides/shared.zh-CN.md)提供后端接入、可运行 hello 示例、
 完整的取消/续租/清理示例，以及高级配置。使用 Shared 无需先理解 Driver 协议。
+
+同一个 driver 可以管理多个独立 Resource。参见 [namespace、Resource 与 Tenant 指南](docs/guides/shared.zh-CN.md#namespaceresource-与-tenant)，了解共享边界和多资源示例。
 
 ## 立即获取
 
@@ -328,7 +331,7 @@ PR、推送到 `dev`/`main`、合并队列、手动触发和每周扫描均运�
   质量检查固定使用 Go 1.27.0 与 golangci-lint v2.13.2，需配套升级并验证，
   避免分析器尚未支持新版 Go 的导出格式。兼容性测试和漏洞扫描仍跟踪稳定版 Go。
 - 检查模块清单整洁性、校验和，并保证运行时仅依赖标准库。
-- Linux 覆盖 Go 1.25、上一稳定版及稳定版，macOS/Windows 覆盖稳定版。
+- Linux 覆盖 Go 1.26、上一稳定版及稳定版，macOS/Windows 覆盖稳定版。
   测试禁用缓存并随机排序，`GOTOOLCHAIN=local` 防止自动升级工具链掩盖最低版本不兼容。
   每个矩阵任务分别测试根模块与全部独立 driver，无任何模块跳过。
   本地示例在每个矩阵执行；Shared memory 示例在 Linux driver 任务运行，

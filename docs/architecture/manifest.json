@@ -10,12 +10,12 @@
     "question_en": "Choose New or NewShared; identify who runs work.",
     "sources": [
       "airlock.go",
-      "distributed.go",
+      "shared.go",
       "protocol/driver.go"
     ],
     "tests": [
       "airlock_contract_test.go",
-      "shared_options_test.go"
+      "shared_test.go"
     ],
     "preview": "previews/overview.png"
   },
@@ -73,8 +73,8 @@
       "protocol/driver.go"
     ],
     "tests": [
-      "protocol/driver_state_test.go",
-      "protocol/driver_model_test.go"
+      "protocol/shared_state_test.go",
+      "protocol/shared_state_property_test.go"
     ],
     "preview": "previews/request-states.png"
   },
@@ -88,11 +88,11 @@
     "question": "本地失效是否代表后端已经释放？",
     "question_en": "Separate local invalidity from backend release confirmation.",
     "sources": [
-      "distributed.go"
+      "shared.go"
     ],
     "tests": [
-      "distributed_concurrency_test.go",
-      "distributed_clock_test.go"
+      "shared_concurrency_test.go",
+      "shared_clock_test.go"
     ],
     "preview": "previews/lease-states.png"
   },
@@ -106,13 +106,13 @@
     "question": "排队后是谁推进状态？何时才能运行任务？",
     "question_en": "Follow submission, polling, commit and lease delivery.",
     "sources": [
-      "distributed.go",
+      "shared.go",
       "driver/postgres/postgres.go",
       "driver/redis/redis.go"
     ],
     "tests": [
-      "distributed_test.go",
-      "distributed_concurrency_test.go"
+      "shared_test.go",
+      "shared_concurrency_test.go"
     ],
     "preview": "previews/shared-sequence.png"
   },

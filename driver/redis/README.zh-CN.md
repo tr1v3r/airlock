@@ -15,7 +15,8 @@ client := redis.NewClient(&redis.Options{
     Addr: "127.0.0.1:6379", ContextTimeoutEnabled: true,
 })
 defer client.Close()
-driver, err := redisdriver.New(client, "my-service")
+namespace := "my-service"
+driver, err := redisdriver.New(client, namespace)
 // 处理 err，然后将 driver 传入 airlock.NewShared。
 ```
 

@@ -1,5 +1,5 @@
 // Package memory provides an in-process reference for Airlock's durable protocol.
-// Use it for Shared API tests and demos; use airlock.New for ordinary local admission.
+// Use it for Shared API tests and demos; use protocol.New for ordinary local admission.
 // It simulates leases and recovery, not network partitions or durable storage.
 // All operations follow protocol.Driver: reuse the original request, disregard
 // results on error, and remember that cancellation can follow a committed change.

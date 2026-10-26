@@ -46,9 +46,9 @@ Choose New or NewShared; identify who runs work.
 
 ![Runtime overview](previews/overview.png)
 
-Implementation: [airlock.go](../../airlock.go), [distributed.go](../../distributed.go), [protocol/driver.go](../../protocol/driver.go)
+Implementation: [airlock.go](../../airlock.go), [distributed.go](../../shared.go), [protocol/driver.go](../../protocol/driver.go)
 
-Tests: [airlock_contract_test.go](../../airlock_contract_test.go), [shared_options_test.go](../../shared_options_test.go)
+Tests: [airlock_test.go](../../airlock_test.go), [shared_test.go](../../shared_test.go)
 
 ### 02 · Local admission and cancellation
 
@@ -84,7 +84,7 @@ Trace persistent states, cancellation tombstones and retention.
 
 Implementation: [protocol/apply.go](../../protocol/apply.go), [protocol/state.go](../../protocol/state.go), [protocol/driver.go](../../protocol/driver.go)
 
-Tests: [protocol/driver_state_test.go](../../protocol/driver_state_test.go), [protocol/driver_model_test.go](../../protocol/driver_model_test.go)
+Tests: [protocol/shared_state_test.go](../../protocol/shared_state_test.go), [protocol/shared_state_property_test.go](../../protocol/shared_state_property_test.go)
 
 ### 05 · Client lease lifecycle
 
@@ -94,9 +94,9 @@ Separate local invalidity from backend release confirmation.
 
 ![Client lease lifecycle](previews/lease-states.png)
 
-Implementation: [distributed.go](../../distributed.go)
+Implementation: [shared.go](../../shared.go)
 
-Tests: [distributed_concurrency_test.go](../../distributed_concurrency_test.go), [distributed_clock_test.go](../../distributed_clock_test.go)
+Tests: [shared_concurrency_test.go](../../shared_concurrency_test.go), [shared_clock_test.go](../../shared_clock_test.go)
 
 ### 06 · Shared request sequence
 
@@ -106,9 +106,9 @@ Follow submission, polling, commit and lease delivery.
 
 ![Shared request sequence](previews/shared-sequence.png)
 
-Implementation: [distributed.go](../../distributed.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/redis.go](../../driver/redis/redis.go)
+Implementation: [shared.go](../../shared.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/redis.go](../../driver/redis/redis.go)
 
-Tests: [distributed_test.go](../../distributed_test.go), [distributed_concurrency_test.go](../../distributed_concurrency_test.go)
+Tests: [shared_test.go](../../shared_test.go), [shared_concurrency_test.go](../../shared_concurrency_test.go)
 
 ### 07 · Driver atomicity and persistence
 
@@ -120,7 +120,7 @@ Locate the atomic boundary and the actual state writer.
 
 Implementation: [protocol/driver.go](../../protocol/driver.go), [protocol/window.go](../../protocol/window.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
 
-Tests: [internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/window_test.go](../../driver/redis/window_test.go)
+Tests: [internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/cas_test.go](../../driver/redis/cas_test.go)
 
 ### 08 · Application-owned supervision
 

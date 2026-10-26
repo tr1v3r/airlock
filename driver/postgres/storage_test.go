@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+
 	"github.com/tr1v3r/airlock/protocol"
 )
 
@@ -129,7 +130,7 @@ func TestNamedCancelAndRelease(t *testing.T) {
 			d, m := mockDriver(t)
 			now := time.Now()
 			r := request(now)
-			data, grant, err := protocol.ApplySnapshot(nil, now, protocol.Command{Kind: protocol.Submit, Request: r})
+			data, grant, err := transitionSnapshot(nil, now, protocol.Command{Kind: protocol.Submit, Request: r})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -153,7 +154,7 @@ func TestTransitionFailureRollsBack(t *testing.T) {
 	d, m := mockDriver(t)
 	now := time.Now()
 	r := request(now)
-	data, _, err := protocol.ApplySnapshot(nil, now, protocol.Command{Kind: protocol.Submit, Request: r})
+	data, _, err := transitionSnapshot(nil, now, protocol.Command{Kind: protocol.Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,9 +10,10 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/tr1v3r/airlock/protocol"
+
 	"github.com/tr1v3r/airlock/driver/postgres"
 	"github.com/tr1v3r/airlock/internal/driverconformance"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 type failoverFixture struct {
