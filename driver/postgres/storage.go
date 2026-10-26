@@ -13,7 +13,7 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
-// row is a value copy so TransitionState cannot mutate the delta baseline.
+// row is a value copy so Transition cannot mutate the delta baseline.
 type row struct {
 	record   airlock.DriverRecord
 	position sql.NullInt64
@@ -32,20 +32,20 @@ func instant(n sql.NullInt64) time.Time {
 const resourceColumns = `state_version, config, rotations, protected, cursor, revision, observed_ms`
 const requestColumns = `id, owner, tenant, weight, submit_until_ms, wait_until_ms, status, lease_id, until_ms, finished_ms, failure, queue_position`
 
-func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) (*airlock.DriverState, map[string]row, error) {
+func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) (*airlock.SharedState, map[string]row, error) {
 	config, err := json.Marshal(request.Config)
 	if err != nil {
 		return nil, nil, err
 	}
-	_, err = tx.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (namespace, resource, config) VALUES ($1,$2,$3) ON CONFLICT (namespace, resource) DO NOTHING`, d.table), d.prefix, request.Resource, string(config))
+	_, err = tx.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (namespace, resource, config) VALUES ($1,$2,$3) ON CONFLICT (namespace, resource) DO NOTHING`, d.table), d.namespace, request.Resource, string(config))
 	if err != nil {
 		return nil, nil, fmt.Errorf("airlock/postgres: initialize: %w", err)
 	}
-	s := &airlock.DriverState{Resource: request.Resource, Records: make(map[string]*airlock.DriverRecord), Queues: make(map[string][]string)}
+	s := &airlock.SharedState{Resource: request.Resource, Records: make(map[string]*airlock.DriverRecord), Queues: make(map[string][]string)}
 	var rotations []byte
 	var revision string
 	var observed sql.NullInt64
-	err = tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE namespace=$1 AND resource=$2 FOR UPDATE`, resourceColumns, d.table), d.prefix, request.Resource).Scan(&s.Version, &config, &rotations, &s.Protected, &s.Cursor, &revision, &observed)
+	err = tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE namespace=$1 AND resource=$2 FOR UPDATE`, resourceColumns, d.table), d.namespace, request.Resource).Scan(&s.Version, &config, &rotations, &s.Protected, &s.Cursor, &revision, &observed)
 	if err != nil {
 		return nil, nil, fmt.Errorf("airlock/postgres: lock: %w", err)
 	}
@@ -54,7 +54,7 @@ func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) 
 		return nil, nil, airlock.ErrCorruptState
 	}
 	s.Time = instant(observed)
-	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE namespace=$1 AND resource=$2 ORDER BY tenant, queue_position NULLS LAST, id LIMIT 10001`, requestColumns, d.requests), d.prefix, request.Resource)
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE namespace=$1 AND resource=$2 ORDER BY tenant, queue_position NULLS LAST, id LIMIT 10001`, requestColumns, d.requests), d.namespace, request.Resource)
 	if err != nil {
 		return nil, nil, fmt.Errorf("airlock/postgres: read requests: %w", err)
 	}
@@ -100,12 +100,12 @@ func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) 
 	return s, before, nil
 }
 
-func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.DriverState, before map[string]row) error {
+func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState, before map[string]row) error {
 	rotations, err := json.Marshal(s.Rotations)
 	if err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET rotations=$3, protected=$4, cursor=$5, revision=$6, observed_ms=$7 WHERE namespace=$1 AND resource=$2`, d.table), d.prefix, s.Resource, string(rotations), s.Protected, s.Cursor, strconv.FormatUint(s.Revision, 10), millis(s.Time))
+	result, err := tx.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET rotations=$3, protected=$4, cursor=$5, revision=$6, observed_ms=$7 WHERE namespace=$1 AND resource=$2`, d.table), d.namespace, s.Resource, string(rotations), s.Protected, s.Cursor, strconv.FormatUint(s.Revision, 10), millis(s.Time))
 	if err = oneRow(result, err); err != nil {
 		return fmt.Errorf("airlock/postgres: persist resource: %w", err)
 	}
@@ -130,7 +130,7 @@ func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.DriverState
 		if s.Records[id] != nil {
 			continue
 		}
-		result, err = tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE namespace=$1 AND resource=$2 AND id=$3`, d.requests), d.prefix, s.Resource, id)
+		result, err = tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE namespace=$1 AND resource=$2 AND id=$3`, d.requests), d.namespace, s.Resource, id)
 		if err = oneRow(result, err); err != nil {
 			return fmt.Errorf("airlock/postgres: prune request: %w", err)
 		}
@@ -141,7 +141,7 @@ func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.DriverState
 			continue
 		}
 		result, err = tx.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (namespace, resource, %s) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
- ON CONFLICT (namespace,resource,id) DO UPDATE SET status=EXCLUDED.status,lease_id=EXCLUDED.lease_id,until_ms=EXCLUDED.until_ms,finished_ms=EXCLUDED.finished_ms,failure=EXCLUDED.failure,queue_position=EXCLUDED.queue_position`, d.requests, requestColumns), d.prefix, s.Resource, id, rec.Request.Owner, rec.Request.Tenant, rec.Request.Weight, rec.Request.SubmitUntil.UnixMilli(), rec.Request.WaitUntil.UnixMilli(), string(rec.Status), rec.LeaseID, millis(rec.Until), millis(rec.Finished), rec.Failure, position)
+ ON CONFLICT (namespace,resource,id) DO UPDATE SET status=EXCLUDED.status,lease_id=EXCLUDED.lease_id,until_ms=EXCLUDED.until_ms,finished_ms=EXCLUDED.finished_ms,failure=EXCLUDED.failure,queue_position=EXCLUDED.queue_position`, d.requests, requestColumns), d.namespace, s.Resource, id, rec.Request.Owner, rec.Request.Tenant, rec.Request.Weight, rec.Request.SubmitUntil.UnixMilli(), rec.Request.WaitUntil.UnixMilli(), string(rec.Status), rec.LeaseID, millis(rec.Until), millis(rec.Finished), rec.Failure, position)
 		if err = oneRow(result, err); err != nil {
 			return fmt.Errorf("airlock/postgres: persist request: %w", err)
 		}

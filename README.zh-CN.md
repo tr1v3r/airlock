@@ -12,7 +12,7 @@ Airlock 是一个**提供完整源码注释的 SDK**，方便编码 agent 理解
 注释覆盖包、类型、接口、函数、方法、字段、常量和变量，说明参数约束、并发与生命周期规则，以及错误处理方式。
 集成时，请结合示例阅读所固定版本的源码注释。
 
-可从[本地 API](airlock.go)、[共享 API](distributed.go)和[驱动契约](driver.go)开始。
+可从[本地 API](airlock.go)、[共享 API](shared.go)和[驱动契约](driver.go)开始。
 
 ## 选择使用入口
 
@@ -107,6 +107,8 @@ Shared 返回 Lease，默认有效期 30 秒，释放使用 `lease.Release(ctx) 
 
 [Shared 使用指南](docs/guides/shared.zh-CN.md)提供后端接入、可运行 hello 示例、
 完整的取消/续租/清理示例，以及高级配置。使用 Shared 无需先理解 Driver 协议。
+
+同一个 driver 可以管理多个独立 Resource。参见 [namespace、Resource 与 Tenant 指南](docs/guides/shared.zh-CN.md#namespaceresource-与-tenant)，了解共享边界和多资源示例。
 
 ## 立即获取
 

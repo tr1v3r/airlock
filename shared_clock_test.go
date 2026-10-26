@@ -20,7 +20,7 @@ type clockStateDriver struct {
 
 func (d *clockStateDriver) executeClock(ctx context.Context, cmd Command) (Result, error) {
 	d.mu.Lock()
-	next, result, err := Transition(d.state, time.Now().Add(d.offset), cmd)
+	next, result, err := transitionSnapshot(d.state, time.Now().Add(d.offset), cmd)
 	if next != nil {
 		d.state = next
 	}

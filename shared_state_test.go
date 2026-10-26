@@ -20,7 +20,7 @@ func newStateHarness(t *testing.T) *stateHarness {
 }
 func (h *stateHarness) call(kind Operation, r Request, lease string, wantErr error) Result {
 	h.t.Helper()
-	data, res, err := Transition(h.data, h.now, Command{Kind: kind, Request: r, LeaseID: lease})
+	data, res, err := transitionSnapshot(h.data, h.now, Command{Kind: kind, Request: r, LeaseID: lease})
 	if !errors.Is(err, wantErr) {
 		h.t.Fatalf("%s %s: got %v want %v", kind, r.Tenant, err, wantErr)
 	}
@@ -375,14 +375,14 @@ func TestTransitionCorruptSnapshots(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, _, err := Transition(data, h.now, Command{Kind: Observe, Request: holder})
+			out, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: holder})
 			if !errors.Is(err, ErrCorruptState) || out != nil {
 				t.Fatalf("got data=%t err=%v", out != nil, err)
 			}
 		})
 	}
 	for _, data := range [][]byte{[]byte("{"), []byte("null")} {
-		if _, _, err := Transition(data, h.now, Command{Kind: Observe, Request: holder}); !errors.Is(err, ErrCorruptState) {
+		if _, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: holder}); !errors.Is(err, ErrCorruptState) {
 			t.Fatal(err)
 		}
 	}
@@ -433,12 +433,12 @@ func TestTransitionSnapshotsAreDeterministic(t *testing.T) {
 	}
 	original := append([]byte(nil), h.data...)
 	h.now = h.now.Add(time.Second)
-	data, result, err := Transition(original, h.now, Command{Kind: Observe, Request: holder})
+	data, result, err := transitionSnapshot(original, h.now, Command{Kind: Observe, Request: holder})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 20; i++ {
-		got, res, e := Transition(original, h.now, Command{Kind: Observe, Request: holder})
+		got, res, e := transitionSnapshot(original, h.now, Command{Kind: Observe, Request: holder})
 		if e != nil || !reflect.DeepEqual(got, data) || res != result {
 			t.Fatal("map iteration changed scheduler output")
 		}
@@ -448,7 +448,7 @@ func TestTransitionSnapshotsAreDeterministic(t *testing.T) {
 func TestTransitionUnrepresentableBackendTime(t *testing.T) {
 	h := newStateHarness(t)
 	r := stateTestRequest(h.now, stateTestConfig(), "a", 1)
-	out, _, err := Transition(nil, time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), Command{Kind: Submit, Request: r})
+	out, _, err := transitionSnapshot(nil, time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), Command{Kind: Submit, Request: r})
 	if !errors.Is(err, ErrCorruptState) || out != nil {
 		t.Fatalf("unserializable time committed: %v", err)
 	}
@@ -512,7 +512,7 @@ func TestTransitionRejectsCorruptLifecycleFields(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, _, err := Transition(data, h.now, Command{Kind: Observe, Request: active})
+			out, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: active})
 			if !errors.Is(err, ErrCorruptState) || out != nil {
 				t.Fatalf("corrupt lifecycle accepted: output=%t error=%v", out != nil, err)
 			}
@@ -523,15 +523,93 @@ func TestTransitionRejectsCorruptLifecycleFields(t *testing.T) {
 func TestTransitionRemainingIncludesFractionalBackendTime(t *testing.T) {
 	now := time.Unix(1000, 900000)
 	r := stateTestRequest(now.Truncate(time.Millisecond), stateTestConfig(), "", 1)
-	data, result, err := Transition(nil, now, Command{Kind: Submit, Request: r})
+	data, result, err := transitionSnapshot(nil, now, Command{Kind: Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Remaining != r.Config.LeaseTTL-900*time.Microsecond {
 		t.Fatalf("optimistic TTL: %s", result.Remaining)
 	}
-	_, result, err = Transition(data, now.Add(100*time.Millisecond), Command{Kind: Observe, Request: r})
+	_, result, err = transitionSnapshot(data, now.Add(100*time.Millisecond), Command{Kind: Observe, Request: r})
 	if err != nil || result.Remaining != r.Config.LeaseTTL-100*time.Millisecond-900*time.Microsecond {
 		t.Fatalf("observation TTL: %s %v", result.Remaining, err)
+	}
+}
+
+func TestTransitionStateStorageIndependence(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	r := NewRequest(now.Add(time.Second))
+	r.Resource, r.Weight, r.WaitUntil = "structured", 1, now.Add(time.Second)
+	r.Config = ResourceConfig{Admission: Config{Capacity: 1, MaxQueued: 2, MaxQueuedPerTenant: 2}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 8}
+	other := r
+	id := NewRequest(r.SubmitUntil)
+	other.ID, other.Owner = id.ID, id.Owner
+	var state *SharedState
+	var snapshot []byte
+	var lease string
+	for _, command := range []Command{{Kind: Submit, Request: r}, {Kind: Submit, Request: other}, {Kind: Observe, Request: other}, {Kind: Renew, Request: r}, {Kind: Release, Request: r}, {Kind: Cancel, Request: other}} {
+		command.LeaseID = lease
+		before := append([]byte(nil), snapshot...)
+		next, result, err := transitionStructured(state, now, command)
+		data, want, wantErr := transitionSnapshot(before, now, command)
+		if !reflect.DeepEqual(result, want) || err != wantErr {
+			t.Fatalf("%s: %+v %v != %+v %v", command.Kind, result, err, want, wantErr)
+		}
+		encoded, marshalErr := json.Marshal(next)
+		if marshalErr != nil || string(encoded) != string(data) {
+			t.Fatalf("structured/wire state mismatch: %s %s %v", encoded, data, marshalErr)
+		}
+		state, snapshot = next, data
+		if command.Request.ID == r.ID {
+			lease = result.LeaseID
+		}
+		now = now.Add(time.Millisecond)
+	}
+}
+
+func TestTransitionStateRejectsInvalidInput(t *testing.T) {
+	if next, result, err := transitionStructured(nil, time.Now(), Command{}); next != nil || result != (Result{}) || err != ErrInvalidConfig {
+		t.Fatalf("%+v %+v %v", next, result, err)
+	}
+}
+
+func transitionSnapshot(data []byte, now time.Time, cmd Command) ([]byte, Result, error) {
+	state, err := DecodeState(data)
+	if err != nil {
+		return nil, Result{}, err
+	}
+	next, result, _, err := Transition(state, now, cmd)
+	if next == nil {
+		return nil, result, err
+	}
+	encoded, codecErr := EncodeState(next)
+	if codecErr != nil {
+		return nil, Result{}, codecErr
+	}
+	return encoded, result, err
+}
+func transitionStructured(state *SharedState, now time.Time, cmd Command) (*SharedState, Result, error) {
+	next, result, _, err := Transition(state, now, cmd)
+	return next, result, err
+}
+func transitionOptimistic(data []byte, now time.Time, cmd Command) ([]byte, Result, CommitWindow, error) {
+	state, err := DecodeState(data)
+	if err != nil {
+		return nil, Result{}, CommitWindow{}, err
+	}
+	next, result, window, err := Transition(state, now, cmd)
+	if next == nil {
+		return nil, result, window, err
+	}
+	encoded, codecErr := EncodeState(next)
+	if codecErr != nil {
+		return nil, Result{}, CommitWindow{}, codecErr
+	}
+	return encoded, result, window, err
+}
+
+func TestEncodeStateRejectsNil(t *testing.T) {
+	if data, err := EncodeState(nil); data != nil || err != ErrCorruptState {
+		t.Fatalf("nil transition output must not be persisted: %s %v", data, err)
 	}
 }

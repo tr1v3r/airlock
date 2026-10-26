@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+
 	"github.com/tr1v3r/airlock"
 )
 
@@ -98,7 +99,7 @@ func TestPersistDeltasAndFailures(t *testing.T) {
 			now := time.Now().UTC().Truncate(time.Millisecond)
 			r := request(now)
 			rec := airlock.DriverRecord{Request: r, Status: airlock.Queued, Until: r.WaitUntil}
-			state := &airlock.DriverState{Resource: r.Resource, Time: now, Revision: 2, Records: map[string]*airlock.DriverRecord{r.ID: &rec}, Queues: map[string][]string{r.Tenant: {r.ID}}}
+			state := &airlock.SharedState{Resource: r.Resource, Time: now, Revision: 2, Records: map[string]*airlock.DriverRecord{r.ID: &rec}, Queues: map[string][]string{r.Tenant: {r.ID}}}
 			m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 			del := m.ExpectExec("DELETE")
 			if failure == "delete" {
@@ -129,7 +130,7 @@ func TestNamedCancelAndRelease(t *testing.T) {
 			d, m := mockDriver(t)
 			now := time.Now()
 			r := request(now)
-			data, grant, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+			data, grant, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -153,7 +154,7 @@ func TestTransitionFailureRollsBack(t *testing.T) {
 	d, m := mockDriver(t)
 	now := time.Now()
 	r := request(now)
-	data, _, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	data, _, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +178,7 @@ func TestQueuePositionExhaustionFailsClosed(t *testing.T) {
 			defer func() { _ = tx.Rollback() }()
 			m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 			m.ExpectRollback()
-			s := &airlock.DriverState{Queues: map[string][]string{"tenant": {"a", "b"}}}
+			s := &airlock.SharedState{Queues: map[string][]string{"tenant": {"a", "b"}}}
 			before := map[string]row{"a": {position: sql.NullInt64{Int64: math.MaxInt64, Valid: true}}}
 			if mode == "out-of-order" {
 				before["b"] = row{position: sql.NullInt64{Int64: 1, Valid: true}}

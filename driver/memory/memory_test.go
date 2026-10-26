@@ -77,3 +77,27 @@ func TestCancellationAtAtomicBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestCorruptSnapshotIsNotPublished(t *testing.T) {
+	for _, snapshot := range []string{"not-json", "{}"} {
+		t.Run(snapshot, func(t *testing.T) {
+			request := memoryRequest("corrupt")
+			stored := &resource{gate: make(chan struct{}, 1), snapshot: []byte(snapshot)}
+			d := &Driver{resources: map[string]*resource{request.Resource: stored}}
+			result, err := d.Submit(context.Background(), request)
+			if !errors.Is(err, airlock.ErrCorruptState) || result != (airlock.Result{}) {
+				t.Fatalf("corrupt state authorized work: %+v %v", result, err)
+			}
+			if string(stored.snapshot) != snapshot {
+				t.Fatal("failed transition replaced committed snapshot")
+			}
+			// A failed read/transition must release the gate for subsequent recovery.
+			select {
+			case stored.gate <- struct{}{}:
+				<-stored.gate
+			default:
+				t.Fatal("failed transition retained the resource gate")
+			}
+		})
+	}
+}

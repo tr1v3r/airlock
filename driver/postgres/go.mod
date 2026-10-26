@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/tr1v3r/airlock v0.0.0-20261023032712-34c68a3cdbb6
+	github.com/tr1v3r/airlock v0.0.0-20261026032748-0ef1b5c7bd0d
 )
 
 require (

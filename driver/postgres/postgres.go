@@ -23,8 +23,8 @@ import (
 type Driver struct {
 	// db is the caller-owned pool; operations use short resource-row transactions.
 	db *sql.DB
-	// prefix is stored in a separate namespace column, preserving resource boundaries.
-	prefix string
+	// namespace is stored in a separate namespace column, preserving resource boundaries.
+	namespace string
 	// table is the validated and quoted schema-qualified resource table.
 	table string
 	// requests is the validated and quoted request table.
@@ -83,17 +83,17 @@ func WithOperationTimeout(timeout time.Duration) Option {
 }
 
 // New constructs a driver without connecting or running DDL. The default table
-// is public.airlock_resources. Prefix is an independent namespace column, so
-// prefix/resource boundaries cannot collide. Prefix must be valid UTF-8 without
+// is public.airlock_resources. The namespace is stored in its own column, so
+// namespace/resource boundaries cannot collide. Namespace must be valid UTF-8 without
 // NUL and at most 256 bytes. All clients sharing a resource must share its config.
-func New(db *sql.DB, prefix string, options ...Option) (*Driver, error) {
+func New(db *sql.DB, namespace string, options ...Option) (*Driver, error) {
 	if db == nil {
 		return nil, errors.New("airlock/postgres: nil database")
 	}
-	if len(prefix) > 256 || !utf8.ValidString(prefix) || strings.ContainsRune(prefix, 0) {
-		return nil, errors.New("airlock/postgres: invalid prefix")
+	if len(namespace) > 256 || !utf8.ValidString(namespace) || strings.ContainsRune(namespace, 0) {
+		return nil, errors.New("airlock/postgres: invalid namespace")
 	}
-	d := &Driver{db: db, prefix: prefix, table: `"public"."airlock_resources"`, requests: `"public"."airlock_resources_requests"`, timeout: 5 * time.Second}
+	d := &Driver{db: db, namespace: namespace, table: `"public"."airlock_resources"`, requests: `"public"."airlock_resources_requests"`, timeout: 5 * time.Second}
 	for _, option := range options {
 		if option == nil {
 			return nil, errors.New("airlock/postgres: nil option")
@@ -133,7 +133,7 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 	if err = tx.QueryRowContext(ctx, `SELECT pg_catalog.clock_timestamp()`).Scan(&now); err != nil {
 		return airlock.Result{}, fmt.Errorf("airlock/postgres: clock: %w", err)
 	}
-	next, result, transitionErr := airlock.TransitionState(state, now, cmd)
+	next, result, _, transitionErr := airlock.Transition(state, now, cmd)
 	if next == nil {
 		return result, transitionErr
 	}

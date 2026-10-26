@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+
 	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 func mockDriver(t *testing.T, options ...Option) (*Driver, sqlmock.Sqlmock) {
@@ -41,7 +43,7 @@ func request(now time.Time) airlock.Request {
 	return r
 }
 func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
-	s := airlock.DriverState{Version: 1, Config: request(now).Config, Rotations: [][]string{}}
+	s := airlock.SharedState{Version: 1, Config: request(now).Config, Rotations: [][]string{}}
 	if len(snapshot) > 0 {
 		_ = json.Unmarshal(snapshot, &s)
 	}
@@ -54,7 +56,7 @@ func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
 }
 func requestRows(snapshot []byte) *sqlmock.Rows {
 	rows := sqlmock.NewRows(strings.Split(strings.ReplaceAll(requestColumns, " ", ""), ","))
-	var s airlock.DriverState
+	var s airlock.SharedState
 	_ = json.Unmarshal(snapshot, &s)
 	for _, r := range s.Records {
 		rows.AddRow(r.Request.ID, r.Request.Owner, r.Request.Tenant, r.Request.Weight, r.Request.SubmitUntil.UnixMilli(), r.Request.WaitUntil.UnixMilli(), string(r.Status), r.LeaseID, millis(r.Until), millis(r.Finished), r.Failure, nil)
@@ -77,9 +79,9 @@ func TestConfiguration(t *testing.T) {
 		t.Fatal("nil db accepted")
 	}
 	db := new(sql.DB)
-	for _, prefix := range []string{"\x00", "\xff", strings.Repeat("a", 257)} {
-		if _, err := New(db, prefix); err == nil {
-			t.Fatal("invalid prefix accepted")
+	for _, namespace := range []string{"\x00", "\xff", strings.Repeat("a", 257)} {
+		if _, err := New(db, namespace); err == nil {
+			t.Fatal("invalid namespace accepted")
 		}
 	}
 	for _, options := range [][]Option{{nil}, {WithOperationTimeout(0)}, {WithOperationTimeout(-time.Second)}} {
@@ -224,7 +226,7 @@ func TestBusinessErrorCommitsMaintenance(t *testing.T) {
 	d, m := mockDriver(t)
 	now := time.Now()
 	r := request(now)
-	initial, _, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	initial, _, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +247,7 @@ func TestAmbiguousCommitRecovery(t *testing.T) {
 	cmd := airlock.Command{Kind: airlock.Submit, Request: r}
 	// Model a server-side commit whose response is lost. Transition is deterministic
 	// for a request, so the separately computed durable snapshot is authoritative.
-	durable, granted, err := airlock.Transition(nil, now, cmd)
+	durable, granted, err := transitionSnapshot(nil, now, cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,4 +277,70 @@ func TestOperationDeadline(t *testing.T) {
 	if time.Since(started) > time.Second {
 		t.Fatal("operation was not bounded")
 	}
+}
+
+// A structurally valid stored grant must not be overwritten by an identity or
+// configuration conflict. Unlike business rejections that perform maintenance,
+// these transitions return no next snapshot and the transaction must roll back.
+func TestConflictingCommandsRollbackWithoutPersist(t *testing.T) {
+	for _, conflict := range []string{"owner", "configuration"} {
+		for _, operation := range []airlock.Operation{airlock.Submit, airlock.Observe, airlock.Cancel, airlock.Renew, airlock.Release} {
+			t.Run(conflict+"/"+string(operation), func(t *testing.T) {
+				d, mock := mockDriver(t)
+				now := time.Now().UTC().Truncate(time.Millisecond)
+				r := request(now)
+				snapshot, grant, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+				if err != nil || grant.Status != airlock.Granted {
+					t.Fatalf("seed: %+v err=%v", grant, err)
+				}
+				wrong := r
+				want := airlock.ErrRequestConflict
+				if conflict == "owner" {
+					wrong.Owner = airlock.NewRequest(now).Owner
+				} else {
+					wrong.Config.Admission.Capacity++
+					want = airlock.ErrConfigConflict
+				}
+				beforeTransition(mock, snapshot, now.Add(time.Millisecond))
+				// No UPDATE or COMMIT expectation: either would fail this test.
+				mock.ExpectRollback()
+				got, err := driverconformance.Invoke(context.Background(), d, airlock.Command{Kind: operation, Request: wrong, LeaseID: grant.LeaseID})
+				if !errors.Is(err, want) || got != (airlock.Result{}) {
+					t.Fatalf("conflicting %s exposed result: %+v err=%v want=%v", operation, got, err, want)
+				}
+			})
+		}
+	}
+}
+
+func TestBackwardBackendClockRollsBackValidSnapshot(t *testing.T) {
+	d, mock := mockDriver(t)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	r := request(now)
+	snapshot, grant, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	if err != nil || grant.Status != airlock.Granted {
+		t.Fatalf("seed: %+v err=%v", grant, err)
+	}
+	beforeTransition(mock, snapshot, now.Add(-time.Millisecond))
+	mock.ExpectRollback()
+	got, err := d.Renew(context.Background(), airlock.LeaseRef{Request: r, ID: grant.LeaseID})
+	if !errors.Is(err, airlock.ErrCorruptState) || got != (airlock.Result{}) {
+		t.Fatalf("backward clock returned usable renewal: %+v err=%v", got, err)
+	}
+}
+
+func transitionSnapshot(data []byte, now time.Time, cmd airlock.Command) ([]byte, airlock.Result, error) {
+	state, err := airlock.DecodeState(data)
+	if err != nil {
+		return nil, airlock.Result{}, err
+	}
+	next, result, _, err := airlock.Transition(state, now, cmd)
+	if next == nil {
+		return nil, result, err
+	}
+	encoded, codecErr := airlock.EncodeState(next)
+	if codecErr != nil {
+		return nil, airlock.Result{}, codecErr
+	}
+	return encoded, result, err
 }

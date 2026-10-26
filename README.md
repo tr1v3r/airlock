@@ -16,7 +16,7 @@ constants and variables, explaining input constraints, concurrency and lifecycle
 rules, and error handling. Read the comments for your pinned version alongside
 the examples when integrating the SDK.
 
-Start with the [Local API](airlock.go), [shared API](distributed.go), and [driver contract](driver.go).
+Start with the [Local API](airlock.go), [shared API](shared.go), and [driver contract](driver.go).
 
 ## Choose an entry point
 
@@ -117,6 +117,8 @@ stop on lease loss. Longer work needs explicit renewal.
 Start with the [Shared guide](docs/guides/shared.md) for backend setup, a runnable
 hello example, a complete cancellation/renewal/cleanup example, and advanced
 settings. You do not need to learn the Driver protocol to use Shared.
+
+One driver can serve multiple independent Resources. See the [namespace, Resource and Tenant guide](docs/guides/shared.md#namespace-resource-and-tenant) for sharing boundaries and a multi-resource example.
 
 ## Immediate acquisition
 
