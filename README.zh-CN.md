@@ -108,6 +108,8 @@ Shared 返回 Lease，默认有效期 30 秒，释放使用 `lease.Release(ctx) 
 [Shared 使用指南](docs/guides/shared.zh-CN.md)提供后端接入、可运行 hello 示例、
 完整的取消/续租/清理示例，以及高级配置。使用 Shared 无需先理解 Driver 协议。
 
+同一个 driver 可以管理多个独立 Resource。参见 [namespace、Resource 与 Tenant 指南](docs/guides/shared.zh-CN.md#namespaceresource-与-tenant)，了解共享边界和多资源示例。
+
 ## 立即获取
 
 使用 `TryAcquire` 可以在**同一个** Airlock 上按次选择是否等待：`Acquire` 可以进入有界队列，

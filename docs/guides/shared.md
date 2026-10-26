@@ -33,6 +33,88 @@ zero disables waiting, just as with local `New`. `MaxWait` does not enable queue
 For one default tenant, give it the whole waiting allowance by setting both queue
 limits to the same value. Construction performs no backend I/O and starts no workers.
 
+### Namespace, Resource and Tenant
+
+These names describe three different scopes:
+
+| Scope | Purpose | Where to set it |
+| --- | --- | --- |
+| namespace | Separate application/environment names within a backend | The `prefix` argument of `postgres.New` or `redis.New` |
+| Resource | An independent capacity pool with its own configuration, queues and leases | `SharedOptions.Resource` |
+| Tenant | A contender sharing one Resource, used for tenant FIFO, round-robin scheduling and per-tenant queue limits | `AcquireFor` or `AcquireNFor`; `Acquire` uses the default tenant |
+
+```text
+namespace: order-service
+├── Resource: export-jobs (capacity 4)
+│   ├── Tenant: customer-A ─┐
+│   └── Tenant: customer-B ─┴─ share these 4 tokens
+└── Resource: image-jobs (capacity 8)
+    ├── Tenant: customer-A ─┐
+    └── Tenant: customer-B ─┴─ share these 8 tokens
+```
+
+Namespace isolates names; it does not impose an aggregate capacity limit or an
+access-control boundary. Resource isolates capacity and scheduling state. Tenant
+provides fairness within that shared capacity, not a separate capacity pool or a
+hard running-concurrency quota. Using one Resource per customer would give each
+customer independent capacity instead of enforcing a common total limit.
+
+PostgreSQL shares tables: resource metadata has primary key `(namespace, resource)`,
+and requests have primary key `(namespace, resource, id)`. Commands lock only the
+matching resource row with `FOR UPDATE` and read that resource's requests. Redis
+stores each resource at `airlock:{SHA256(prefix + "\0" + resource)}:state`, with
+independent snapshot CAS. Resources still share the backend's physical resources
+and connection pool; logical isolation does not guarantee performance isolation.
+
+Separate Driver objects do not imply separate capacity. Clients using the same
+PostgreSQL database/table/namespace/resource, or the same Redis keyspace/prefix/resource,
+share capacity and must use the same resolved `ResourceConfig`. Use different
+Resources for independent pools; create separate drivers when different namespaces,
+connections or PostgreSQL tables are needed. Memory has no namespace argument:
+its sharing scope is the driver instance, with separate state per Resource.
+
+### Reuse one driver for multiple independent Resources
+
+```go
+// Reuse an initialized PostgreSQL or Redis driver.
+newPool := func(resource string, capacity int) (*airlock.Shared, error) {
+    return airlock.NewShared(driver, airlock.SharedOptions{
+        Resource: resource,
+        Config: airlock.ResourceConfig{
+            Admission: airlock.Config{
+                Capacity: capacity, MaxQueued: 100, MaxQueuedPerTenant: 20,
+            },
+        },
+    })
+}
+exports, err := newPool("export-jobs", 4)
+if err != nil {
+    return err
+}
+images, err := newPool("image-jobs", 8)
+if err != nil {
+    return err
+}
+// Use exports.AcquireFor(ctx, "customer-A") for export work,
+// and images.AcquireFor(ctx, "customer-A") for image work.
+```
+
+The pools above have independent limits of 4 and 8 tokens, even for the same tenant
+name. A full export pool does not consume image capacity. Each pool can have its
+own `ResourceConfig`; clients of the same pool must agree on that configuration.
+Acquire starts a lease: release it after work stops, and supervise expiry/renewal
+as described in section 3.
+
+The executable [multi-resource example](../../driver/memory/example_test.go) uses
+one memory driver and holds all 4 export tokens while acquiring all 8 image tokens.
+It needs no server; substitute your initialized PostgreSQL or Redis driver for
+`memory.New()` to use the same construction pattern with a remote backend.
+
+```sh
+cd driver/memory
+go test -run '^ExampleNew_multipleResources$' -v
+```
+
 ## 2. Acquire using the same method names
 
 | Task | Local and Shared call |

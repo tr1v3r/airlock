@@ -31,6 +31,80 @@ if err != nil {
 `MaxWait` 有默认值并不代表开启排队。只用默认租户时，可以把两个队列上限设成相同值，
 让它使用全部等待额度。构造时不访问后端、不启动 worker。
 
+### namespace、Resource 与 Tenant
+
+这三个名字分别描述不同的范围：
+
+| 层级 | 用途 | 设置位置 |
+| --- | --- | --- |
+| namespace | 在同一后端中隔离不同应用或环境的命名 | `postgres.New` 或 `redis.New` 的 `prefix` 参数 |
+| Resource | 独立容量池，拥有自己的配置、队列和租约状态 | `SharedOptions.Resource` |
+| Tenant | 同一 Resource 内的竞争者，用于租户 FIFO、轮转调度和租户排队上限 | `AcquireFor` 或 `AcquireNFor`；`Acquire` 使用默认租户 |
+
+```text
+namespace: order-service
+├── Resource: export-jobs（容量 4）
+│   ├── Tenant: customer-A ─┐
+│   └── Tenant: customer-B ─┴─ 共同竞争这 4 个 token
+└── Resource: image-jobs（容量 8）
+    ├── Tenant: customer-A ─┐
+    └── Tenant: customer-B ─┴─ 共同竞争这 8 个 token
+```
+
+namespace 隔离名字，不设置全局总容量，也不是访问权限边界。Resource 隔离容量和调度状态。
+Tenant 用于共享容量内的公平分配，不代表独立容量池，也不是租户运行并发数的硬配额。
+如果给每个客户创建独立 Resource，每个客户就会获得独立容量，无法约束所有客户共用的总额度。
+
+PostgreSQL 共用数据表：资源元数据的主键为 `(namespace, resource)`，请求表的主键为
+`(namespace, resource, id)`。命令用 `FOR UPDATE` 锁定对应资源行，并读取该资源的请求。
+Redis 把每个资源存放在 `airlock:{SHA256(prefix + "\0" + resource)}:state`，分别执行快照 CAS。
+不同资源仍共享后端物理资源和连接池；逻辑隔离不代表性能隔离。
+
+创建不同 Driver 对象本身不会隔离容量。使用同一 PostgreSQL 数据库/表/namespace/resource，
+或同一 Redis keyspace/prefix/resource 的客户端会共享容量，必须使用相同的、补齐默认值后的
+`ResourceConfig`。独立容量池使用不同 Resource 即可；需要不同命名空间、连接或 PostgreSQL
+表时再创建不同 Driver。Memory 没有 namespace 参数，其共享范围是 driver 实例，实例内每个
+Resource 拥有独立状态。
+
+### 同一个 driver 管理多个独立 Resource
+
+```go
+// 复用已初始化的 PostgreSQL 或 Redis driver.
+newPool := func(resource string, capacity int) (*airlock.Shared, error) {
+    return airlock.NewShared(driver, airlock.SharedOptions{
+        Resource: resource,
+        Config: airlock.ResourceConfig{
+            Admission: airlock.Config{
+                Capacity: capacity, MaxQueued: 100, MaxQueuedPerTenant: 20,
+            },
+        },
+    })
+}
+exports, err := newPool("export-jobs", 4)
+if err != nil {
+    return err
+}
+images, err := newPool("image-jobs", 8)
+if err != nil {
+    return err
+}
+// 导出任务使用 exports.AcquireFor(ctx, "customer-A")，
+// 图片任务使用 images.AcquireFor(ctx, "customer-A")。
+```
+
+上述两个容量池分别限制为 4 和 8 个 token，即使租户名字相同也互不占用容量。
+每个池可以使用不同的 `ResourceConfig`，同一个池的所有客户端则必须使用一致的配置。
+申请成功会创建租约：工作停止后释放，并按第 3 节管理过期和续租。
+
+可执行的[多资源示例](../../driver/memory/example_test.go)复用一个 memory driver，
+在持有全部 4 个导出 token 的同时申请全部 8 个图片 token，无需外部服务。
+把 `memory.New()` 替换为已初始化的 PostgreSQL 或 Redis driver，即可将相同的构造方式用于远端后端。
+
+```sh
+cd driver/memory
+go test -run '^ExampleNew_multipleResources$' -v
+```
+
 ## 2. 用相同的方法名申请
 
 | 需求 | 本地与 Shared 的调用 |
