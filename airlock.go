@@ -78,8 +78,8 @@ type Permit struct {
 }
 
 // New constructs an Airlock, or returns ErrInvalidConfig for invalid limits or
-// priority policy. It snapshots the policy. It has no unlimited mode; limits,
-// tenant assignments and selection shares cannot be changed after creation.
+// priority policy. It snapshots the policy. It has no unlimited mode. Resize
+// changes capacity; queue limits, tenant assignments and selection shares remain fixed.
 func New(cfg Config) (*Airlock, error) {
 	sched, err := scheduler.New(cfg)
 	if err != nil {
@@ -145,10 +145,11 @@ func (g *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 	if n <= 0 {
 		return nil, ErrInvalidWeight
 	}
+	g.mu.Lock()
 	if n > g.sched.Capacity() {
+		g.mu.Unlock()
 		return nil, ErrWeightExceedsCapacity
 	}
-	g.mu.Lock()
 	if err := ctx.Err(); err != nil {
 		g.mu.Unlock()
 		return nil, err
@@ -162,16 +163,25 @@ func (g *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 		g.mu.Unlock()
 		return nil, err
 	}
+	// Install notification before dispatch while still holding mu.
+	w.Arm()
 	g.sched.Dispatch()
 	g.mu.Unlock()
 	select {
 	case <-w.Ready():
+		if err := w.Err(); err != nil {
+			return nil, err
+		}
 		return &Permit{owner: g, weight: n}, nil
 	case <-ctx.Done():
 		g.mu.Lock()
 		if w.Granted() {
 			g.mu.Unlock()
 			return &Permit{owner: g, weight: n}, nil
+		}
+		if err := w.Err(); err != nil {
+			g.mu.Unlock()
+			return nil, err
 		}
 		g.sched.Remove(w)
 		g.sched.Dispatch()
@@ -198,6 +208,27 @@ func (p *Permit) Release() {
 		g.mu.Unlock()
 		p.owner = nil // a released permit need not retain the Airlock and its queues
 	})
+}
+
+// Resize atomically changes the local token limit and dispatches waiting requests
+// using the existing fairness policy. Nonpositive capacity returns ErrInvalidConfig
+// without changing state. Setting the current capacity is a no-op.
+//
+// Shrinking never revokes permits: InUse may exceed Capacity until holders release.
+// Queued requests heavier than the new capacity fail with ErrWeightExceedsCapacity;
+// remaining requests retain their order and any surviving protected head.
+// Cancellation, rejection and grant are arbitrated under the same mutex: whichever
+// removes a waiter first determines its result.
+//
+// Resize waits for the internal mutex, not for existing permits to drain. Concurrent
+// calls take effect in mutex acquisition order. Queue limits and priority are unchanged.
+func (g *Airlock) Resize(capacity int) error {
+	if capacity <= 0 {
+		return ErrInvalidConfig
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.sched.Resize(capacity)
 }
 
 // Stats returns a consistent snapshot, not a completion barrier.

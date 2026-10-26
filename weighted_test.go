@@ -367,3 +367,201 @@ var _ interface {
 	AcquireN(context.Context, int) (*airlock.Permit, error)
 	AcquireNFor(context.Context, string, int) (*airlock.Permit, error)
 } = (*airlock.Airlock)(nil)
+
+func TestResizeValidationAndDrain(t *testing.T) {
+	a := newAirlock(t, 10, 8, 8)
+	held := acquireN(t, a, "holder", 8)
+	before := a.Stats()
+	for _, capacity := range []int{0, -1} {
+		if err := a.Resize(capacity); !errors.Is(err, airlock.ErrInvalidConfig) || a.Stats() != before {
+			t.Fatalf("invalid resize: %v, %+v", err, a.Stats())
+		}
+	}
+	if err := a.Resize(10); err != nil || a.Stats() != before {
+		t.Fatalf("same capacity: %v, %+v", err, a.Stats())
+	}
+	if err := a.Resize(5); err != nil {
+		t.Fatal(err)
+	}
+	if s := a.Stats(); s.Capacity != 5 || s.InUse != 8 || s.ActivePermits != 1 {
+		t.Fatal(s)
+	}
+	if p, err := a.TryAcquire(); p != nil || !errors.Is(err, airlock.ErrWouldBlock) {
+		t.Fatalf("overcommitted admission: %v %v", p, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch := make(chan result, 1)
+	go func() { p, err := a.AcquireN(ctx, 5); ch <- result{p: p, err: err} }()
+	queued(t, a, 1)
+	held.Release()
+	r := receive(t, ch)
+	if r.err != nil || r.p == nil {
+		t.Fatalf("drain: %+v", r)
+	}
+	r.p.Release()
+	if err := a.Resize(10001); err != nil {
+		t.Fatal(err)
+	}
+	p, err := a.TryAcquireN(10001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Release()
+	assertWeightedIdle(t, a)
+}
+
+func TestResizePreservesProtectedHeadAndFIFO(t *testing.T) {
+	a := newAirlock(t, 5, 8, 8)
+	held := acquireN(t, a, "holder", 3)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch := make(chan result, 3)
+	for i, req := range []struct {
+		id     string
+		weight int
+	}{{"A1", 4}, {"A2", 1}, {"B1", 1}} {
+		go func(id string, weight int) {
+			p, err := a.AcquireNFor(ctx, id[:1], weight)
+			ch <- result{id, p, err}
+		}(req.id, req.weight)
+		queued(t, a, i+1)
+	}
+	if err := a.Resize(4); err != nil {
+		t.Fatal(err)
+	}
+	if p, err := a.TryAcquire(); p != nil || !errors.Is(err, airlock.ErrWouldBlock) {
+		t.Fatalf("bypassed protected head: %v %v", p, err)
+	}
+	if err := a.Resize(7); err != nil {
+		t.Fatal(err)
+	}
+	r := receive(t, ch)
+	if r.id != "A1" || r.err != nil {
+		t.Fatalf("protected head: %+v", r)
+	}
+	// Shrink before release so subsequent one-token grants remain observable in order.
+	if err := a.Resize(4); err != nil {
+		t.Fatal(err)
+	}
+	r.p.Release()
+	for _, want := range []string{"A2", "B1"} {
+		r = receive(t, ch)
+		if r.id != want || r.err != nil {
+			t.Fatalf("got %+v, want %s", r, want)
+		}
+		r.p.Release()
+	}
+	held.Release()
+	assertWeightedIdle(t, a)
+}
+
+func TestResizeRejectsAllOversizedWaiters(t *testing.T) {
+	a := newAirlock(t, 6, 8, 8)
+	held := acquireN(t, a, "holder", 4)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch := make(chan result, 4)
+	for i, req := range []struct {
+		id     string
+		weight int
+	}{{"A1", 5}, {"A2", 2}, {"A3", 4}, {"B1", 4}} {
+		go func(id string, weight int) {
+			p, err := a.AcquireNFor(ctx, id[:1], weight)
+			ch <- result{id, p, err}
+		}(req.id, req.weight)
+		queued(t, a, i+1)
+	}
+	if err := a.Resize(3); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		r := receive(t, ch)
+		if r.id == "A2" || r.p != nil || !errors.Is(r.err, airlock.ErrWeightExceedsCapacity) {
+			t.Fatalf("rejection: %+v", r)
+		}
+	}
+	if s := a.Stats(); s.Queued != 1 || s.WaitingTenants != 1 {
+		t.Fatal(s)
+	}
+	if p, err := a.AcquireN(ctx, 4); p != nil || !errors.Is(err, airlock.ErrWeightExceedsCapacity) {
+		t.Fatalf("new oversized request: %v %v", p, err)
+	}
+	if p, err := a.TryAcquireN(4); p != nil || !errors.Is(err, airlock.ErrWeightExceedsCapacity) {
+		t.Fatalf("oversized try: %v %v", p, err)
+	}
+	held.Release()
+	r := receive(t, ch)
+	if r.id != "A2" || r.err != nil {
+		t.Fatalf("surviving waiter: %+v", r)
+	}
+	r.p.Release()
+	assertWeightedIdle(t, a)
+}
+
+func TestResizeCancellationGrantRace(t *testing.T) {
+	for range 100 {
+		a := newAirlock(t, 2, 8, 8)
+		held := acquireN(t, a, "holder", 2)
+		ctx, cancel := context.WithCancel(context.Background())
+		ch := make(chan result, 1)
+		go func() { p, err := a.AcquireN(ctx, 2); ch <- result{p: p, err: err} }()
+		queued(t, a, 1)
+		var wg sync.WaitGroup
+		for _, fn := range []func(){
+			cancel, held.Release,
+			func() {
+				if err := a.Resize(1); err != nil {
+					t.Error(err)
+				}
+			},
+			func() {
+				for range 10 {
+					if err := a.Resize(3); err != nil {
+						t.Error(err)
+					}
+					p, err := a.TryAcquireN(2)
+					if err == nil {
+						p.Release()
+					}
+					_ = a.Stats()
+				}
+			},
+		} {
+			wg.Add(1)
+			go func() { defer wg.Done(); fn() }()
+		}
+		wg.Wait()
+		r := receive(t, ch)
+		if r.err == nil {
+			if r.p == nil {
+				t.Fatal("successful result without permit")
+			}
+			r.p.Release()
+		} else if r.p != nil || (!errors.Is(r.err, context.Canceled) && !errors.Is(r.err, airlock.ErrWeightExceedsCapacity)) {
+			t.Fatalf("race: %+v", r)
+		}
+		assertWeightedIdle(t, a)
+	}
+}
+
+func ExampleAirlock_Resize() {
+	a, err := airlock.New(airlock.Config{Capacity: 4})
+	if err != nil {
+		panic(err)
+	}
+	p, err := a.AcquireN(context.Background(), 3)
+	if err != nil {
+		panic(err)
+	}
+	defer p.Release()
+	if err := a.Resize(2); err != nil {
+		panic(err)
+	}
+	fmt.Println(a.Stats().Capacity, a.Stats().InUse)
+	p.Release()
+	fmt.Println(a.Stats().Capacity, a.Stats().InUse)
+	// Output:
+	// 2 3
+	// 2 0
+}

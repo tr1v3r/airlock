@@ -608,3 +608,36 @@ func TestPriorityFiniteQueuesMatchReferenceSelection(t *testing.T) {
 		})
 	}
 }
+
+func TestPriorityResizeKeepsProtectedHeadAndQueueBudgets(t *testing.T) {
+	a := newPriority(t, priorityConfig(4))
+	held := acquireN(t, a, "holder", 3)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch := make(chan result, 3)
+	priorityEnqueue(ctx, t, a, ch, "low", "L", 4, 1)
+	priorityEnqueue(ctx, t, a, ch, "high", "A", 1, 2)
+	if err := a.Resize(5); err != nil {
+		t.Fatal(err)
+	}
+	if s := a.Stats(); s.InUse != 3 || s.Queued != 2 {
+		t.Fatal(s)
+	}
+	if err := a.Resize(3); err != nil {
+		t.Fatal(err)
+	}
+	r := receive(t, ch)
+	if r.id != "low" || !errors.Is(r.err, airlock.ErrWeightExceedsCapacity) {
+		t.Fatalf("%+v", r)
+	}
+	held.Release()
+	r = receive(t, ch)
+	if r.id != "high" || r.err != nil {
+		t.Fatalf("%+v", r)
+	}
+	r.p.Release()
+	// The rejected group's queue and tenant accounting can be reused.
+	p := acquireN(t, a, "L", 3)
+	p.Release()
+	assertWeightedIdle(t, a)
+}

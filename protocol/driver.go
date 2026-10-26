@@ -199,9 +199,9 @@ var (
 	// ErrInvalidConfig reports invalid admission limits or priority policy.
 	ErrInvalidConfig = scheduler.ErrInvalidConfig
 	// ErrInvalidWeight reports a nonpositive requested token count.
-	ErrInvalidWeight = errors.New("airlock: invalid weight")
+	ErrInvalidWeight = scheduler.ErrInvalidWeight
 	// ErrWeightExceedsCapacity reports a request larger than the fixed capacity.
-	ErrWeightExceedsCapacity = errors.New("airlock: weight exceeds capacity")
+	ErrWeightExceedsCapacity = scheduler.ErrWeightExceedsCapacity
 	// ErrQueueFull reports that the global waiting queue is full.
 	ErrQueueFull = scheduler.ErrQueueFull
 	// ErrGroupQueueFull reports that the tenant's priority group waiting queue is full.

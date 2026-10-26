@@ -22,6 +22,10 @@ import (
 var (
 	// ErrInvalidConfig reports invalid limits or a priority policy.
 	ErrInvalidConfig = errors.New("airlock: invalid configuration")
+	// ErrInvalidWeight reports a nonpositive requested token count.
+	ErrInvalidWeight = errors.New("airlock: invalid weight")
+	// ErrWeightExceedsCapacity reports a request larger than the current capacity.
+	ErrWeightExceedsCapacity = errors.New("airlock: weight exceeds capacity")
 	// ErrQueueFull reports that the global waiting queue is full.
 	ErrQueueFull = errors.New("airlock: queue full")
 	// ErrGroupQueueFull reports that the tenant's priority group waiting queue is full.
@@ -30,10 +34,11 @@ var (
 	ErrTenantQueueFull = errors.New("airlock: tenant queue full")
 )
 
-// Config defines fixed limits for admission scheduling. Queue limits count
-// pending requests, not granted permits. Zero queue limits disable waiting.
+// Config defines initial capacity and fixed queue limits for admission
+// scheduling. Queue limits count pending requests, not granted permits. Zero
+// queue limits disable waiting.
 type Config struct {
-	// Capacity is the positive maximum number of held tokens.
+	// Capacity is the positive initial token limit; Resize can change it.
 	Capacity int
 	// MaxQueued is the nonnegative maximum number of pending requests.
 	MaxQueued int
@@ -49,7 +54,7 @@ type Config struct {
 // count tokens; ActivePermits counts granted, unreleased permits, and Queued
 // counts pending requests, including a protected head request.
 type Stats struct {
-	// Capacity is the fixed token limit configured at construction.
+	// Capacity is the current token limit; InUse may exceed it after shrinking.
 	Capacity int
 	// InUse counts held tokens, including all tokens in each weighted permit.
 	InUse int
@@ -75,13 +80,17 @@ type tenantQueue struct {
 
 // Waiter tracks one pending atomic allocation. It belongs to exactly one
 // Scheduler and must only be used while that Scheduler's caller serializes
-// access. Ready closes on a full grant; cancellation removes the waiter
-// without closing it.
+// access. Local admission arms the notification channel before dispatch; the
+// reference state machine leaves it nil. Ready closes on a full grant or a
+// resize rejection; cancellation removes the waiter without closing it.
 type Waiter struct {
-	// ready closes after a full grant; cancellation removes the waiter without closing it.
+	// ready is set only by local admission and closes after a grant or resize rejection.
+	// Shared scheduling leaves it nil; cancellation does not close it.
 	ready chan struct{}
 	// granted records the winning grant transition under the caller's serialization.
 	granted bool
+	// err records a terminal resize rejection, published by closing ready.
+	err error
 	// weight is the positive token count requested atomically.
 	weight int
 	// node links the waiter into its tenant's FIFO.
@@ -90,14 +99,23 @@ type Waiter struct {
 	tenant *tenantQueue
 }
 
-// Ready closes after the whole request is granted. It never closes on removal.
+// Ready closes after the whole request is granted or rejected by a resize.
+// It never closes on removal, and it is nil until the local caller arms it.
 func (w *Waiter) Ready() <-chan struct{} { return w.ready }
 
 // Granted reports whether dispatch converted this waiter into a full grant.
 func (w *Waiter) Granted() bool { return w.granted }
 
+// Err reports a terminal resize rejection published with the ready channel.
+func (w *Waiter) Err() error { return w.err }
+
 // Weight returns the atomic token count the waiter is waiting for.
 func (w *Waiter) Weight() int { return w.weight }
+
+// Arm installs the grant notification channel. The local caller arms each
+// waiter after enqueueing and before dispatch, under its own serialization;
+// a second Arm call would orphan the first channel and must not happen.
+func (w *Waiter) Arm() { w.ready = make(chan struct{}) }
 
 // Scheduler controls weighted admission with FIFO waiting within each tenant
 // and round-robin selection across nonempty tenant queues within each priority
@@ -202,7 +220,7 @@ func (s *Scheduler) Enqueue(tenant string, weight int) (*Waiter, error) {
 		tq.turn = group.rotation.PushBack(tq)
 		s.tenants[tenant] = tq
 	}
-	w := &Waiter{ready: make(chan struct{}), tenant: tq, weight: weight}
+	w := &Waiter{tenant: tq, weight: weight}
 	w.node = tq.requests.PushBack(w)
 	s.queued++
 	group.queued++
@@ -247,6 +265,50 @@ func (s *Scheduler) Dispatch() {
 		s.used += w.weight
 		s.active++
 		w.granted = true
-		close(w.ready)
+		if w.ready != nil {
+			close(w.ready)
+		}
 	}
+}
+
+// Resize atomically changes the local token limit and dispatches waiting
+// requests using the existing fairness policy. Nonpositive capacity returns
+// ErrInvalidConfig without changing state. Setting the current capacity is a
+// no-op.
+//
+// Shrinking never revokes grants: used may exceed capacity until holders
+// release. Queued requests heavier than the new capacity are removed and
+// rejected with ErrWeightExceedsCapacity through their armed notification
+// channel; remaining requests retain their order and any surviving protected
+// head. Cancellation, rejection and grant are arbitrated by the caller's
+// serialization: whichever removes a waiter first determines its result.
+// Queue limits and priority policy are unchanged. Local admission owns
+// Resize; shared admission capacity stays immutable.
+func (s *Scheduler) Resize(capacity int) error {
+	if capacity <= 0 {
+		return ErrInvalidConfig
+	}
+	if capacity == s.cfg.Capacity {
+		return nil
+	}
+	previous := s.cfg.Capacity
+	s.cfg.Capacity = capacity
+	if capacity < previous {
+		for _, tenant := range s.tenants {
+			for node := tenant.requests.Front(); node != nil; {
+				next := node.Next()
+				w := node.Value.(*Waiter)
+				if w.weight > capacity {
+					s.Remove(w)
+					w.err = ErrWeightExceedsCapacity
+					if w.ready != nil {
+						close(w.ready)
+					}
+				}
+				node = next
+			}
+		}
+	}
+	s.Dispatch()
+	return nil
 }

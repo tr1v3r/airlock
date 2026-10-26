@@ -257,7 +257,7 @@ defer permit.Release()
 完整代码见[多令牌示例](examples/weighted/example.go)。
 
 - 容量必须为正数，队列上限非负，单租户上限不能超过全局上限；否则 `New` 返回
-  `ErrInvalidConfig`。队列上限为零表示不允许等待。所有上限创建后固定。
+  `ErrInvalidConfig`。队列上限为零表示不允许等待。队列上限创建后固定，本地容量可通过 Resize 调整。
 - `Acquire(ctx)` 和 `AcquireFor(ctx, tenantID)` 申请一个令牌。
   默认租户通过 `AcquireN(ctx, n)`、指定租户通过 `AcquireNFor(ctx, tenantID, n)`
   原子申请全部 `n` 个令牌，等待时不会占有部分容量。显式租户 ID 必须为非空字符串。
@@ -383,13 +383,45 @@ bash scripts/stress.sh quick
 要求 **CI Gate** 成功、通过 PR 和审查批准，并按需禁止绕过与强推。
 仅提交工作流不能阻止合并；本次变更不修改远端仓库规则。每周定时任务运行默认分支的工作流。
 
+## 本地动态容量
+
+对于通过 `New(Config)` 创建的本地实例，可用 `Resize(capacity int) error`
+调整容量，通过 `Stats().Capacity` 查询当前上限。
+
+```go
+if err := lock.Resize(20); err != nil {
+    return err
+}
+stats := lock.Stats()
+fmt.Println(stats.Capacity, stats.InUse)
+```
+
+- 容量必须为正数；无效值返回 `ErrInvalidConfig`，状态不变。
+  本地接口不受 Shared 的 10000 令牌上限限制。
+- 扩容立即按租户 FIFO、轮转、优先级组和保护队首规则调度等待者。
+  调整为相同容量不执行任何变更。
+- 缩容保留已发出的 Permit。例如持有 8 个令牌时从 10 缩到 5，
+  得到 `Capacity=5, InUse=8`。新授予等待足够容量释放；
+  已有 Permit 仍按原始权重完整释放。
+- 超过新容量的排队请求被唤醒，返回 `ErrWeightExceedsCapacity`，不返回 Permit，
+  包括超过新容量的保护队首。剩余请求保持原有顺序；拒绝不会返还已消耗的轮转机会。
+  新提交的超大请求返回同一错误。
+- Resize、取消和授予在同一互斥锁下裁决。对于已排队请求，先将其移出队列的操作
+  决定结果；并发 Resize 按获得锁的顺序生效。
+- Resize 等待内部互斥锁，不等待持有者释放。成功表示新上限已经生效，
+  不保证当前占用已降至目标。本地 Permit 不会过期，持有者必须主动释放。
+  队列上限和优先级策略保持不变。
+
+可运行示例见 [weighted_test.go](weighted_test.go) 中的 `ExampleAirlock_Resize`。
+此接口仅用于本地版；`Shared` 及其 driver 尚不支持动态容量。
+
 ## 迁移
 
 本地准入类型为 `Airlock`，通过 `New(Config)` 构造。
 每次 `Acquire(ctx)` 或 `AcquireFor(ctx, tenantID)` 仍然**仅获取一个令牌**。
 新增 `AcquireN(ctx, n)` 和 `AcquireNFor(ctx, tenantID, n)` 获取 `n` 个令牌，
 通过 `Permit.Release()` 一次归还。`Config.Priority` 可选启用本地优先级组，无需修改申请签名。
-无限模式、动态容量尚未实现。分布式租约和 memory driver 使用独立 API，PostgreSQL 和 Redis 均提供独立 driver。使用字段名且省略 `Priority` 或设为 nil 的配置
+无限模式尚未实现。本地容量支持 Resize，Shared 容量仍然固定。分布式租约和 memory driver 使用独立 API，PostgreSQL 和 Redis 均提供独立 driver。使用字段名且省略 `Priority` 或设为 nil 的配置
 保持原有单组行为；新增 `Config.Priority` 字段会影响无字段名的 `Config` 字面量，请改用字段名。
 
 这是开发阶段的破坏性变更：移除 `Pool`/`NewPool` 和先前的 `Gate`/`NewGate` 名称。
