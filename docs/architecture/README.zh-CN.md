@@ -15,14 +15,16 @@ GitHub 文件页不会执行 HTML。下方 PNG 可直接预览；克隆仓库后
 `docs/architecture/index.html`，或下载单张 HTML 后打开。HTML 内联了图和查看器，
 无需服务端；支持搜索、节点聚焦、浅深主题及 PNG/SVG 导出。
 PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定到
-[`beb9c6f`](https://github.com/tr1v3r/airlock/tree/beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d)。
-图集 PR 基于随后合入 SDK 注释的 `045c387`；图中的源码行号属于固定快照，不是浮动的 `dev`。
+[`ca393a3`](https://github.com/tr1v3r/airlock/tree/ca393a3031c310c21515cec04e98b4f009f50e08)。
+本次刷新对齐 `dev` 的重命名（`shared.go`、`shared_state.go`、`driver_transition.go`）、
+本地 `Resize` 与只读观察；图中的源码行号属于固定快照，不是浮动的 `dev`。
 
 ## 按需求切入
 
 | 需求 | 使用入口 / 修改位置 | 验证重点 |
 | --- | --- | --- |
 | 限制单进程在途工作 | [hello](../../examples/hello/example.go)、`New(Config)` | 成功后释放；队列零值不等待 |
+| 运行期调整容量 | [airlock.go](../../airlock.go)、`Resize` | 收缩不撤销已授 Permit；超重等待者失败 |
 | 批量原子占用容量 | [weighted](../../examples/weighted/example.go)、`AcquireNFor` | 不部分授予；大请求保护 |
 | 忙时立即拒绝 | [tryacquire](../../examples/tryacquire/example.go)、`TryAcquireNFor` | 不插队；仍获取 mutex |
 | 租户优先级与等待预算 | [priority](../../examples/priority/example.go)、[priority.go](../../priority.go) | 按请求选择计量；不保证 token 份额 |
@@ -135,9 +137,9 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 - 图展示代码行为，不代表测得的吞吐或 SLA；时序图的纵轴只表示顺序。
 - 后端状态图保留完整状态转换，交叉线较多；可在 HTML 中聚焦状态逐条阅读。常见的重复观察、自循环等无状态变化操作省略。
 - 客户端 Lease 图单独描述本地有效性。失效不等于后端已释放，终态也无法强制结束应用工作。
-- 驱动图展示 I/O 所有权；Memory / PostgreSQL 调用 Transition 的关系写在图下卡片中。Redis 使用其乐观包装器。
+- 驱动图展示 I/O 所有权；Memory / PostgreSQL 调用 Transition 的关系写在图下卡片中。Redis 校验 Transition 返回的 CommitWindow；免维护期各驱动都可只读应答 Observe。
 - 应用监督图来自可运行示例；`runJob` 不是 SDK API。获取失败不启动业务，监督取消与业务完成的先后取决于实际执行。
-- 提案、尚未合入的 PostgreSQL relational 分支、部署拓扑和性能瀑布图未被当作已实现架构。
+- 提案、尚未合入的分支、部署拓扑和性能瀑布图未被当作已实现架构。
 
 ## 维护与验证
 

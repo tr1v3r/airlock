@@ -18,8 +18,9 @@ can also be downloaded and opened independently. The graph and viewer are inline
 no server is needed. The viewer supports search, node focus, light/dark themes and
 PNG/SVG export. PNGs are static browser previews, not substitutes for the explorable HTML.
 Source evidence is pinned to
-[`beb9c6f`](https://github.com/tr1v3r/airlock/tree/beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d).
-The atlas PR is based on `045c387`, which subsequently merged SDK comments; diagram
+[`ca393a3`](https://github.com/tr1v3r/airlock/tree/ca393a3031c310c21515cec04e98b4f009f50e08).
+This refresh follows the `dev` renames (`shared.go`, `shared_state.go`,
+`driver_transition.go`), local `Resize` and read-only observations; diagram
 line numbers belong to the pinned snapshot, not the moving `dev` branch.
 
 ## Find your entry point
@@ -27,6 +28,7 @@ line numbers belong to the pinned snapshot, not the moving `dev` branch.
 | Need | API / implementation | Contract to verify |
 | --- | --- | --- |
 | Bound local in-flight work | [hello](../../examples/hello/example.go), `New(Config)` | Release successful permits; zero queue limits disable waiting |
+| Change capacity at runtime | [airlock.go](../../airlock.go), `Resize` | Shrinking never revokes permits; overweight waiters fail |
 | Acquire a whole weighted allocation | [weighted](../../examples/weighted/example.go), `AcquireNFor` | No partial grants; protected large requests |
 | Reject immediately when busy | [tryacquire](../../examples/tryacquire/example.go), `TryAcquireNFor` | No bypassing waiters; still takes the mutex |
 | Tenant priorities and waiting budgets | [priority example](../../examples/priority/example.go), [priority.go](../../priority.go) | Shares count selections, not token usage |
@@ -139,9 +141,9 @@ Tests: [driver/memory/examples/lifecycle/main_test.go](../../driver/memory/examp
 - Diagrams explain code behavior, not measured throughput or an SLA. Sequence positions encode order, not elapsed time.
 - The backend lifecycle preserves the full set of state-changing paths and has several crossing routes; use HTML node focus to follow them. Common observations and other state-preserving operations are omitted.
 - The client Lease diagram describes local validity separately. Invalidity does not confirm backend release, and terminal accounting cannot forcibly stop application work.
-- The driver diagram shows I/O ownership; its cards describe Memory / PostgreSQL calls to Transition. Redis uses the optimistic wrapper.
+- The driver diagram shows I/O ownership; its cards describe Memory / PostgreSQL calls to Transition. Redis enforces the returned CommitWindow, and every driver can answer Observe read-only between maintenance boundaries.
 - Supervision comes from a runnable application example; `runJob` is not an SDK API. Acquisition failure starts no work; actual execution determines the ordering of cancellation and completion.
-- Proposals, the unmerged PostgreSQL relational branch, deployment topologies and performance waterfalls are not presented as implemented architecture.
+- Proposals, unmerged branches, deployment topologies and performance waterfalls are not presented as implemented architecture.
 
 ## Maintenance and verification
 
