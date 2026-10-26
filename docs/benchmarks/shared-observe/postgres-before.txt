@@ -1,0 +1,7 @@
+goos: linux
+goarch: arm64
+pkg: github.com/tr1v3r/airlock/driver/postgres
+BenchmarkIntegrationObserveQueued/1-12  	     100	   1300396 ns/op	   18587 B/op	     288 allocs/op
+BenchmarkIntegrationObserveQueued/100-12         	     100	   3111654 ns/op	  235918 B/op	    2922 allocs/op
+BenchmarkIntegrationObserveQueued/1000-12        	     100	   7879299 ns/op	 2398515 B/op	   27142 allocs/op
+PASS

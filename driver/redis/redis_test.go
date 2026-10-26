@@ -2,10 +2,12 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -120,7 +122,7 @@ func TestValidationAndCorrupt(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, value := range []string{"", "corrupt", "{}"} {
-		if err := client.Set(ctx, d.key(r.Resource), value, 0).Err(); err != nil {
+		if err := client.HSet(ctx, d.key(r.Resource), "state", value).Err(); err != nil {
 			t.Fatal(err)
 		}
 		if result, err := d.Submit(ctx, r); !errors.Is(err, airlock.ErrCorruptState) || result != (airlock.Result{}) {
@@ -185,7 +187,7 @@ func (h hook) ProcessHook(next goredis.ProcessHook) goredis.ProcessHook {
 	return func(ctx context.Context, cmd goredis.Cmder) error { return h.process(ctx, cmd, next) }
 }
 func isCAS(cmd goredis.Cmder) bool {
-	return (cmd.Name() == "eval" || cmd.Name() == "evalsha") && len(cmd.Args()) == 9
+	return (cmd.Name() == "eval" || cmd.Name() == "evalsha") && len(cmd.Args()) >= 9
 }
 func TestLostWriteResponseNeverRetries(t *testing.T) {
 	for _, operation := range []airlock.Operation{airlock.Submit, airlock.Renew, airlock.Cancel, airlock.Release} {
@@ -214,7 +216,7 @@ func TestLostWriteResponseNeverRetries(t *testing.T) {
 			if !errors.Is(err, io.ErrUnexpectedEOF) || result != (airlock.Result{}) || commits.Load() != 1 {
 				t.Fatal(result, err, commits.Load())
 			}
-			raw, err := client.Get(context.Background(), d.key(r.Resource)).Result()
+			raw, err := client.HGet(context.Background(), d.key(r.Resource), "state").Result()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -397,4 +399,187 @@ func transitionSnapshot(data []byte, now time.Time, cmd airlock.Command) ([]byte
 		return nil, airlock.Result{}, codecErr
 	}
 	return encoded, result, err
+}
+
+func TestObserveUsesOnlyRequestProjection(t *testing.T) {
+	d, client, server := fixture(t)
+	ctx := context.Background()
+	r := request()
+	server.SetTime(time.Now())
+	r.Config.LeaseTTL = time.Minute
+	grant, err := d.Submit(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := r
+	id := airlock.NewRequest(r.SubmitUntil)
+	pending.ID, pending.Owner, pending.Tenant = id.ID, id.Owner, "waiting"
+	queued, err := d.Submit(ctx, pending)
+	if err != nil || queued.Status != airlock.Queued {
+		t.Fatalf("%+v %v", queued, err)
+	}
+	before := client.HGetAll(ctx, d.key(r.Resource)).Val()
+	var calls int
+	client.AddHook(hook{process: func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
+		if cmd.Name() == "eval" || cmd.Name() == "evalsha" {
+			calls++
+			if len(cmd.Args()) != 5 {
+				t.Errorf("poll performed full-state read or CAS: %v", cmd.Args()[0])
+			}
+		}
+		return next(ctx, cmd)
+	}})
+	for range 10 {
+		result, err := d.Observe(ctx, pending)
+		if err != nil || result.Status != airlock.Queued || result.Revision != queued.Revision {
+			t.Fatalf("%+v %v", result, err)
+		}
+	}
+	if calls > 11 {
+		t.Fatalf("poll commands=%d", calls)
+	} // First use may load the script.
+	after := client.HGetAll(ctx, d.key(r.Resource)).Val()
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("read-only Observe changed stored state")
+	}
+	_ = grant
+}
+
+func TestObserveIncompleteIndexFallsBack(t *testing.T) {
+	for _, mode := range []string{"missing", "partial-candidate", "malformed"} {
+		t.Run(mode, func(t *testing.T) {
+			d, client, _ := fixture(t)
+			ctx := context.Background()
+			r := request()
+			grant, err := d.Submit(ctx, r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			key := d.key(r.Resource)
+			switch mode {
+			case "missing":
+				if err := client.HDel(ctx, key, "r:"+r.ID).Err(); err != nil {
+					t.Fatal(err)
+				}
+			case "partial-candidate":
+				raw, err := json.Marshal(observationRecord{Token: "unpublished-candidate", Record: &airlock.DriverRecord{Request: r, Status: airlock.Granted}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := client.HSet(ctx, key, "r:"+r.ID, raw).Err(); err != nil {
+					t.Fatal(err)
+				}
+			case "malformed":
+				if err := client.HSet(ctx, key, "meta", "{").Err(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := d.Observe(ctx, r)
+			if mode == "malformed" {
+				if !errors.Is(err, airlock.ErrCorruptState) || got != (airlock.Result{}) {
+					t.Fatalf("%+v %v", got, err)
+				}
+			} else if err != nil || got.Status != airlock.Granted || got.LeaseID != grant.LeaseID {
+				t.Fatalf("%+v %v", got, err)
+			}
+		})
+	}
+}
+
+func TestObservationIndexCollectsDeletedRecords(t *testing.T) {
+	d, client, server := fixture(t)
+	ctx := context.Background()
+	r := request()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	server.SetTime(now)
+	grant, err := d.Submit(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.HSet(ctx, d.key(r.Resource), "r:orphan", "unpublished").Err(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Release(ctx, airlock.LeaseRef{Request: r, ID: grant.LeaseID}); err != nil {
+		t.Fatal(err)
+	}
+	if client.HExists(ctx, d.key(r.Resource), "r:orphan").Val() {
+		t.Fatal("orphaned index survived next commit")
+	}
+	server.SetTime(r.SubmitUntil.Add(r.Config.Retention + time.Millisecond))
+	_, _ = d.Observe(ctx, r)
+	if client.HExists(ctx, d.key(r.Resource), "r:"+r.ID).Val() {
+		t.Fatal("history GC leaked indexed request")
+	}
+}
+
+func TestObserveReplyErrors(t *testing.T) {
+	for _, mode := range []string{"transport", "arity", "field", "time", "record-json"} {
+		t.Run(mode, func(t *testing.T) {
+			d, client, _ := fixture(t)
+			r := request()
+			client.AddHook(hook{process: func(_ context.Context, cmd goredis.Cmder, _ goredis.ProcessHook) error {
+				c := cmd.(*noRetryCmd)
+				if mode == "transport" {
+					return errors.New("read failed")
+				}
+				switch mode {
+				case "arity":
+					c.SetVal([]any{})
+				case "field":
+					c.SetVal([]any{int64(1), "", "1", "1"})
+				case "time":
+					c.SetVal([]any{"", "", "invalid", "1"})
+				case "record-json":
+					c.SetVal([]any{"{}", "{", "1800000000", "0"})
+				}
+				return nil
+			}})
+			if result, _, err := d.observe(context.Background(), r); err == nil || result != (airlock.Result{}) {
+				t.Fatalf("%+v %v", result, err)
+			}
+		})
+	}
+}
+
+func TestIndexEncodingErrors(t *testing.T) {
+	invalid := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := index(&airlock.SharedState{Time: invalid}); err == nil {
+		t.Fatal("invalid header time encoded")
+	}
+	s := &airlock.SharedState{Records: map[string]*airlock.DriverRecord{"bad": {Until: invalid, Status: airlock.Granted}}}
+	if _, err := index(s); err == nil {
+		t.Fatal("invalid record time encoded")
+	}
+}
+
+func TestObserveCancelledAfterRead(t *testing.T) {
+	d, client, _ := fixture(t)
+	r := request()
+	if _, err := d.Submit(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client.AddHook(hook{process: func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
+		err := next(ctx, cmd)
+		if err == nil {
+			cancel()
+		}
+		return err
+	}})
+	if result, err := d.Observe(ctx, r); !errors.Is(err, context.Canceled) || result != (airlock.Result{}) {
+		t.Fatalf("%+v %v", result, err)
+	}
+}
+
+func TestObserveMissingAuthoritativeSnapshotFailsClosed(t *testing.T) {
+	d, client, _ := fixture(t)
+	r := request()
+	ctx := context.Background()
+	if err := client.HSet(ctx, d.key(r.Resource), "r:orphan", "unpublished").Err(); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := d.Observe(ctx, r); err == nil || result != (airlock.Result{}) {
+		t.Fatalf("%+v %v", result, err)
+	}
 }

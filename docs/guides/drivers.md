@@ -18,7 +18,7 @@ type Driver interface {
 | Operation | Contract |
 | --- | --- |
 | Submit | Atomically admit or enqueue the whole weight; retrying the same request does not refresh its TTL |
-| Observe | Return the outcome while advancing expiry and scheduling; this can write state |
+| Observe | Return the outcome, advancing due maintenance; read-only fast paths keep Revision |
 | Cancel | Cancel a queued or granted request; cancellation may arrive before submission |
 | Renew | Extend only a live matching lease; never revive an expired lease |
 | Release | Return the matching lease's entire weight at most once |
@@ -79,3 +79,8 @@ Read the full [contract and decisions](../decisions/005-driver-contract.md) befo
 implementing an adapter. [Module boundaries](../../MODULES.md) describe independent
 module pins and verification. The old Execute(ctx, Command) driver interface is
 removed; custom drivers implement the five methods above.
+
+Drivers may use `Observation.Observe` and `SharedState.NextMaintenance` for compact
+read-only results. Read metadata and the target request atomically using backend
+time. Due maintenance, missing results or incomplete indexes must fall back to
+full Observe so expiry-driven scheduling still progresses without Release.

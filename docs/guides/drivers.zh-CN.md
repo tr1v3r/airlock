@@ -18,7 +18,7 @@ type Driver interface {
 | 操作 | 契约 |
 | --- | --- |
 | Submit | 原子授予或排队全部重量；相同请求重试不刷新租约 TTL |
-| Observe | 获取结果，同时推进过期与调度，因此可能写状态 |
+| Observe | 获取结果，必要时推进过期与调度；只读快路径不增加 Revision |
 | Cancel | 取消排队或已授予请求；取消允许先于提交到达 |
 | Renew | 仅延长仍有效且匹配的租约，不能复活已过期租约 |
 | Release | 归还匹配租约的全部重量，最多记账一次 |
@@ -67,3 +67,7 @@ Command/Operation/ValidateCommand 是实现工具，不是公开 Driver 的调�
 实现前应阅读完整[契约与取舍](../decisions/005-driver-contract.md)。独立模块依赖和验证方式
 见[模块说明](../../MODULES.md)。旧 Execute(ctx, Command) driver 接口已移除，
 自定义 driver 需实现上面的五个方法。
+
+只读优化可使用核心 `Observation.Observe` 与 `SharedState.NextMaintenance` 辅助方法。
+元数据和目标请求必须来自同一个原子快照，并使用后端时间。到期、结果缺失或索引不完整
+时须回到完整 Observe，不能因分离查询而丢失无人 Release 时的过期调度能力。

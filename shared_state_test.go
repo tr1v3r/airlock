@@ -647,3 +647,106 @@ func TestSharedDispatchWithoutLocalNotifications(t *testing.T) {
 	expectState(t, h.call(Release, holder, lease.LeaseID, nil), Released)
 	expectState(t, h.call(Observe, pending, "", nil), Granted)
 }
+
+func TestObservationFastPathAndMaintenance(t *testing.T) {
+	h := newStateHarness(t)
+	cfg := stateTestConfig()
+	holder := stateTestRequest(h.now, cfg, "holder", 3)
+	grant := h.call(Submit, holder, "", nil)
+	pending := stateTestRequest(h.now, cfg, "pending", 1)
+	expectState(t, h.call(Submit, pending, "", nil), Queued)
+	s := h.snapshot()
+	o := Observation{Resource: s.Resource, Config: s.Config, Time: s.Time, Revision: s.Revision,
+		NextMaintenance: s.NextMaintenance(), Record: s.Records[pending.ID]}
+	if !o.NextMaintenance.Equal(s.Records[holder.ID].Until) {
+		t.Fatal(o.NextMaintenance)
+	}
+	now := h.now.Add(time.Millisecond)
+	got, ready, err := o.Observe(now, pending)
+	if !ready || err != nil || got.Status != Queued || got.Revision != s.Revision {
+		t.Fatalf("%+v %t %v", got, ready, err)
+	}
+	o.Record = s.Records[holder.ID]
+	got, ready, err = o.Observe(now, holder)
+	if !ready || err != nil || got.LeaseID != grant.LeaseID || got.Remaining != cfg.LeaseTTL-time.Millisecond {
+		t.Fatalf("%+v %t %v", got, ready, err)
+	}
+	for _, at := range []time.Time{o.NextMaintenance, o.NextMaintenance.Add(time.Millisecond)} {
+		if _, ready, err := o.Observe(at, holder); ready || err != nil {
+			t.Fatalf("due: %t %v", ready, err)
+		}
+	}
+	// Expiry-driven Observe remains sufficient without any holder Release.
+	h.now = o.NextMaintenance
+	expectState(t, h.call(Observe, pending, "", nil), Granted)
+	h.call(Cancel, pending, "", nil)
+	s = h.snapshot()
+	if !s.NextMaintenance().After(h.now) {
+		t.Fatal("history boundary not retained")
+	}
+}
+
+func TestObservationValidationAndFallback(t *testing.T) {
+	h := newStateHarness(t)
+	cfg := stateTestConfig()
+	r := stateTestRequest(h.now, cfg, "holder", 1)
+	h.call(Submit, r, "", nil)
+	s := h.snapshot()
+	base := Observation{Resource: s.Resource, Config: s.Config, Time: s.Time, Revision: s.Revision,
+		NextMaintenance: s.NextMaintenance(), Record: s.Records[r.ID]}
+	for _, tc := range []struct {
+		name   string
+		change func(*Observation, *Request)
+		want   error
+		ready  bool
+	}{
+		{"invalid request", func(_ *Observation, r *Request) { r.Owner = "" }, ErrInvalidRequest, true},
+		{"resource conflict", func(o *Observation, _ *Request) { o.Resource = "other" }, ErrConfigConflict, true},
+		{"config conflict", func(o *Observation, _ *Request) { o.Config.Admission.Capacity++ }, ErrConfigConflict, true},
+		{"zero revision", func(o *Observation, _ *Request) { o.Revision = 0 }, ErrCorruptState, true},
+		{"exhausted revision", func(o *Observation, _ *Request) { o.Revision = ^uint64(0) }, ErrCorruptState, true},
+		{"zero time", func(o *Observation, _ *Request) { o.Time = time.Time{} }, ErrCorruptState, true},
+		{"backward time", func(o *Observation, _ *Request) { o.Time = o.Time.Add(time.Second) }, ErrCorruptState, true},
+		{"missing record", func(o *Observation, _ *Request) { o.Record = nil }, nil, false},
+		{"owner conflict", func(_ *Observation, r *Request) { r.Owner = NewRequest(r.SubmitUntil).Owner }, ErrRequestConflict, true},
+		{"corrupt record", func(o *Observation, _ *Request) { o.Record.LeaseID = "bad" }, ErrCorruptState, true},
+		{"missing deadline guard", func(o *Observation, _ *Request) {
+			o.NextMaintenance = time.Time{}
+			o.Record.Until = o.Time.Add(time.Millisecond)
+		}, nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o, request := base, r
+			record := *base.Record
+			o.Record = &record
+			tc.change(&o, &request)
+			_, ready, err := o.Observe(h.now.Add(2*time.Millisecond), request)
+			if ready != tc.ready || !errors.Is(err, tc.want) {
+				t.Fatalf("ready=%t err=%v", ready, err)
+			}
+		})
+	}
+	// Rejected/terminal records restore their stable error without writing state.
+	rec := *base.Record
+	rec.Status, rec.LeaseID, rec.Until, rec.Finished, rec.Failure = Rejected, "", time.Time{}, h.now, ErrQueueFull.Error()
+	base.Record = &rec
+	base.NextMaintenance = time.Time{}
+	result, ready, err := base.Observe(h.now, r)
+	if !ready || !errors.Is(err, ErrQueueFull) || result.Status != Rejected {
+		t.Fatalf("%+v %t %v", result, ready, err)
+	}
+	empty := SharedState{}
+	if !empty.NextMaintenance().IsZero() {
+		t.Fatal("empty state has maintenance")
+	}
+	// A terminal record cannot be collected until both retention and SubmitUntil.
+	empty.Config = cfg
+	empty.Records = map[string]*DriverRecord{r.ID: &rec}
+	want := rec.Finished.Add(cfg.Retention)
+	if r.SubmitUntil.After(want) {
+		want = r.SubmitUntil
+	}
+	if !empty.NextMaintenance().Equal(want) {
+		t.Fatal(empty.NextMaintenance(), want)
+	}
+}

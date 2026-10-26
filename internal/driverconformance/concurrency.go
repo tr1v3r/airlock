@@ -194,7 +194,7 @@ func cancelledOperations(h *harness) {
 		}
 	}
 	got := h.must(airlock.Observe, r, "", airlock.Granted)
-	if got.LeaseID != grant.LeaseID || got.Remaining > grant.Remaining || got.Revision != grant.Revision+1 {
+	if got.LeaseID != grant.LeaseID || got.Remaining > grant.Remaining || (got.Revision < grant.Revision || got.Revision > grant.Revision+1) {
 		h.t.Fatalf("pre-cancelled commands mutated state: before=%+v after=%+v", grant, got)
 	}
 	h.must(airlock.Release, r, grant.LeaseID, airlock.Released)

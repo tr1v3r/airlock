@@ -24,7 +24,7 @@ func (d *Driver) EnsureSchema(ctx context.Context) error {
 			return fmt.Errorf("airlock/postgres: schema: %w", err)
 		}
 	}
-	for _, query := range []string{fmt.Sprintf(`SELECT %s FROM %s WHERE false`, resourceColumns, d.table), fmt.Sprintf(`SELECT %s FROM %s WHERE false`, requestColumns, d.requests)} {
+	for _, query := range []string{fmt.Sprintf(`SELECT %s, next_maintenance_ms FROM %s WHERE false`, resourceColumns, d.table), fmt.Sprintf(`SELECT %s FROM %s WHERE false`, requestColumns, d.requests)} {
 		rows, e := tx.QueryContext(ctx, query)
 		if e != nil {
 			return fmt.Errorf("airlock/postgres: incompatible schema: %w", e)
@@ -48,6 +48,7 @@ func (d *Driver) schema() []string {
  cursor integer NOT NULL DEFAULT 0 CHECK (cursor>=0),
  revision numeric(20,0) NOT NULL DEFAULT 0 CHECK (revision>=0 AND revision<=18446744073709551615),
  observed_ms bigint,
+ next_maintenance_ms bigint,
  PRIMARY KEY (namespace,resource)
 )`, d.table),
 		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (

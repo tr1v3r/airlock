@@ -212,7 +212,7 @@ func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 	db := integrationDB(t)
 	d := integrationDriver(t, db, uniqueNamespace())
 	r := request(time.Now())
-	executeStatus(t, d, airlock.Submit, r, "", airlock.Granted)
+	grant := executeStatus(t, d, airlock.Submit, r, "", airlock.Granted)
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -222,7 +222,7 @@ func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-	got, err := d.Observe(ctx, r)
+	got, err := d.Renew(ctx, airlock.LeaseRef{Request: r, ID: grant.LeaseID})
 	cancel()
 	if err == nil || got != (airlock.Result{}) {
 		t.Fatalf("cancel: %+v %v", got, err)
@@ -557,4 +557,114 @@ func TestIntegrationCommittedResponseLoss(t *testing.T) {
 	executeStatus(t, observer, airlock.Release, r, grant.LeaseID, airlock.Released)
 	next := executeStatus(t, observer, airlock.Observe, other, "", airlock.Granted)
 	executeStatus(t, observer, airlock.Release, other, next.LeaseID, airlock.Released)
+}
+
+func TestIntegrationObserveDoesNotLockOrWrite(t *testing.T) {
+	db := integrationDB(t)
+	d := integrationDriver(t, db, uniqueNamespace())
+	r := request(time.Now())
+	r.Config.LeaseTTL = time.Minute
+	grant := executeStatus(t, d, airlock.Submit, r, "", airlock.Granted)
+	pending := r
+	id := airlock.NewRequest(r.SubmitUntil)
+	pending.ID, pending.Owner, pending.Tenant = id.ID, id.Owner, "waiting"
+	queued := executeStatus(t, d, airlock.Submit, pending, "", airlock.Queued)
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`SELECT resource FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.namespace, r.Resource); err != nil {
+		t.Fatal(err)
+	}
+	// A poll on this same resource must succeed while its mutation lock is held.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	for range 10 {
+		result, err := d.Observe(ctx, pending)
+		if err != nil || result.Status != airlock.Queued || result.Revision != queued.Revision {
+			t.Fatalf("%+v %v", result, err)
+		}
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	var revision string
+	if err := db.QueryRow(`SELECT revision FROM public.airlock_resources WHERE namespace=$1 AND resource=$2`, d.namespace, r.Resource).Scan(&revision); err != nil {
+		t.Fatal(err)
+	}
+	if revision != fmt.Sprint(queued.Revision) {
+		t.Fatal("read-only polling wrote resource metadata")
+	}
+	executeStatus(t, d, airlock.Release, r, grant.LeaseID, airlock.Released)
+	executeStatus(t, d, airlock.Observe, pending, "", airlock.Granted)
+}
+
+func BenchmarkIntegrationObserveQueued(b *testing.B) { benchmarkIntegrationObservation(b, false) }
+
+func BenchmarkIntegrationRenewWithWaiters(b *testing.B) { benchmarkIntegrationObservation(b, true) }
+
+func benchmarkIntegrationObservation(b *testing.B, renew bool) {
+	dsn := os.Getenv("AIRLOCK_POSTGRES_DSN")
+	if dsn == "" {
+		b.Skip("set AIRLOCK_POSTGRES_DSN")
+	}
+	for _, count := range []int{1, 100, 1000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			db, err := sql.Open("pgx", dsn)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
+			namespace := "observe-bench-" + airlock.NewRequest(time.Now()).Owner
+			d, err := New(db, namespace)
+			if err != nil {
+				b.Fatal(err)
+			}
+			ctx := context.Background()
+			if err := d.EnsureSchema(ctx); err != nil {
+				b.Fatal(err)
+			}
+			defer func() {
+				_, _ = db.Exec(`DELETE FROM public.airlock_resources_requests WHERE namespace=$1`, namespace)
+				_, _ = db.Exec(`DELETE FROM public.airlock_resources WHERE namespace=$1`, namespace)
+			}()
+			r := request(time.Now())
+			r.Config.LeaseTTL, r.Config.MaxWait, r.Config.SubmitWindow = time.Hour, time.Hour, time.Hour
+			r.Config.Admission.MaxQueued, r.Config.Admission.MaxQueuedPerTenant, r.Config.MaxRecords = 1000, 1000, 1001
+			r.SubmitUntil, r.WaitUntil = time.Now().Add(time.Hour).UTC().Truncate(time.Millisecond), time.Now().Add(time.Hour).UTC().Truncate(time.Millisecond)
+			id := airlock.NewRequest(r.SubmitUntil)
+			r.ID, r.Owner = id.ID, id.Owner
+			held, err := d.Submit(ctx, r)
+			if err != nil {
+				b.Fatal(err)
+			}
+			var pending airlock.Request
+			for range count {
+				pending = r
+				id := airlock.NewRequest(r.SubmitUntil)
+				pending.ID, pending.Owner = id.ID, id.Owner
+				if _, err := d.Submit(ctx, pending); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				var result airlock.Result
+				var err error
+				want := airlock.Queued
+				if renew {
+					result, err = d.Renew(ctx, airlock.LeaseRef{Request: r, ID: held.LeaseID})
+					want = airlock.Granted
+				} else {
+					result, err = d.Observe(ctx, pending)
+				}
+				if err != nil || result.Status != want {
+					b.Fatalf("%+v %v", result, err)
+				}
+			}
+			b.StopTimer()
+		})
+	}
 }
