@@ -11,6 +11,7 @@ import (
 
 	"github.com/tr1v3r/airlock"
 	"github.com/tr1v3r/airlock/driver/memory"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 // main runs the application-owned lease lifecycle example.
@@ -24,8 +25,8 @@ func main() {
 func demo() error {
 	client, err := airlock.NewShared(memory.New(), airlock.SharedOptions{
 		Resource: "lifecycle-example",
-		Config: airlock.ResourceConfig{
-			Admission: airlock.Config{Capacity: 1},
+		Config: protocol.ResourceConfig{
+			Admission: protocol.Config{Capacity: 1},
 			LeaseTTL:  time.Second, // Shortened only to demonstrate renewals quickly.
 		},
 	})
@@ -89,7 +90,7 @@ func runJob(ctx context.Context, lease jobLease, renewEvery, operationTimeout ti
 		defer close(watchDone)
 		select {
 		case <-lease.Done():
-			cancel(airlock.ErrLeaseLost)
+			cancel(protocol.ErrLeaseLost)
 		case <-workCtx.Done():
 		}
 	}()
@@ -138,7 +139,7 @@ func runJob(ctx context.Context, lease jobLease, renewEvery, operationTimeout ti
 		err = errors.Join(err, releaseStoppedJob(ctx, lease, operationTimeout))
 	}()
 	if !lease.Valid() {
-		cancel(airlock.ErrLeaseLost)
+		cancel(protocol.ErrLeaseLost)
 	}
 	if workCtx.Err() != nil {
 		return context.Cause(workCtx)

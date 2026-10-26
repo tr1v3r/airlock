@@ -13,7 +13,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	goredis "github.com/redis/go-redis/v9"
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
@@ -28,21 +28,21 @@ func fixture(t *testing.T) (*Driver, *goredis.Client, *miniredis.Miniredis) {
 	}
 	return d, client, server
 }
-func request() airlock.Request { return requestAt(time.Now()) }
+func request() protocol.Request { return requestAt(time.Now()) }
 
-func requestAt(now time.Time) airlock.Request {
+func requestAt(now time.Time) protocol.Request {
 	now = now.UTC().Truncate(time.Millisecond)
-	r := airlock.NewRequest(now.Add(10 * time.Second))
+	r := protocol.NewRequest(now.Add(10 * time.Second))
 	r.Resource = "resource"
 	r.Weight = 1
 	r.WaitUntil = now.Add(10 * time.Second)
-	r.Config = airlock.ResourceConfig{Admission: airlock.Config{Capacity: 1, MaxQueued: 10, MaxQueuedPerTenant: 10}, LeaseTTL: time.Second, MaxWait: 10 * time.Second, SubmitWindow: 10 * time.Second, Retention: time.Second, MaxRecords: 64}
+	r.Config = protocol.ResourceConfig{Admission: protocol.Config{Capacity: 1, MaxQueued: 10, MaxQueuedPerTenant: 10}, LeaseTTL: time.Second, MaxWait: 10 * time.Second, SubmitWindow: 10 * time.Second, Retention: time.Second, MaxRecords: 64}
 	return r
 }
-func submit(r airlock.Request) airlock.Command {
-	return airlock.Command{Kind: airlock.Submit, Request: r}
+func submit(r protocol.Request) protocol.Command {
+	return protocol.Command{Kind: protocol.Submit, Request: r}
 }
-func mustExecute(t *testing.T, d *Driver, c airlock.Command) airlock.Result {
+func mustExecute(t *testing.T, d *Driver, c protocol.Command) protocol.Result {
 	t.Helper()
 	result, err := driverconformance.Invoke(context.Background(), d, c)
 	if err != nil {
@@ -51,7 +51,7 @@ func mustExecute(t *testing.T, d *Driver, c airlock.Command) airlock.Result {
 	return result
 }
 func TestConformance(t *testing.T) {
-	driverconformance.Run(t, func(t *testing.T) airlock.Driver {
+	driverconformance.Run(t, func(t *testing.T) protocol.Driver {
 		d, _, _ := fixture(t)
 		if os.Getenv("AIRLOCK_STRESS") == "1" {
 			// Match the conformance harness's heavy budget; otherwise the
@@ -115,14 +115,14 @@ func TestValidationAndCorrupt(t *testing.T) {
 	}
 	bad := r
 	bad.Weight = 0
-	if _, err := d.Submit(ctx, bad); !errors.Is(err, airlock.ErrInvalidWeight) {
+	if _, err := d.Submit(ctx, bad); !errors.Is(err, protocol.ErrInvalidWeight) {
 		t.Fatal(err)
 	}
 	for _, value := range []string{"", "corrupt", "{}"} {
 		if err := client.Set(ctx, d.key(r.Resource), value, 0).Err(); err != nil {
 			t.Fatal(err)
 		}
-		if result, err := d.Submit(ctx, r); !errors.Is(err, airlock.ErrCorruptState) || result != (airlock.Result{}) {
+		if result, err := d.Submit(ctx, r); !errors.Is(err, protocol.ErrCorruptState) || result != (protocol.Result{}) {
 			t.Fatal(result, err)
 		}
 	}
@@ -132,7 +132,7 @@ func TestValidationAndCorrupt(t *testing.T) {
 	if err := client.LPush(ctx, d.key(r.Resource), "x").Err(); err != nil {
 		t.Fatal(err)
 	}
-	if result, err := d.Submit(ctx, r); err == nil || result != (airlock.Result{}) {
+	if result, err := d.Submit(ctx, r); err == nil || result != (protocol.Result{}) {
 		t.Fatal(result, err)
 	}
 }
@@ -141,7 +141,7 @@ func TestPersistenceAndReload(t *testing.T) {
 	ctx := context.Background()
 	r := request()
 	first := mustExecute(t, d, submit(r))
-	if first.Status != airlock.Granted {
+	if first.Status != protocol.Granted {
 		t.Fatal(first)
 	}
 	if ttl := client.PTTL(ctx, d.key(r.Resource)).Val(); ttl != -1 {
@@ -164,7 +164,7 @@ func TestPersistenceAndReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := mustExecute(t, isolated, submit(r)); got.Status != airlock.Granted {
+	if got := mustExecute(t, isolated, submit(r)); got.Status != protocol.Granted {
 		t.Fatal(got)
 	}
 	if d.key("a") == isolated.key("a") || d.key("ab") == d.key("a") {
@@ -187,12 +187,12 @@ func isCAS(cmd goredis.Cmder) bool {
 	return (cmd.Name() == "eval" || cmd.Name() == "evalsha") && len(cmd.Args()) == 9
 }
 func TestLostWriteResponseNeverRetries(t *testing.T) {
-	for _, operation := range []airlock.Operation{airlock.Submit, airlock.Renew, airlock.Cancel, airlock.Release} {
+	for _, operation := range []protocol.Operation{protocol.Submit, protocol.Renew, protocol.Cancel, protocol.Release} {
 		t.Run(string(operation), func(t *testing.T) {
 			d, client, _ := fixture(t)
 			r := request()
 			command := submit(r)
-			if operation != airlock.Submit {
+			if operation != protocol.Submit {
 				grant := mustExecute(t, d, command)
 				command.Kind = operation
 				command.LeaseID = grant.LeaseID
@@ -210,23 +210,23 @@ func TestLostWriteResponseNeverRetries(t *testing.T) {
 				return err
 			}})
 			result, err := driverconformance.Invoke(context.Background(), d, command)
-			if !errors.Is(err, io.ErrUnexpectedEOF) || result != (airlock.Result{}) || commits.Load() != 1 {
+			if !errors.Is(err, io.ErrUnexpectedEOF) || result != (protocol.Result{}) || commits.Load() != 1 {
 				t.Fatal(result, err, commits.Load())
 			}
 			raw, err := client.Get(context.Background(), d.key(r.Resource)).Result()
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, recovered, recoveryErr := airlock.Transition([]byte(raw), time.Now(), airlock.Command{Kind: airlock.Observe, Request: r})
+			_, recovered, recoveryErr := protocol.ApplySnapshot([]byte(raw), time.Now(), protocol.Command{Kind: protocol.Observe, Request: r})
 			if recoveryErr != nil {
 				t.Fatal(recoveryErr)
 			}
-			want := airlock.Granted
-			if operation == airlock.Cancel {
-				want = airlock.Cancelled
+			want := protocol.Granted
+			if operation == protocol.Cancel {
+				want = protocol.Cancelled
 			}
-			if operation == airlock.Release {
-				want = airlock.Released
+			if operation == protocol.Release {
+				want = protocol.Released
 			}
 			if recovered.Status != want {
 				t.Fatal(recovered)
@@ -257,7 +257,7 @@ func TestScriptFailureAndMalformedResponse(t *testing.T) {
 				return next(ctx, cmd)
 			}})
 			got, err := d.Submit(context.Background(), request())
-			if err == nil || got != (airlock.Result{}) || calls != 1 {
+			if err == nil || got != (protocol.Result{}) || calls != 1 {
 				t.Fatal(got, err, calls)
 			}
 		})
@@ -294,13 +294,13 @@ func TestCASConflictRetryAndDeadline(t *testing.T) {
 			if permanent {
 				// The operation context also sets the socket deadline. Either
 				// timeout can win, including during the read after a CAS miss.
-				if (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded)) || got != (airlock.Result{}) {
+				if (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded)) || got != (protocol.Result{}) {
 					t.Fatal(got, err)
 				}
 				if time.Since(started) > time.Second {
 					t.Fatal("permanent conflicts escaped the operation deadline")
 				}
-			} else if err != nil || got.Status != airlock.Granted {
+			} else if err != nil || got.Status != protocol.Granted {
 				t.Fatal(got, err)
 			}
 			if calls < 2 {
@@ -321,7 +321,7 @@ func TestCancelledAfterCommit(t *testing.T) {
 		return err
 	}})
 	got, err := d.Submit(ctx, request())
-	if !errors.Is(err, context.Canceled) || got != (airlock.Result{}) {
+	if !errors.Is(err, context.Canceled) || got != (protocol.Result{}) {
 		t.Fatal(got, err)
 	}
 }
@@ -356,28 +356,28 @@ func TestPriorityCursorSurvivesClientReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := request().Config
-	cfg.Admission.Priority = &airlock.PriorityPolicy{Groups: []airlock.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 6}, {Name: "low", Turns: 1, MaxQueued: 4}}, DefaultGroup: "low", TenantGroups: map[string]string{"high": "high"}}
-	makeRequest := func(tenant string) airlock.Request { r := request(); r.Config = cfg; r.Tenant = tenant; return r }
+	cfg.Admission.Priority = &protocol.PriorityPolicy{Groups: []protocol.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 6}, {Name: "low", Turns: 1, MaxQueued: 4}}, DefaultGroup: "low", TenantGroups: map[string]string{"high": "high"}}
+	makeRequest := func(tenant string) protocol.Request { r := request(); r.Config = cfg; r.Tenant = tenant; return r }
 	holder := makeRequest("holder")
 	grant := mustExecute(t, d, submit(holder))
 	high1, high2, high3, low := makeRequest("high"), makeRequest("high"), makeRequest("high"), makeRequest("low")
-	for _, r := range []airlock.Request{low, high1, high2, high3} {
-		if got := mustExecute(t, nextDriver, submit(r)); got.Status != airlock.Queued {
+	for _, r := range []protocol.Request{low, high1, high2, high3} {
+		if got := mustExecute(t, nextDriver, submit(r)); got.Status != protocol.Queued {
 			t.Fatal(got)
 		}
 	}
-	mustExecute(t, d, airlock.Command{Kind: airlock.Release, Request: holder, LeaseID: grant.LeaseID})
-	for _, r := range []airlock.Request{high1, high2, low, high3} {
+	mustExecute(t, d, protocol.Command{Kind: protocol.Release, Request: holder, LeaseID: grant.LeaseID})
+	for _, r := range []protocol.Request{high1, high2, low, high3} {
 		// Reconstruct the adapter between selection and observation. Neither local
 		// state nor client connection identity may reset the persisted turn cursor.
 		fresh, err := New(other, d.prefix)
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := mustExecute(t, fresh, airlock.Command{Kind: airlock.Observe, Request: r})
-		if got.Status != airlock.Granted {
+		got := mustExecute(t, fresh, protocol.Command{Kind: protocol.Observe, Request: r})
+		if got.Status != protocol.Granted {
 			t.Fatal(r.Tenant, got)
 		}
-		mustExecute(t, d, airlock.Command{Kind: airlock.Release, Request: r, LeaseID: got.LeaseID})
+		mustExecute(t, d, protocol.Command{Kind: protocol.Release, Request: r, LeaseID: got.LeaseID})
 	}
 }

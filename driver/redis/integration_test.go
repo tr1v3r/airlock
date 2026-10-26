@@ -9,7 +9,7 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
@@ -58,8 +58,8 @@ func TestIntegrationStandalone(t *testing.T) { integrationSuite(t, false) }
 func TestIntegrationCluster(t *testing.T)    { integrationSuite(t, true) }
 func integrationSuite(t *testing.T, cluster bool) {
 	client := integrationClient(t, cluster)
-	prefix := "airlock-test-" + airlock.NewRequest(time.Now()).Owner
-	factory := func(t *testing.T) airlock.Driver {
+	prefix := "airlock-test-" + protocol.NewRequest(time.Now()).Owner
+	factory := func(t *testing.T) protocol.Driver {
 		t.Helper()
 		d, err := New(client, prefix)
 		if err != nil {
@@ -79,7 +79,7 @@ func integrationSuite(t *testing.T, cluster bool) {
 			t.Fatal(err)
 		}
 		r := request()
-		r.Resource = airlock.NewRequest(time.Now()).Owner
+		r.Resource = protocol.NewRequest(time.Now()).Owner
 		a := mustExecute(t, first, submit(r))
 		b := mustExecute(t, second, submit(r))
 		if a.LeaseID != b.LeaseID || b.Revision <= a.Revision {
@@ -88,7 +88,7 @@ func integrationSuite(t *testing.T, cluster bool) {
 		if ttl := client.PTTL(context.Background(), first.key(r.Resource)).Val(); ttl != -1 {
 			t.Fatal(ttl)
 		}
-		mustExecute(t, second, airlock.Command{Kind: airlock.Release, Request: r, LeaseID: a.LeaseID})
+		mustExecute(t, second, protocol.Command{Kind: protocol.Release, Request: r, LeaseID: a.LeaseID})
 	})
 	t.Run("script_cache_flush", func(t *testing.T) {
 		// Use only an isolated test server: flushing script cache affects all users.
@@ -103,8 +103,8 @@ func integrationSuite(t *testing.T, cluster bool) {
 		}
 		d := factory(t).(*Driver)
 		r := request()
-		r.Resource = airlock.NewRequest(time.Now()).Owner
-		if got := mustExecute(t, d, submit(r)); got.Status != airlock.Granted {
+		r.Resource = protocol.NewRequest(time.Now()).Owner
+		if got := mustExecute(t, d, submit(r)); got.Status != protocol.Granted {
 			t.Fatal(got)
 		}
 	})

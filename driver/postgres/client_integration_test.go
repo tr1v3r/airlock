@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 func TestIntegrationShared(t *testing.T) {
 	d := integrationDriver(t, integrationDB(t), uniquePrefix())
-	client, err := airlock.NewShared(d, airlock.SharedOptions{Resource: "client-lifecycle", Config: airlock.ResourceConfig{Admission: airlock.Config{Capacity: 2, MaxQueued: 4, MaxQueuedPerTenant: 4}, LeaseTTL: 5 * time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 30}, OperationTimeout: time.Second, PollInterval: 10 * time.Millisecond})
+	client, err := airlock.NewShared(d, airlock.SharedOptions{Resource: "client-lifecycle", Config: protocol.ResourceConfig{Admission: protocol.Config{Capacity: 2, MaxQueued: 4, MaxQueuedPerTenant: 4}, LeaseTTL: 5 * time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 30}, OperationTimeout: time.Second, PollInterval: 10 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}

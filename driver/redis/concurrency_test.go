@@ -7,7 +7,7 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 // Force a real stale-snapshot CAS, rather than making a hook return a synthetic
@@ -28,7 +28,7 @@ func TestCASConflictRecomputesAgainstCommittedWinner(t *testing.T) {
 	winner.Config, winner.Weight = candidate.Config, candidate.Weight
 	var injected bool
 	var conflicts, commits int
-	var winning airlock.Result
+	var winning protocol.Result
 	client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
 		if isCAS(cmd) && !injected {
 			injected = true
@@ -50,15 +50,15 @@ func TestCASConflictRecomputesAgainstCommittedWinner(t *testing.T) {
 		return err
 	}})
 	got, err := d.Submit(context.Background(), candidate)
-	if err != nil || got.Status != airlock.Queued || got.Weight != 3 || got.LeaseID != "" || got.Remaining != 0 {
+	if err != nil || got.Status != protocol.Queued || got.Weight != 3 || got.LeaseID != "" || got.Remaining != 0 {
 		t.Fatalf("stale candidate must recompute as queued: %+v err=%v", got, err)
 	}
-	if !injected || conflicts != 1 || commits != 1 || winning.Status != airlock.Granted || got.Revision != winning.Revision+1 {
+	if !injected || conflicts != 1 || commits != 1 || winning.Status != protocol.Granted || got.Revision != winning.Revision+1 {
 		t.Fatalf("winner=%+v candidate=%+v conflicts=%d commits=%d", winning, got, conflicts, commits)
 	}
-	mustExecute(t, other, airlock.Command{Kind: airlock.Release, Request: winner, LeaseID: winning.LeaseID})
-	granted := mustExecute(t, other, airlock.Command{Kind: airlock.Observe, Request: candidate})
-	if granted.Status != airlock.Granted || granted.Weight != 3 || granted.LeaseID == "" || granted.LeaseID == winning.LeaseID {
+	mustExecute(t, other, protocol.Command{Kind: protocol.Release, Request: winner, LeaseID: winning.LeaseID})
+	granted := mustExecute(t, other, protocol.Command{Kind: protocol.Observe, Request: candidate})
+	if granted.Status != protocol.Granted || granted.Weight != 3 || granted.LeaseID == "" || granted.LeaseID == winning.LeaseID {
 		t.Fatal(granted)
 	}
 }
@@ -84,7 +84,7 @@ func TestEvalDoesNotFallbackOnOtherErrors(t *testing.T) {
 				return sentinel
 			}})
 			got, err := d.Submit(context.Background(), request())
-			if !errors.Is(err, sentinel) || got != (airlock.Result{}) || len(names) != 1 || names[0] != "evalsha" {
+			if !errors.Is(err, sentinel) || got != (protocol.Result{}) || len(names) != 1 || names[0] != "evalsha" {
 				t.Fatalf("commands=%v result=%+v err=%v", names, got, err)
 			}
 		})

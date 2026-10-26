@@ -10,6 +10,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/tr1v3r/airlock"
 	"github.com/tr1v3r/airlock/driver/postgres"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 func ExampleNew() {
@@ -29,8 +30,8 @@ func ExampleNew() {
 	}
 	client, err := airlock.NewShared(driver, airlock.SharedOptions{
 		Resource: "workers",
-		Config: airlock.ResourceConfig{
-			Admission: airlock.Config{Capacity: 4, MaxQueued: 8, MaxQueuedPerTenant: 8},
+		Config: protocol.ResourceConfig{
+			Admission: protocol.Config{Capacity: 4, MaxQueued: 8, MaxQueuedPerTenant: 8},
 		},
 	})
 	if err != nil {

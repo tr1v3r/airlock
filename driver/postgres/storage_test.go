@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 func TestLoadRelationalFailures(t *testing.T) {
@@ -97,8 +97,8 @@ func TestPersistDeltasAndFailures(t *testing.T) {
 			defer func() { _ = tx.Rollback() }()
 			now := time.Now().UTC().Truncate(time.Millisecond)
 			r := request(now)
-			rec := airlock.DriverRecord{Request: r, Status: airlock.Queued, Until: r.WaitUntil}
-			state := &airlock.DriverState{Resource: r.Resource, Time: now, Revision: 2, Records: map[string]*airlock.DriverRecord{r.ID: &rec}, Queues: map[string][]string{r.Tenant: {r.ID}}}
+			rec := protocol.Record{Request: r, Status: protocol.Queued, Until: r.WaitUntil}
+			state := &protocol.State{Resource: r.Resource, Time: now, Revision: 2, Records: map[string]*protocol.Record{r.ID: &rec}, Queues: map[string][]string{r.Tenant: {r.ID}}}
 			m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 			del := m.ExpectExec("DELETE")
 			if failure == "delete" {
@@ -124,12 +124,12 @@ func TestPersistDeltasAndFailures(t *testing.T) {
 }
 
 func TestNamedCancelAndRelease(t *testing.T) {
-	for _, op := range []airlock.Operation{airlock.Cancel, airlock.Release} {
+	for _, op := range []protocol.Operation{protocol.Cancel, protocol.Release} {
 		t.Run(string(op), func(t *testing.T) {
 			d, m := mockDriver(t)
 			now := time.Now()
 			r := request(now)
-			data, grant, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+			data, grant, err := protocol.ApplySnapshot(nil, now, protocol.Command{Kind: protocol.Submit, Request: r})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -137,10 +137,10 @@ func TestNamedCancelAndRelease(t *testing.T) {
 			m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 			m.ExpectExec("INSERT").WillReturnResult(sqlmock.NewResult(0, 1))
 			m.ExpectCommit()
-			if op == airlock.Cancel {
+			if op == protocol.Cancel {
 				_, err = d.Cancel(context.Background(), r)
 			} else {
-				_, err = d.Release(context.Background(), airlock.LeaseRef{Request: r, ID: grant.LeaseID})
+				_, err = d.Release(context.Background(), protocol.LeaseRef{Request: r, ID: grant.LeaseID})
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -153,14 +153,14 @@ func TestTransitionFailureRollsBack(t *testing.T) {
 	d, m := mockDriver(t)
 	now := time.Now()
 	r := request(now)
-	data, _, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	data, _, err := protocol.ApplySnapshot(nil, now, protocol.Command{Kind: protocol.Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}
 	beforeTransition(m, data, now.Add(-time.Second))
 	m.ExpectRollback()
 	result, err := d.Observe(context.Background(), r)
-	if !errors.Is(err, airlock.ErrCorruptState) || result != (airlock.Result{}) {
+	if !errors.Is(err, protocol.ErrCorruptState) || result != (protocol.Result{}) {
 		t.Fatal(result, err)
 	}
 }
@@ -177,12 +177,12 @@ func TestQueuePositionExhaustionFailsClosed(t *testing.T) {
 			defer func() { _ = tx.Rollback() }()
 			m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 			m.ExpectRollback()
-			s := &airlock.DriverState{Queues: map[string][]string{"tenant": {"a", "b"}}}
+			s := &protocol.State{Queues: map[string][]string{"tenant": {"a", "b"}}}
 			before := map[string]row{"a": {position: sql.NullInt64{Int64: math.MaxInt64, Valid: true}}}
 			if mode == "out-of-order" {
 				before["b"] = row{position: sql.NullInt64{Int64: 1, Valid: true}}
 			}
-			if err = d.persist(context.Background(), tx, s, before); !errors.Is(err, airlock.ErrCorruptState) {
+			if err = d.persist(context.Background(), tx, s, before); !errors.Is(err, protocol.ErrCorruptState) {
 				t.Fatal(err)
 			}
 		})

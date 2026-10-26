@@ -1,7 +1,7 @@
 // Package redis stores Airlock admission state in one persistent Redis key per
 // resource. It uses backend time and guarded compare-and-swap; it never executes
 // work or owns the injected client. Durability depends on the Redis deployment.
-// Methods require non-nil contexts and follow airlock.Driver recovery rules.
+// Methods require non-nil contexts and follow protocol.Driver recovery rules.
 // Confirmed CAS conflicts may retry; ambiguous writes never authorize work.
 package redis
 
@@ -12,7 +12,7 @@ import (
 	"errors"
 	"fmt"
 	goredis "github.com/redis/go-redis/v9"
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 	"strconv"
 	"strings"
 	"time"
@@ -167,7 +167,7 @@ func decodeRead(raw any) ([]byte, bool, time.Time, error) {
 		return nil, false, time.Time{}, err
 	}
 	if exists == 1 && state == "" {
-		return nil, false, time.Time{}, airlock.ErrCorruptState
+		return nil, false, time.Time{}, protocol.ErrCorruptState
 	}
 	return []byte(state), exists == 1, now, nil
 }
@@ -176,15 +176,15 @@ func decodeRead(raw any) ([]byte, bool, time.Time, error) {
 // maintenance changes. Transport/script errors return a zero Result and are not
 // retried: a write may have succeeded. Recover with the original request identity.
 // Only confirmed CAS conflicts or clock-window misses are recomputed.
-func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.Result, error) {
+func (d *Driver) execute(ctx context.Context, command protocol.Command) (protocol.Result, error) {
 	if err := ctx.Err(); err != nil {
-		return airlock.Result{}, err
+		return protocol.Result{}, err
 	}
 	if d == nil || d.client == nil {
-		return airlock.Result{}, errors.New("airlock/redis: uninitialized driver")
+		return protocol.Result{}, errors.New("airlock/redis: uninitialized driver")
 	}
-	if err := airlock.ValidateCommand(command); err != nil {
-		return airlock.Result{}, err
+	if err := protocol.ValidateCommand(command); err != nil {
+		return protocol.Result{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()
@@ -192,23 +192,23 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 	for attempt := 0; ; attempt++ {
 		raw, err := d.eval(ctx, readScript, key)
 		if err != nil {
-			return airlock.Result{}, fmt.Errorf("airlock/redis: read: %w", err)
+			return protocol.Result{}, fmt.Errorf("airlock/redis: read: %w", err)
 		}
 		snapshot, exists, now, err := decodeRead(raw)
 		if err != nil {
-			return airlock.Result{}, err
+			return protocol.Result{}, err
 		}
-		next, result, window, transitionErr := airlock.TransitionOptimistic(snapshot, now, command)
+		next, result, window, transitionErr := protocol.ApplyOptimistic(snapshot, now, command)
 		if next == nil {
 			return result, transitionErr
 		}
 		lower, err := micro(window.NotBefore)
 		if err != nil {
-			return airlock.Result{}, err
+			return protocol.Result{}, err
 		}
 		upper, err := micro(window.Before)
 		if err != nil {
-			return airlock.Result{}, err
+			return protocol.Result{}, err
 		}
 		expected := "0"
 		if exists {
@@ -216,15 +216,15 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 		}
 		raw, err = d.eval(ctx, casScript, key, expected, string(snapshot), string(next), lower, upper)
 		if err != nil {
-			return airlock.Result{}, fmt.Errorf("airlock/redis: compare and swap: %w", err)
+			return protocol.Result{}, fmt.Errorf("airlock/redis: compare and swap: %w", err)
 		}
 		committed, ok := raw.(int64)
 		if !ok || (committed != 0 && committed != 1) {
-			return airlock.Result{}, errors.New("airlock/redis: malformed CAS response")
+			return protocol.Result{}, errors.New("airlock/redis: malformed CAS response")
 		}
 		if committed == 1 {
 			if err := ctx.Err(); err != nil {
-				return airlock.Result{}, err
+				return protocol.Result{}, err
 			}
 			return result, transitionErr
 		}
@@ -232,36 +232,36 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return airlock.Result{}, ctx.Err()
+			return protocol.Result{}, ctx.Err()
 		case <-timer.C:
 		}
 	}
 }
 
 // Verify the Redis backend implements the public Driver contract.
-var _ airlock.Driver = (*Driver)(nil)
+var _ protocol.Driver = (*Driver)(nil)
 
 // Submit atomically submits the whole request without refreshing an existing lease.
-func (d *Driver) Submit(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Submit, Request: request})
+func (d *Driver) Submit(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Submit, Request: request})
 }
 
 // Observe returns the request outcome after advancing expiry and scheduling.
-func (d *Driver) Observe(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Observe, Request: request})
+func (d *Driver) Observe(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Observe, Request: request})
 }
 
 // Cancel cancels the request, including a grant or a cancellation before submission.
-func (d *Driver) Cancel(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Cancel, Request: request})
+func (d *Driver) Cancel(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Cancel, Request: request})
 }
 
 // Renew extends a live lease matching the original request and lease ID.
-func (d *Driver) Renew(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Renew, Request: lease.Request, LeaseID: lease.ID})
+func (d *Driver) Renew(ctx context.Context, lease protocol.LeaseRef) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Renew, Request: lease.Request, LeaseID: lease.ID})
 }
 
 // Release ends a matching lease and returns its whole weight at most once.
-func (d *Driver) Release(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Release, Request: lease.Request, LeaseID: lease.ID})
+func (d *Driver) Release(ctx context.Context, lease protocol.LeaseRef) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Release, Request: lease.Request, LeaseID: lease.ID})
 }

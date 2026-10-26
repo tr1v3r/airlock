@@ -10,6 +10,7 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 func distributed(t *testing.T, d *Driver, resource string) *airlock.Shared {
@@ -38,7 +39,7 @@ func TestDistributedLeaseLifecycle(t *testing.T) {
 	defer cancelWait()
 	// The protocol wait deadline is truncated to milliseconds, so expiry may
 	// win before the context timer fires. Both outcomes must return no lease.
-	if blocked, err := client.Acquire(wait); (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded) && !errors.Is(err, airlock.ErrLeaseLost)) || blocked != nil {
+	if blocked, err := client.Acquire(wait); (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded) && !errors.Is(err, protocol.ErrLeaseLost)) || blocked != nil {
 		t.Fatal(blocked, err)
 	}
 	if err := lease.Renew(context.Background()); err != nil {
@@ -70,7 +71,7 @@ func TestDistributedLeaseLifecycle(t *testing.T) {
 	if next.Valid() {
 		t.Fatal("expired lease valid")
 	}
-	if err := next.Renew(context.Background()); !errors.Is(err, airlock.ErrLeaseLost) {
+	if err := next.Renew(context.Background()); !errors.Is(err, protocol.ErrLeaseLost) {
 		t.Fatal(err)
 	}
 	replacement, err := client.Acquire(context.Background())

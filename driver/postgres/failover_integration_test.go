@@ -10,13 +10,13 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 	"github.com/tr1v3r/airlock/driver/postgres"
 	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 type failoverFixture struct {
-	Holder, Pending airlock.Request
+	Holder, Pending protocol.Request
 	LeaseID         string
 }
 
@@ -44,9 +44,9 @@ func TestSynchronousFailover(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	call := func(kind airlock.Operation, r airlock.Request, lease string, want airlock.Status) airlock.Result {
+	call := func(kind protocol.Operation, r protocol.Request, lease string, want protocol.Status) protocol.Result {
 		t.Helper()
-		result, e := driverconformance.Invoke(ctx, driver, airlock.Command{Kind: kind, Request: r, LeaseID: lease})
+		result, e := driverconformance.Invoke(ctx, driver, protocol.Command{Kind: kind, Request: r, LeaseID: lease})
 		if e != nil || result.Status != want {
 			t.Fatalf("%s: %+v %v want %s", kind, result, e, want)
 		}
@@ -57,10 +57,10 @@ func TestSynchronousFailover(t *testing.T) {
 		if err := driver.EnsureSchema(ctx); err != nil {
 			t.Fatal(err)
 		}
-		cfg := airlock.ResourceConfig{Admission: airlock.Config{Capacity: 3, MaxQueued: 10, MaxQueuedPerTenant: 10, Priority: &airlock.PriorityPolicy{Groups: []airlock.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 5}, {Name: "low", Turns: 1, MaxQueued: 5}}, DefaultGroup: "low", TenantGroups: map[string]string{"online": "high"}}}, LeaseTTL: time.Minute, MaxWait: time.Minute, SubmitWindow: time.Minute, Retention: time.Minute, MaxRecords: 100}
-		req := func(tenant string, n int) airlock.Request {
+		cfg := protocol.ResourceConfig{Admission: protocol.Config{Capacity: 3, MaxQueued: 10, MaxQueuedPerTenant: 10, Priority: &protocol.PriorityPolicy{Groups: []protocol.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 5}, {Name: "low", Turns: 1, MaxQueued: 5}}, DefaultGroup: "low", TenantGroups: map[string]string{"online": "high"}}}, LeaseTTL: time.Minute, MaxWait: time.Minute, SubmitWindow: time.Minute, Retention: time.Minute, MaxRecords: 100}
+		req := func(tenant string, n int) protocol.Request {
 			now := time.Now()
-			r := airlock.NewRequest(now.Add(50 * time.Second))
+			r := protocol.NewRequest(now.Add(50 * time.Second))
 			r.Config = cfg
 			r.Resource = "capacity"
 			r.Tenant = tenant
@@ -69,8 +69,8 @@ func TestSynchronousFailover(t *testing.T) {
 			return r
 		}
 		fixture := failoverFixture{Holder: req("holder", 2), Pending: req("batch", 3)}
-		fixture.LeaseID = call(airlock.Submit, fixture.Holder, "", airlock.Granted).LeaseID
-		call(airlock.Submit, fixture.Pending, "", airlock.Queued)
+		fixture.LeaseID = call(protocol.Submit, fixture.Holder, "", protocol.Granted).LeaseID
+		call(protocol.Submit, fixture.Pending, "", protocol.Queued)
 		data, err := json.Marshal(fixture)
 		if err != nil {
 			t.Fatal(err)
@@ -91,30 +91,30 @@ func TestSynchronousFailover(t *testing.T) {
 		if err := db.QueryRowContext(ctx, "SELECT pg_catalog.pg_is_in_recovery()").Scan(&recovery); err != nil || recovery {
 			t.Fatalf("standby not promoted: %t %v", recovery, err)
 		}
-		held := call(airlock.Observe, fixture.Holder, "", airlock.Granted)
+		held := call(protocol.Observe, fixture.Holder, "", protocol.Granted)
 		if held.LeaseID != fixture.LeaseID {
 			t.Fatal("failover replaced a committed lease")
 		}
-		call(airlock.Observe, fixture.Pending, "", airlock.Queued)
-		small := airlock.NewRequest(time.Now().Add(30 * time.Second))
+		call(protocol.Observe, fixture.Pending, "", protocol.Queued)
+		small := protocol.NewRequest(time.Now().Add(30 * time.Second))
 		small.Config = fixture.Holder.Config
 		small.Resource = fixture.Holder.Resource
 		small.Tenant = "online"
 		small.Weight = 1
 		small.WaitUntil = small.SubmitUntil
-		call(airlock.Submit, small, "", airlock.Queued)
-		call(airlock.Release, fixture.Holder, held.LeaseID, airlock.Released)
-		call(airlock.Observe, small, "", airlock.Queued)
-		large := call(airlock.Observe, fixture.Pending, "", airlock.Granted)
-		call(airlock.Release, fixture.Pending, large.LeaseID, airlock.Released)
-		tiny := call(airlock.Observe, small, "", airlock.Granted)
-		call(airlock.Submit, fixture.Holder, "", airlock.Released)
+		call(protocol.Submit, small, "", protocol.Queued)
+		call(protocol.Release, fixture.Holder, held.LeaseID, protocol.Released)
+		call(protocol.Observe, small, "", protocol.Queued)
+		large := call(protocol.Observe, fixture.Pending, "", protocol.Granted)
+		call(protocol.Release, fixture.Pending, large.LeaseID, protocol.Released)
+		tiny := call(protocol.Observe, small, "", protocol.Granted)
+		call(protocol.Submit, fixture.Holder, "", protocol.Released)
 		wrong := small
-		wrong.Owner = airlock.NewRequest(time.Now()).Owner
-		if _, err := driver.Release(ctx, airlock.LeaseRef{Request: wrong, ID: tiny.LeaseID}); !errors.Is(err, airlock.ErrRequestConflict) {
+		wrong.Owner = protocol.NewRequest(time.Now()).Owner
+		if _, err := driver.Release(ctx, protocol.LeaseRef{Request: wrong, ID: tiny.LeaseID}); !errors.Is(err, protocol.ErrRequestConflict) {
 			t.Fatalf("wrong owner: %v", err)
 		}
-		call(airlock.Release, small, tiny.LeaseID, airlock.Released)
+		call(protocol.Release, small, tiny.LeaseID, protocol.Released)
 	default:
 		t.Fatalf("unknown mode %q", mode)
 	}

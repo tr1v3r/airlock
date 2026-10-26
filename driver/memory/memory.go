@@ -1,7 +1,7 @@
 // Package memory provides an in-process reference for Airlock's durable protocol.
 // Use it for Shared API tests and demos; use airlock.New for ordinary local admission.
 // It simulates leases and recovery, not network partitions or durable storage.
-// All operations follow airlock.Driver: reuse the original request, disregard
+// All operations follow protocol.Driver: reuse the original request, disregard
 // results on error, and remember that cancellation can follow a committed change.
 package memory
 
@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 // resource holds one volatile protocol snapshot and its serialization gate.
@@ -36,12 +36,12 @@ type Driver struct {
 func New() *Driver { return &Driver{} }
 
 // execute serializes each resource and uses the shared durable state machine.
-func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Result, error) {
+func (d *Driver) execute(ctx context.Context, cmd protocol.Command) (protocol.Result, error) {
 	if err := ctx.Err(); err != nil {
-		return airlock.Result{}, err
+		return protocol.Result{}, err
 	}
-	if err := airlock.ValidateCommand(cmd); err != nil {
-		return airlock.Result{}, err
+	if err := protocol.ValidateCommand(cmd); err != nil {
+		return protocol.Result{}, err
 	}
 	d.mu.Lock()
 	if d.resources == nil {
@@ -57,45 +57,45 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 	case r.gate <- struct{}{}:
 		defer func() { <-r.gate }()
 	case <-ctx.Done():
-		return airlock.Result{}, ctx.Err()
+		return protocol.Result{}, ctx.Err()
 	}
 	if err := ctx.Err(); err != nil {
-		return airlock.Result{}, err
+		return protocol.Result{}, err
 	}
-	next, result, err := airlock.Transition(r.snapshot, time.Now(), cmd)
+	next, result, err := protocol.ApplySnapshot(r.snapshot, time.Now(), cmd)
 	if next != nil {
 		r.snapshot = next
 	}
 	if err := ctx.Err(); err != nil {
-		return airlock.Result{}, err
+		return protocol.Result{}, err
 	}
 	return result, err
 }
 
 // Verify the reference backend implements the public Driver contract.
-var _ airlock.Driver = (*Driver)(nil)
+var _ protocol.Driver = (*Driver)(nil)
 
 // Submit atomically submits the whole request without refreshing an existing lease.
-func (d *Driver) Submit(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Submit, Request: request})
+func (d *Driver) Submit(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Submit, Request: request})
 }
 
 // Observe returns the request outcome after advancing expiry and scheduling.
-func (d *Driver) Observe(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Observe, Request: request})
+func (d *Driver) Observe(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Observe, Request: request})
 }
 
 // Cancel cancels the request, including a grant or a cancellation before submission.
-func (d *Driver) Cancel(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Cancel, Request: request})
+func (d *Driver) Cancel(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Cancel, Request: request})
 }
 
 // Renew extends a live lease matching the original request and lease ID.
-func (d *Driver) Renew(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Renew, Request: lease.Request, LeaseID: lease.ID})
+func (d *Driver) Renew(ctx context.Context, lease protocol.LeaseRef) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Renew, Request: lease.Request, LeaseID: lease.ID})
 }
 
 // Release ends a matching lease and returns its whole weight at most once.
-func (d *Driver) Release(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Release, Request: lease.Request, LeaseID: lease.ID})
+func (d *Driver) Release(ctx context.Context, lease protocol.LeaseRef) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Release, Request: lease.Request, LeaseID: lease.ID})
 }

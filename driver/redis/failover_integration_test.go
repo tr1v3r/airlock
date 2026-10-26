@@ -9,12 +9,12 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 	"github.com/tr1v3r/airlock/driver/redis"
 )
 
 type failoverFixture struct {
-	Request  airlock.Request
+	Request  protocol.Request
 	LeaseID  string
 	Deadline time.Time
 }
@@ -40,12 +40,12 @@ func TestAsynchronousFailoverLosesAcknowledgedGrant(t *testing.T) {
 	defer cancel()
 	switch mode {
 	case "seed":
-		r := airlock.NewRequest(time.Now().Add(time.Minute))
-		r.Config = airlock.ResourceConfig{Admission: airlock.Config{Capacity: 1, MaxQueued: 4, MaxQueuedPerTenant: 4}, LeaseTTL: 2 * time.Minute, MaxWait: time.Minute, SubmitWindow: time.Minute, Retention: time.Minute, MaxRecords: 20}
+		r := protocol.NewRequest(time.Now().Add(time.Minute))
+		r.Config = protocol.ResourceConfig{Admission: protocol.Config{Capacity: 1, MaxQueued: 4, MaxQueuedPerTenant: 4}, LeaseTTL: 2 * time.Minute, MaxWait: time.Minute, SubmitWindow: time.Minute, Retention: time.Minute, MaxRecords: 20}
 		r.Resource, r.Weight, r.WaitUntil = "resource", 1, r.SubmitUntil
 		start := time.Now()
 		got, err := d.Submit(ctx, r)
-		if err != nil || got.Status != airlock.Granted {
+		if err != nil || got.Status != protocol.Granted {
 			t.Fatalf("seed: %+v %v", got, err)
 		}
 		fixture := failoverFixture{Request: r, LeaseID: got.LeaseID, Deadline: start.Add(got.Remaining)}
@@ -69,13 +69,13 @@ func TestAsynchronousFailoverLosesAcknowledgedGrant(t *testing.T) {
 			t.Fatal("fault took longer than old lease; overlap was not demonstrated")
 		}
 		got, err := d.Observe(ctx, fixture.Request)
-		if !errors.Is(err, airlock.ErrNotFound) || got.Status != "" || got.LeaseID != "" || got.Weight != 0 {
+		if !errors.Is(err, protocol.ErrNotFound) || got.Status != "" || got.LeaseID != "" || got.Weight != 0 {
 			t.Fatalf("expected lost grant: %+v %v", got, err)
 		}
-		fresh := airlock.NewRequest(time.Now().Add(30 * time.Second))
+		fresh := protocol.NewRequest(time.Now().Add(30 * time.Second))
 		fresh.Config, fresh.Resource, fresh.Weight, fresh.WaitUntil = fixture.Request.Config, fixture.Request.Resource, 1, fresh.SubmitUntil
 		got, err = d.Submit(ctx, fresh)
-		if err != nil || got.Status != airlock.Granted || got.LeaseID == fixture.LeaseID {
+		if err != nil || got.Status != protocol.Granted || got.LeaseID == fixture.LeaseID {
 			t.Fatalf("new grant: %+v %v", got, err)
 		}
 		if !time.Now().Before(fixture.Deadline) {

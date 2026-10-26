@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 type fakeLease struct {
@@ -107,7 +107,7 @@ func TestJobLeaseLossCancelsBlockedRenewalBeforeRelease(t *testing.T) {
 		<-ctx.Done()
 		return ctx.Err()
 	})
-	if !errors.Is(err, airlock.ErrLeaseLost) {
+	if !errors.Is(err, protocol.ErrLeaseLost) {
 		t.Fatal(err)
 	}
 }
@@ -141,7 +141,7 @@ func TestJobPreservesRenewErrorWhenDoneClosesFirst(t *testing.T) {
 		<-ctx.Done()
 		return ctx.Err()
 	})
-	if !errors.Is(err, lostReply) || !errors.Is(err, airlock.ErrLeaseLost) {
+	if !errors.Is(err, lostReply) || !errors.Is(err, protocol.ErrLeaseLost) {
 		t.Fatalf("lost renewal failure: %v", err)
 	}
 }
@@ -241,7 +241,7 @@ func TestJobParentCancellationAndInvalidLease(t *testing.T) {
 		cancel()
 		want := context.Canceled
 		if invalid {
-			want = airlock.ErrLeaseLost
+			want = protocol.ErrLeaseLost
 		}
 		if !errors.Is(err, want) || called == invalid {
 			t.Fatalf("invalid=%v called=%v err=%v", invalid, called, err)

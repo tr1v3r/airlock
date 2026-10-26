@@ -6,18 +6,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 func TestConformance(t *testing.T) {
-	driverconformance.Run(t, func(*testing.T) airlock.Driver { return New() })
+	driverconformance.Run(t, func(*testing.T) protocol.Driver { return New() })
 }
 func TestCancellation(t *testing.T) {
 	d := New()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := d.Submit(ctx, airlock.Request{}); !errors.Is(err, context.Canceled) {
+	if _, err := d.Submit(ctx, protocol.Request{}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	d.resources = map[string]*resource{"locked": {gate: make(chan struct{}, 1)}}
@@ -32,7 +32,7 @@ func TestCancellation(t *testing.T) {
 }
 func TestInvalidRequestDoesNotPersist(t *testing.T) {
 	d := New()
-	if _, err := d.Submit(context.Background(), airlock.Request{}); err == nil {
+	if _, err := d.Submit(context.Background(), protocol.Request{}); err == nil {
 		t.Fatal("invalid accepted")
 	}
 	if d.resources[""] != nil {
@@ -40,13 +40,13 @@ func TestInvalidRequestDoesNotPersist(t *testing.T) {
 	}
 }
 
-func memoryRequest(resource string) airlock.Request {
+func memoryRequest(resource string) protocol.Request {
 	now := time.Now()
-	r := airlock.NewRequest(now.Add(time.Second))
+	r := protocol.NewRequest(now.Add(time.Second))
 	r.Resource = resource
 	r.WaitUntil = now.Add(time.Second).UTC().Truncate(time.Millisecond)
 	r.Weight = 1
-	r.Config = airlock.ResourceConfig{Admission: airlock.Config{Capacity: 1}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 10}
+	r.Config = protocol.ResourceConfig{Admission: protocol.Config{Capacity: 1}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 10}
 	return r
 }
 

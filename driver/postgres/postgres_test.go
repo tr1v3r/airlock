@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 func mockDriver(t *testing.T, options ...Option) (*Driver, sqlmock.Sqlmock) {
@@ -32,16 +32,16 @@ func mockDriver(t *testing.T, options ...Option) (*Driver, sqlmock.Sqlmock) {
 	}
 	return d, m
 }
-func request(now time.Time) airlock.Request {
+func request(now time.Time) protocol.Request {
 	now = now.UTC().Truncate(time.Millisecond)
-	r := airlock.NewRequest(now.Add(20 * time.Second))
+	r := protocol.NewRequest(now.Add(20 * time.Second))
 	r.Resource, r.Tenant, r.Weight = "test-resource", "tenant", 1
 	r.WaitUntil = now.Add(20 * time.Second)
-	r.Config = airlock.ResourceConfig{Admission: airlock.Config{Capacity: 1, MaxQueued: 8, MaxQueuedPerTenant: 8}, LeaseTTL: time.Second, MaxWait: 30 * time.Second, SubmitWindow: 30 * time.Second, Retention: time.Second, MaxRecords: 64}
+	r.Config = protocol.ResourceConfig{Admission: protocol.Config{Capacity: 1, MaxQueued: 8, MaxQueuedPerTenant: 8}, LeaseTTL: time.Second, MaxWait: 30 * time.Second, SubmitWindow: 30 * time.Second, Retention: time.Second, MaxRecords: 64}
 	return r
 }
 func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
-	s := airlock.DriverState{Version: 1, Config: request(now).Config, Rotations: [][]string{}}
+	s := protocol.State{Version: 1, Config: request(now).Config, Rotations: [][]string{}}
 	if len(snapshot) > 0 {
 		_ = json.Unmarshal(snapshot, &s)
 	}
@@ -54,7 +54,7 @@ func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
 }
 func requestRows(snapshot []byte) *sqlmock.Rows {
 	rows := sqlmock.NewRows(strings.Split(strings.ReplaceAll(requestColumns, " ", ""), ","))
-	var s airlock.DriverState
+	var s protocol.State
 	_ = json.Unmarshal(snapshot, &s)
 	for _, r := range s.Records {
 		rows.AddRow(r.Request.ID, r.Request.Owner, r.Request.Tenant, r.Request.Weight, r.Request.SubmitUntil.UnixMilli(), r.Request.WaitUntil.UnixMilli(), string(r.Status), r.LeaseID, millis(r.Until), millis(r.Finished), r.Failure, nil)
@@ -107,7 +107,7 @@ func TestValidationWithoutDatabase(t *testing.T) {
 		if err := d.EnsureSchema(ctx); !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
-		if _, err := d.Submit(ctx, airlock.Request{}); !errors.Is(err, context.Canceled) {
+		if _, err := d.Submit(ctx, protocol.Request{}); !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
 	}
@@ -115,12 +115,12 @@ func TestValidationWithoutDatabase(t *testing.T) {
 		if err := d.EnsureSchema(context.Background()); err == nil {
 			t.Fatal("invalid driver")
 		}
-		if _, err := d.Submit(context.Background(), airlock.Request{}); err == nil {
+		if _, err := d.Submit(context.Background(), protocol.Request{}); err == nil {
 			t.Fatal("invalid driver")
 		}
 	}
 	d, _ := mockDriver(t)
-	if _, err := d.Submit(context.Background(), airlock.Request{}); !errors.Is(err, airlock.ErrInvalidConfig) {
+	if _, err := d.Submit(context.Background(), protocol.Request{}); !errors.Is(err, protocol.ErrInvalidConfig) {
 		t.Fatal(err)
 	}
 }
@@ -213,7 +213,7 @@ func TestExecuteFailureBoundaries(t *testing.T) {
 				m.ExpectRollback()
 			}
 			got, err := d.Submit(context.Background(), request(now))
-			if err == nil || got != (airlock.Result{}) {
+			if err == nil || got != (protocol.Result{}) {
 				t.Fatalf("unsafe result=%+v err=%v", got, err)
 			}
 		})
@@ -224,7 +224,7 @@ func TestBusinessErrorCommitsMaintenance(t *testing.T) {
 	d, m := mockDriver(t)
 	now := time.Now()
 	r := request(now)
-	initial, _, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	initial, _, err := protocol.ApplySnapshot(nil, now, protocol.Command{Kind: protocol.Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,8 +232,8 @@ func TestBusinessErrorCommitsMaintenance(t *testing.T) {
 	m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 	m.ExpectExec("INSERT INTO").WillReturnResult(sqlmock.NewResult(0, 1))
 	m.ExpectCommit()
-	got, err := d.Renew(context.Background(), airlock.LeaseRef{Request: r, ID: "stale"})
-	if !errors.Is(err, airlock.ErrLeaseLost) || got.Status == airlock.Granted {
+	got, err := d.Renew(context.Background(), protocol.LeaseRef{Request: r, ID: "stale"})
+	if !errors.Is(err, protocol.ErrLeaseLost) || got.Status == protocol.Granted {
 		t.Fatalf("%+v %v", got, err)
 	}
 }
@@ -242,10 +242,10 @@ func TestAmbiguousCommitRecovery(t *testing.T) {
 	d, m := mockDriver(t)
 	now := time.Now()
 	r := request(now)
-	cmd := airlock.Command{Kind: airlock.Submit, Request: r}
+	cmd := protocol.Command{Kind: protocol.Submit, Request: r}
 	// Model a server-side commit whose response is lost. Transition is deterministic
 	// for a request, so the separately computed durable snapshot is authoritative.
-	durable, granted, err := airlock.Transition(nil, now, cmd)
+	durable, granted, err := protocol.ApplySnapshot(nil, now, cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,14 +253,14 @@ func TestAmbiguousCommitRecovery(t *testing.T) {
 	m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 	m.ExpectExec("INSERT INTO").WillReturnResult(sqlmock.NewResult(0, 1))
 	m.ExpectCommit().WillReturnError(errors.New("commit response lost"))
-	if got, err := d.Submit(context.Background(), r); err == nil || got != (airlock.Result{}) {
+	if got, err := d.Submit(context.Background(), r); err == nil || got != (protocol.Result{}) {
 		t.Fatalf("%+v %v", got, err)
 	}
 	beforeTransition(m, durable, now.Add(time.Millisecond))
 	m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 	m.ExpectCommit()
 	got, err := d.Observe(context.Background(), r)
-	if err != nil || got.Status != airlock.Granted || got.LeaseID != granted.LeaseID || got.Remaining >= granted.Remaining {
+	if err != nil || got.Status != protocol.Granted || got.LeaseID != granted.LeaseID || got.Remaining >= granted.Remaining {
 		t.Fatalf("%+v %v", got, err)
 	}
 }
@@ -269,7 +269,7 @@ func TestOperationDeadline(t *testing.T) {
 	d, m := mockDriver(t, WithOperationTimeout(time.Millisecond))
 	m.ExpectBegin().WillDelayFor(20 * time.Millisecond)
 	started := time.Now()
-	if got, err := d.Submit(context.Background(), request(started)); err == nil || got != (airlock.Result{}) {
+	if got, err := d.Submit(context.Background(), request(started)); err == nil || got != (protocol.Result{}) {
 		t.Fatalf("%+v %v", got, err)
 	}
 	if time.Since(started) > time.Second {

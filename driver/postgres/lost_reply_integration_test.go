@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
@@ -80,32 +80,32 @@ func TestIntegrationCommittedResponseLoss(t *testing.T) {
 	r.Config.LeaseTTL = 5 * time.Second
 	r.Config.Admission.Capacity = 2
 	r.Weight = 2
-	unknown := func(kind airlock.Operation, lease string) {
+	unknown := func(kind protocol.Operation, lease string) {
 		t.Helper()
 		connector.armed.Store(true)
-		result, e := driverconformance.Invoke(context.Background(), faulty, airlock.Command{Kind: kind, Request: r, LeaseID: lease})
-		if !errors.Is(e, io.ErrUnexpectedEOF) || result != (airlock.Result{}) {
+		result, e := driverconformance.Invoke(context.Background(), faulty, protocol.Command{Kind: kind, Request: r, LeaseID: lease})
+		if !errors.Is(e, io.ErrUnexpectedEOF) || result != (protocol.Result{}) {
 			t.Fatalf("unknown %s exposed result: %+v %v", kind, result, e)
 		}
 	}
-	unknown(airlock.Submit, "")
-	grant := executeStatus(t, observer, airlock.Observe, r, "", airlock.Granted)
-	retry := executeStatus(t, observer, airlock.Submit, r, "", airlock.Granted)
+	unknown(protocol.Submit, "")
+	grant := executeStatus(t, observer, protocol.Observe, r, "", protocol.Granted)
+	retry := executeStatus(t, observer, protocol.Submit, r, "", protocol.Granted)
 	if retry.LeaseID != grant.LeaseID || retry.Remaining > grant.Remaining {
 		t.Fatal("lost Submit response caused a second grant/extended TTL")
 	}
 	other := r
-	identity := airlock.NewRequest(r.SubmitUntil)
+	identity := protocol.NewRequest(r.SubmitUntil)
 	other.ID, other.Owner = identity.ID, identity.Owner
 	other.Weight = 1
-	executeStatus(t, observer, airlock.Submit, other, "", airlock.Queued)
-	unknown(airlock.Renew, grant.LeaseID)
-	renewed := executeStatus(t, observer, airlock.Observe, r, "", airlock.Granted)
+	executeStatus(t, observer, protocol.Submit, other, "", protocol.Queued)
+	unknown(protocol.Renew, grant.LeaseID)
+	renewed := executeStatus(t, observer, protocol.Observe, r, "", protocol.Granted)
 	if renewed.LeaseID != grant.LeaseID {
 		t.Fatal("renew changed identity")
 	}
-	unknown(airlock.Release, grant.LeaseID)
-	executeStatus(t, observer, airlock.Release, r, grant.LeaseID, airlock.Released)
-	next := executeStatus(t, observer, airlock.Observe, other, "", airlock.Granted)
-	executeStatus(t, observer, airlock.Release, other, next.LeaseID, airlock.Released)
+	unknown(protocol.Release, grant.LeaseID)
+	executeStatus(t, observer, protocol.Release, r, grant.LeaseID, protocol.Released)
+	next := executeStatus(t, observer, protocol.Observe, other, "", protocol.Granted)
+	executeStatus(t, observer, protocol.Release, other, next.LeaseID, protocol.Released)
 }

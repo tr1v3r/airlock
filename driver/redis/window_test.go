@@ -8,14 +8,14 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 // Move server time between read and CAS. A Renew derived from the old live lease
 // must not resurrect it once its old expiry has passed before publication.
 func TestExpiryBetweenReadAndCommit(t *testing.T) {
-	for _, operation := range []airlock.Operation{airlock.Renew, airlock.Cancel} {
+	for _, operation := range []protocol.Operation{protocol.Renew, protocol.Cancel} {
 		t.Run(string(operation), func(t *testing.T) {
 			d, client, server := fixture(t)
 			now := time.Now().UTC().Truncate(time.Millisecond)
@@ -38,19 +38,19 @@ func TestExpiryBetweenReadAndCommit(t *testing.T) {
 				}
 				return err
 			}})
-			result, err := driverconformance.Invoke(context.Background(), d, airlock.Command{Kind: operation, Request: r, LeaseID: grant.LeaseID})
-			if operation == airlock.Renew {
-				if !errors.Is(err, airlock.ErrLeaseLost) {
+			result, err := driverconformance.Invoke(context.Background(), d, protocol.Command{Kind: operation, Request: r, LeaseID: grant.LeaseID})
+			if operation == protocol.Renew {
+				if !errors.Is(err, protocol.ErrLeaseLost) {
 					t.Fatal(result, err)
 				}
-			} else if err != nil || result.Status != airlock.Expired {
+			} else if err != nil || result.Status != protocol.Expired {
 				t.Fatal(result, err)
 			}
 			if conflicts != 1 {
 				t.Fatal("time guard not exercised", conflicts)
 			}
-			observed := mustExecute(t, d, airlock.Command{Kind: airlock.Observe, Request: r})
-			if observed.Status != airlock.Expired {
+			observed := mustExecute(t, d, protocol.Command{Kind: protocol.Observe, Request: r})
+			if observed.Status != protocol.Expired {
 				t.Fatal(observed)
 			}
 		})

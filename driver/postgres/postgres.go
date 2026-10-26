@@ -2,7 +2,7 @@
 // Callers own the database pool. New performs no I/O; EnsureSchema is explicit.
 // Commands lock one permanent resource row and evaluate backend time after the
 // lock, then persist resource metadata and changed request rows in the same transaction.
-// Methods require non-nil contexts and follow airlock.Driver recovery rules.
+// Methods require non-nil contexts and follow protocol.Driver recovery rules.
 // An error never authorizes work; a commit response can be lost after persistence.
 package postgres
 
@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 // Driver is a concurrency-safe PostgreSQL adapter. Construct it with New; its
@@ -109,42 +109,42 @@ func New(db *sql.DB, prefix string, options ...Option) (*Driver, error) {
 // expiry/scheduling changes. Transport/commit errors return a zero Result: the
 // transaction may have committed, so recover with the same request identity.
 // No connection is held while the admitted business task executes.
-func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Result, error) {
+func (d *Driver) execute(ctx context.Context, cmd protocol.Command) (protocol.Result, error) {
 	if err := d.validate(ctx); err != nil {
-		return airlock.Result{}, err
+		return protocol.Result{}, err
 	}
-	if err := airlock.ValidateCommand(cmd); err != nil {
-		return airlock.Result{}, err
+	if err := protocol.ValidateCommand(cmd); err != nil {
+		return protocol.Result{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()
 	tx, err := d.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
-		return airlock.Result{}, fmt.Errorf("airlock/postgres: begin: %w", err)
+		return protocol.Result{}, fmt.Errorf("airlock/postgres: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	state, before, err := d.load(ctx, tx, cmd.Request)
 	if err != nil {
-		return airlock.Result{}, err
+		return protocol.Result{}, err
 	}
 	// Evaluate time after the resource lock AND reading its request rows. The
 	// transaction start time must not revive a lease after a long lock wait.
 	var now time.Time
 	if err = tx.QueryRowContext(ctx, `SELECT pg_catalog.clock_timestamp()`).Scan(&now); err != nil {
-		return airlock.Result{}, fmt.Errorf("airlock/postgres: clock: %w", err)
+		return protocol.Result{}, fmt.Errorf("airlock/postgres: clock: %w", err)
 	}
-	next, result, transitionErr := airlock.TransitionState(state, now, cmd)
+	next, result, transitionErr := protocol.ApplyCommand(state, now, cmd)
 	if next == nil {
 		return result, transitionErr
 	}
 	if err = d.persist(ctx, tx, next, before); err != nil {
-		return airlock.Result{}, err
+		return protocol.Result{}, err
 	}
 	if err = tx.Commit(); err != nil {
-		return airlock.Result{}, fmt.Errorf("airlock/postgres: commit: %w", err)
+		return protocol.Result{}, fmt.Errorf("airlock/postgres: commit: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
-		return airlock.Result{}, err
+		return protocol.Result{}, err
 	}
 	return result, transitionErr
 }
@@ -161,29 +161,29 @@ func (d *Driver) validate(ctx context.Context) error {
 }
 
 // Verify the PostgreSQL backend implements the public Driver contract.
-var _ airlock.Driver = (*Driver)(nil)
+var _ protocol.Driver = (*Driver)(nil)
 
 // Submit atomically submits the whole request without refreshing an existing lease.
-func (d *Driver) Submit(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Submit, Request: request})
+func (d *Driver) Submit(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Submit, Request: request})
 }
 
 // Observe returns the request outcome after advancing expiry and scheduling.
-func (d *Driver) Observe(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Observe, Request: request})
+func (d *Driver) Observe(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Observe, Request: request})
 }
 
 // Cancel cancels the request, including a grant or a cancellation before submission.
-func (d *Driver) Cancel(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Cancel, Request: request})
+func (d *Driver) Cancel(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Cancel, Request: request})
 }
 
 // Renew extends a live lease matching the original request and lease ID.
-func (d *Driver) Renew(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Renew, Request: lease.Request, LeaseID: lease.ID})
+func (d *Driver) Renew(ctx context.Context, lease protocol.LeaseRef) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Renew, Request: lease.Request, LeaseID: lease.ID})
 }
 
 // Release ends a matching lease and returns its whole weight at most once.
-func (d *Driver) Release(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
-	return d.execute(ctx, airlock.Command{Kind: airlock.Release, Request: lease.Request, LeaseID: lease.ID})
+func (d *Driver) Release(ctx context.Context, lease protocol.LeaseRef) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Release, Request: lease.Request, LeaseID: lease.ID})
 }

@@ -12,6 +12,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/tr1v3r/airlock"
 	redisdriver "github.com/tr1v3r/airlock/driver/redis"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 // main runs the Redis example only when an isolated backend address is supplied.
@@ -36,8 +37,8 @@ func run(address string) error {
 	}
 	limiter, err := airlock.NewShared(driver, airlock.SharedOptions{
 		Resource: "jobs",
-		Config: airlock.ResourceConfig{
-			Admission: airlock.Config{Capacity: 8, MaxQueued: 32, MaxQueuedPerTenant: 8},
+		Config: protocol.ResourceConfig{
+			Admission: protocol.Config{Capacity: 8, MaxQueued: 32, MaxQueuedPerTenant: 8},
 		},
 	})
 	if err != nil {
@@ -54,7 +55,7 @@ func run(address string) error {
 	var workErr error
 	select {
 	case <-lease.Done():
-		workErr = airlock.ErrLeaseLost
+		workErr = protocol.ErrLeaseLost
 	default:
 		fmt.Printf("admitted %d tokens\n", lease.Weight())
 	}

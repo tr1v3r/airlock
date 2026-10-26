@@ -11,7 +11,7 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 func TestConstructorSocketDeadlines(t *testing.T) {
@@ -77,7 +77,7 @@ func TestContextOnlySocketDeadlineBoundsBlackHole(t *testing.T) {
 					t.Fatal(err)
 				}
 				type outcome struct {
-					result airlock.Result
+					result protocol.Result
 					err    error
 				}
 				done := make(chan outcome, 1)
@@ -87,7 +87,7 @@ func TestContextOnlySocketDeadlineBoundsBlackHole(t *testing.T) {
 				}()
 				select {
 				case got := <-done:
-					if got.result != (airlock.Result{}) {
+					if got.result != (protocol.Result{}) {
 						t.Fatalf("black-hole I/O authorized result: %+v", got.result)
 					}
 					if !errors.Is(got.err, context.DeadlineExceeded) && !errors.Is(got.err, os.ErrDeadlineExceeded) {
