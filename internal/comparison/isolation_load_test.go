@@ -29,33 +29,42 @@ func isolationTrace(scenario string, seed int64) []isolationArrival {
 	if scenario == "low-large" || scenario == "low-long" {
 		lowCount = 32
 	}
+
 	if scenario == "high-overload" {
 		lowCount, highCount = 16, 160
 	}
+
 	if scenario == "low-only" {
 		highCount = 0
 	}
+
 	trace := make([]isolationArrival, 0, lowCount+highCount)
+
 	for i := 0; i < lowCount; i++ {
 		weight := 1
 		hold := time.Duration(4+rng.Intn(3)) * time.Millisecond
+
 		switch scenario {
 		case "low-large":
 			weight, hold = 8, time.Duration(8+rng.Intn(5))*time.Millisecond
 		case "low-long":
 			hold = time.Duration(40+rng.Intn(21)) * time.Millisecond
 		}
+
 		trace = append(trace, isolationArrival{tenant: fmt.Sprintf("L%d", i%2), weight: weight, hold: hold})
 	}
+
 	for i := 0; i < highCount; i++ {
 		hold := time.Duration(1+rng.Intn(2)) * time.Millisecond
 		interval := time.Millisecond
 		if scenario == "high-overload" {
 			hold, interval = time.Duration(8+rng.Intn(5))*time.Millisecond, 50*time.Microsecond
 		}
+
 		trace = append(trace, isolationArrival{high: true, tenant: fmt.Sprintf("H%d", i%2), weight: 1,
 			arrival: 10*time.Millisecond + time.Duration(i)*interval, hold: hold, budget: 5 * time.Millisecond})
 	}
+
 	return trace
 }
 
@@ -79,14 +88,17 @@ func (m *isolationMeter) event(high bool, delta int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := time.Now()
+
 	for i, used := range m.used {
 		m.tokenTime[i] += time.Duration(used) * now.Sub(m.last)
 	}
+
 	m.last = now
 	index := 1
 	if high {
 		index = 0
 	}
+
 	m.used[index] += delta
 }
 
@@ -122,6 +134,7 @@ func isolationQuantile(values []time.Duration, percentile int) *float64 {
 	if len(values) == 0 {
 		return nil
 	}
+
 	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
 	v := float64(values[(len(values)-1)*percentile/100]) / float64(time.Millisecond)
 	return &v
@@ -131,18 +144,22 @@ func isolationSummarize(t *testing.T, samples []isolationSample, high bool) isol
 	t.Helper()
 	var result isolationClassResult
 	var successful, all, lag []time.Duration
+
 	for _, sample := range samples {
 		if sample.high != high {
 			continue
 		}
+
 		result.Submitted++
 		all, lag = append(all, sample.wait), append(lag, sample.lag)
 		if sample.expiredAtCall {
 			result.ExpiredAtCall++
 		}
+
 		if sample.lateGrant {
 			result.LateGrants++
 		}
+
 		switch sample.outcome {
 		case "granted":
 			result.Granted++
@@ -155,6 +172,7 @@ func isolationSummarize(t *testing.T, samples []isolationSample, high bool) isol
 			t.Errorf("unexpected acquisition outcome: %s", sample.outcome)
 		}
 	}
+
 	result.SuccessP95MS = isolationQuantile(successful, 95)
 	result.SuccessP99MS = isolationQuantile(successful, 99)
 	result.SuccessMaxMS = isolationQuantile(successful, 100)
@@ -176,6 +194,7 @@ func runIsolationLoad(t *testing.T, scenario string, seed int64, split bool) iso
 	outerCtx, outerCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer outerCancel()
 	var wg sync.WaitGroup
+
 	for i, request := range trace {
 		wg.Add(1)
 		go func(i int, request isolationArrival) {
@@ -184,6 +203,7 @@ func runIsolationLoad(t *testing.T, scenario string, seed int64, split bool) iso
 			if delay := time.Until(planned); delay > 0 {
 				time.Sleep(delay)
 			}
+
 			ctx := outerCtx
 			deadline := planned.Add(request.budget)
 			if request.budget > 0 {
@@ -191,12 +211,14 @@ func runIsolationLoad(t *testing.T, scenario string, seed int64, split bool) iso
 				ctx, cancel = context.WithDeadline(outerCtx, deadline)
 				defer cancel()
 			}
+
 			begin := time.Now()
 			sample := isolationSample{high: request.high, lag: begin.Sub(planned),
 				expiredAtCall: request.budget > 0 && !begin.Before(deadline)}
 			p, err := pools.pool(request.high).AcquireNFor(ctx, request.tenant, request.weight)
 			returned := time.Now()
 			sample.wait = returned.Sub(begin)
+
 			switch {
 			case err == nil:
 				sample.outcome = "granted"
@@ -207,6 +229,7 @@ func runIsolationLoad(t *testing.T, scenario string, seed int64, split bool) iso
 				time.Sleep(request.hold)
 				meter.event(request.high, -request.weight)
 				p.Release()
+
 			case errors.Is(err, context.DeadlineExceeded):
 				sample.outcome = "deadline"
 			case errors.Is(err, airlock.ErrQueueFull), errors.Is(err, airlock.ErrGroupQueueFull), errors.Is(err, airlock.ErrTenantQueueFull):
@@ -214,14 +237,17 @@ func runIsolationLoad(t *testing.T, scenario string, seed int64, split bool) iso
 			default:
 				sample.outcome = fmt.Sprintf("unexpected: %v", err)
 			}
+
 			samples[i] = sample
 		}(i, request)
 	}
+
 	wg.Wait()
 	meter.event(false, 0)
 	if err := outerCtx.Err(); err != nil {
 		t.Fatalf("experiment timed out: %v", err)
 	}
+
 	elapsed := time.Since(start)
 	result := isolationLoadResult{Scenario: scenario, Seed: seed, Mode: "shared",
 		High: isolationSummarize(t, samples, true), Low: isolationSummarize(t, samples, false),
@@ -244,8 +270,10 @@ func TestIsolationLoadComparison(t *testing.T) {
 	if os.Getenv("AIRLOCK_ISOLATION_LOAD") != "1" {
 		t.Skip("set AIRLOCK_ISOLATION_LOAD=1 for capacity isolation experiments")
 	}
+
 	t.Logf("platform=%s/%s go=%s GOMAXPROCS=%d total=%d high=%d low=%d highQueue=16 lowQueue=128 highWaitBudget=5ms",
 		runtime.GOOS, runtime.GOARCH, runtime.Version(), runtime.GOMAXPROCS(0), isolationTotal, isolationHigh, isolationLow)
+
 	for _, scenario := range []string{"low-flood", "low-large", "low-long", "high-overload", "low-only"} {
 		for seed := int64(1); seed <= 3; seed++ {
 			// Alternate adapter order across seeds to reduce a fixed order bias.
@@ -254,12 +282,14 @@ func TestIsolationLoadComparison(t *testing.T) {
 				if split {
 					name = "split"
 				}
+
 				t.Run(fmt.Sprintf("%s/seed%d/%s", scenario, seed, name), func(t *testing.T) {
 					result := runIsolationLoad(t, scenario, seed, split)
 					data, err := json.Marshal(result)
 					if err != nil {
 						t.Fatal(err)
 					}
+
 					t.Logf("ISOLATION_RESULT %s", data)
 				})
 			}

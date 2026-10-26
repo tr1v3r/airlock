@@ -16,6 +16,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	permit, err := lock.Acquire(context.Background())
 	if err != nil {
 		log.Fatal(err)

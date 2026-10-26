@@ -30,6 +30,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	var workers sync.WaitGroup
 	defer workers.Wait()
@@ -53,6 +54,7 @@ func run() error {
 		"online", "online", "online", "online",
 		"online", "online", "online", "online",
 	}
+
 	for i, tenant := range tenants {
 		workers.Add(1)
 		go func() {
@@ -64,23 +66,29 @@ func run() error {
 				permit.Release()
 			}
 		}()
+
 		// Demo-only barrier: the holder prevents grants, so Queued can only grow.
 		// Production callers should block in Acquire, not poll Stats/TryAcquire.
 		for lock.Stats().Queued < i+1 {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
+
 			runtime.Gosched()
 		}
 	}
+
 	holder.Release()
+
 	for range tenants {
 		outcome := <-results
 		if outcome.err != nil {
 			return outcome.err
 		}
+
 		fmt.Println(outcome.tenant)
 	}
+
 	return nil
 }
 

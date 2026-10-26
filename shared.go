@@ -52,18 +52,22 @@ type Shared struct {
 // the driver and its connections; Acquire starts admission.
 func NewShared(d Driver, options SharedOptions) (*Shared, error) {
 	options = options.withDefaults()
-	if d == nil || options.Resource == "" || !validText(options.Resource) || len(options.Resource) > 256 || options.OperationTimeout <= 0 || options.OperationTimeout > time.Minute || options.PollInterval <= 0 || options.PollInterval > time.Minute {
+	if d == nil || options.Resource == "" || !validText(options.Resource) || len(options.Resource) > 256 ||
+		options.OperationTimeout <= 0 || options.OperationTimeout > time.Minute || options.PollInterval <= 0 || options.PollInterval > time.Minute {
 		return nil, ErrInvalidConfig
 	}
 	if err := validConfig(options.Config); err != nil {
 		return nil, err
 	}
+
 	allowance := options.ClockSkewAllowance
 	// Check each upper bound before subtraction; never multiply an untrusted
 	// duration by two (which could overflow). Both windows need room for +/-skew.
-	if allowance < 0 || allowance%time.Millisecond != 0 || allowance >= options.Config.SubmitWindow || allowance >= options.Config.MaxWait || allowance >= options.Config.SubmitWindow-allowance || allowance >= options.Config.MaxWait-allowance {
+	if allowance < 0 || allowance%time.Millisecond != 0 || allowance >= options.Config.SubmitWindow ||
+		allowance >= options.Config.MaxWait || allowance >= options.Config.SubmitWindow-allowance || allowance >= options.Config.MaxWait-allowance {
 		return nil, ErrInvalidConfig
 	}
+
 	data, _ := json.Marshal(options)
 	var copied SharedOptions
 	_ = json.Unmarshal(data, &copied)
@@ -113,6 +117,7 @@ func (d *Shared) execute(ctx context.Context, operation func(context.Context) (R
 	if err := op.Err(); err != nil {
 		return Result{}, start, err
 	}
+
 	result, err := operation(op)
 	// Even a driver that reports success after its I/O deadline cannot authorize work.
 	if err == nil {
@@ -135,6 +140,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
 	now := time.Now()
 	allowance := d.options.ClockSkewAllowance
 	r := NewRequest(now.Add(d.options.Config.SubmitWindow - allowance))
@@ -148,6 +154,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 		r.WaitUntil = deadline.UTC().Truncate(time.Millisecond)
 		folded = true
 	}
+
 	if allowance > 0 {
 		r.WaitUntil = r.WaitUntil.Add(-allowance)
 		// A short caller deadline can consume the entire conservative waiting
@@ -159,20 +166,25 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 			return nil, ErrLeaseLost
 		}
 	}
+
 	if err := validRequest(r); err != nil {
 		return nil, err
 	}
+
 	operation := func(ctx context.Context) (Result, error) { return d.driver.Submit(ctx, r) }
+
 	for {
 		result, start, err := d.execute(ctx, operation)
 		if err == nil {
 			err = ctx.Err()
 		}
+
 		if err == nil {
 			switch result.Status {
 			case Granted:
 				deadline := start.Add(result.Remaining)
-				if result.LeaseID == "" || result.Weight != n || result.Remaining <= 0 || result.Remaining > r.Config.LeaseTTL || !time.Now().Before(deadline) {
+				if result.LeaseID == "" || result.Weight != n || result.Remaining <= 0 ||
+					result.Remaining > r.Config.LeaseTTL || !time.Now().Before(deadline) {
 					err = ErrLeaseLost
 				} else {
 					lease := &Lease{client: d, request: r, id: result.LeaseID, deadline: deadline, done: make(chan struct{})}
@@ -181,8 +193,10 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 					lease.mu.Unlock()
 					return lease, nil
 				}
+
 			case Queued:
 				timer := time.NewTimer(d.options.PollInterval)
+
 				select {
 				case <-ctx.Done():
 					timer.Stop()
@@ -191,6 +205,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 					operation = func(ctx context.Context) (Result, error) { return d.driver.Observe(ctx, r) }
 					continue
 				}
+
 			default:
 				// The waiting deadline was folded from the caller's context, so
 				// backend expiry of that request IS the caller's deadline observed
@@ -205,6 +220,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 				}
 			}
 		}
+
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.options.OperationTimeout)
 		_, _, cleanupErr := d.execute(cleanup, func(ctx context.Context) (Result, error) { return d.driver.Cancel(ctx, r) })
 		cancel()
@@ -270,7 +286,12 @@ func (l *Lease) expire() {
 func (l *Lease) Done() <-chan struct{} { return l.done }
 
 // Valid checks the deadline directly, even if a paused process delayed its timer.
-func (l *Lease) Valid() bool { l.expire(); l.mu.Lock(); defer l.mu.Unlock(); return !l.closed }
+func (l *Lease) Valid() bool {
+	l.expire()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return !l.closed
+}
 
 // Weight returns the atomic allocation size.
 func (l *Lease) Weight() int { return l.request.Weight }
@@ -285,19 +306,24 @@ func (l *Lease) Renew(ctx context.Context) error {
 	if !l.Valid() {
 		return ErrLeaseLost
 	}
+
 	result, start, err := l.client.execute(ctx, func(ctx context.Context) (Result, error) {
 		return l.client.driver.Renew(ctx, LeaseRef{Request: l.request, ID: l.id})
 	})
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	deadline := start.Add(result.Remaining)
-	if err == nil && (l.closed || !time.Now().Before(l.deadline) || result.Status != Granted || result.LeaseID != l.id || result.Weight != l.request.Weight || result.Remaining <= 0 || result.Remaining > l.request.Config.LeaseTTL || !time.Now().Before(deadline)) {
+	if err == nil && (l.closed || !time.Now().Before(l.deadline) || result.Status != Granted ||
+		result.LeaseID != l.id || result.Weight != l.request.Weight || result.Remaining <= 0 ||
+		result.Remaining > l.request.Config.LeaseTTL || !time.Now().Before(deadline)) {
 		err = ErrLeaseLost
 	}
+
 	if err != nil {
 		l.invalidateLocked()
 		return err
 	}
+
 	l.deadline = deadline
 	l.timer.Stop()
 	l.timer = time.AfterFunc(time.Until(deadline), l.expire)

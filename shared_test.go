@@ -27,6 +27,7 @@ func (d *clientStateDriver) execute(ctx context.Context, cmd Command) (Result, e
 	if data != nil {
 		d.state = data
 	}
+
 	d.calls = append(d.calls, cmd)
 	d.mu.Unlock()
 	if d.after != nil {
@@ -34,14 +35,17 @@ func (d *clientStateDriver) execute(ctx context.Context, cmd Command) (Result, e
 	}
 	return result, err
 }
+
 func (d *clientStateDriver) commands() []Command {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return append([]Command(nil), d.calls...)
 }
+
 func clientOptions() SharedOptions {
 	return SharedOptions{Resource: "test", Config: ResourceConfig{Admission: Config{Capacity: 2, MaxQueued: 16, MaxQueuedPerTenant: 16}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 100}, OperationTimeout: 500 * time.Millisecond, PollInterval: time.Millisecond}
 }
+
 func clientNew(t *testing.T, d Driver, options SharedOptions) *Shared {
 	t.Helper()
 	c, err := NewShared(d, options)
@@ -50,28 +54,34 @@ func clientNew(t *testing.T, d Driver, options SharedOptions) *Shared {
 	}
 	return c
 }
+
 func clientAcquire(t *testing.T, c *Shared) *Lease {
 	t.Helper()
 	l, err := c.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() { _ = l.Release(context.Background()) })
 	return l
 }
+
 func clientAwait(t *testing.T, ch <-chan struct{}) {
 	t.Helper()
+
 	select {
 	case <-ch:
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for event")
 	}
 }
+
 func clientClosed(t *testing.T, l *Lease) {
 	t.Helper()
 	if l.Valid() {
 		t.Fatal("lease still valid")
 	}
+
 	select {
 	case <-l.Done():
 	default:
@@ -92,6 +102,7 @@ func TestSharedOptionsValidationAndSnapshot(t *testing.T) {
 		{"long interval", func(o *SharedOptions) { o.PollInterval = time.Minute + 1 }},
 		{"invalid admission", func(o *SharedOptions) { o.Config.Admission.Capacity = 0 }},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			o := clientOptions()
@@ -101,9 +112,11 @@ func TestSharedOptionsValidationAndSnapshot(t *testing.T) {
 			}
 		})
 	}
+
 	if _, err := NewShared(nil, clientOptions()); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatal(err)
 	}
+
 	o := clientOptions()
 	o.Config.Admission.Priority = &PriorityPolicy{Groups: []PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 8}, {Name: "low", Turns: 1, MaxQueued: 8}}, DefaultGroup: "low", TenantGroups: map[string]string{"online": "high"}}
 	c := clientNew(t, &clientStateDriver{}, o)
@@ -117,6 +130,7 @@ func TestSharedOptionsValidationAndSnapshot(t *testing.T) {
 func TestSharedAcquireArguments(t *testing.T) {
 	d := &clientStateDriver{}
 	c := clientNew(t, d, clientOptions())
+
 	for _, tc := range []struct {
 		n   int
 		err error
@@ -125,14 +139,17 @@ func TestSharedAcquireArguments(t *testing.T) {
 			t.Fatalf("weight %d: %v", tc.n, err)
 		}
 	}
+
 	if _, err := c.AcquireFor(context.Background(), ""); !errors.Is(err, ErrInvalidTenant) {
 		t.Fatal(err)
 	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := c.Acquire(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
+
 	for _, f := range []func(){func() { _, _ = c.Acquire(nil) }, func() { _, _ = c.AcquireNFor(nil, "a", 1) }} { //nolint:staticcheck // SA1012: exercise the explicit nil-context panic contract.
 		func() {
 			defer func() {
@@ -143,6 +160,7 @@ func TestSharedAcquireArguments(t *testing.T) {
 			f()
 		}()
 	}
+
 	if len(d.commands()) != 0 {
 		t.Fatal("invalid requests contacted backend")
 	}
@@ -156,15 +174,18 @@ func TestSharedLeaseLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	cancel()
 	if !l.Valid() || l.Weight() != 2 {
 		t.Fatal("acquisition context revoked delivered lease")
 	}
+
 	select {
 	case <-l.Done():
 		t.Fatal("done closed on acquisition cancellation")
 	default:
 	}
+
 	old := l.deadline
 	time.Sleep(3 * time.Millisecond)
 	if err = l.Renew(context.Background()); err != nil {
@@ -176,6 +197,7 @@ func TestSharedLeaseLifecycle(t *testing.T) {
 	if err = l.Release(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	clientClosed(t, l)
 	if err = l.Release(context.Background()); err != nil {
 		t.Fatalf("idempotent release: %v", err)
@@ -183,6 +205,7 @@ func TestSharedLeaseLifecycle(t *testing.T) {
 	if err = l.Renew(context.Background()); !errors.Is(err, ErrLeaseLost) {
 		t.Fatal(err)
 	}
+
 	l2, err := c.AcquireFor(context.Background(), "other")
 	if err != nil {
 		t.Fatal(err)
@@ -208,11 +231,15 @@ func TestSharedQueuePollAndGrant(t *testing.T) {
 	done := make(chan struct{})
 	var acquired *Lease
 	var err error
-	go func() { acquired, err = c.AcquireFor(context.Background(), "queued"); close(done) }()
+	go func() {
+		acquired, err = c.AcquireFor(context.Background(), "queued")
+		close(done)
+	}()
 	clientAwait(t, submitted)
 	if releaseErr := holder.Release(context.Background()); releaseErr != nil {
 		t.Fatal(releaseErr)
 	}
+
 	clientAwait(t, done)
 	if err != nil {
 		t.Fatal(err)
@@ -220,12 +247,15 @@ func TestSharedQueuePollAndGrant(t *testing.T) {
 	if err = acquired.Release(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	seen := false
+
 	for _, cmd := range d.commands() {
 		if cmd.Kind == Observe {
 			seen = true
 		}
 	}
+
 	if !seen {
 		t.Fatal("queued request never observed")
 	}
@@ -239,6 +269,7 @@ func TestSharedQueuedCancellationCleanupIndependentContext(t *testing.T) {
 		if c.Kind == Submit && r.Status == Queued {
 			once.Do(func() { close(queued) })
 		}
+
 		if c.Kind == Cancel {
 			cleanupLive.Store(ctx.Err() == nil)
 		}
@@ -253,18 +284,23 @@ func TestSharedQueuedCancellationCleanupIndependentContext(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	var err error
-	go func() { _, err = c.Acquire(ctx); close(done) }()
+	go func() {
+		_, err = c.Acquire(ctx)
+		close(done)
+	}()
 	clientAwait(t, queued)
 	cancel()
 	clientAwait(t, done)
 	if !errors.Is(err, context.Canceled) || !cleanupLive.Load() {
 		t.Fatalf("error %v cleanupLive %v", err, cleanupLive.Load())
 	}
+
 	calls := d.commands()
 	last := calls[len(calls)-1]
 	if last.Kind != Cancel {
 		t.Fatalf("last command %s", last.Kind)
 	}
+
 	d.mu.Lock()
 	_, r, e := transitionSnapshot(d.state, time.Now(), Command{Kind: Observe, Request: last.Request})
 	d.mu.Unlock()
@@ -284,10 +320,12 @@ func TestSharedDeadlinePropagatedAndNoAutomaticRenewal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	deadline, _ := ctx.Deadline()
 	if !d.commands()[0].Request.WaitUntil.Equal(deadline.UTC().Truncate(time.Millisecond)) {
 		t.Fatal("caller wait deadline not sent")
 	}
+
 	clientAwait(t, l.Done())
 	clientClosed(t, l)
 	if len(d.commands()) != 1 {
@@ -303,9 +341,11 @@ func TestSharedDeadlinePropagatedAndNoAutomaticRenewal(t *testing.T) {
 func clientExhaustRemaining(r Result) Result {
 	r.Remaining = time.Nanosecond
 	deadline := time.Now().Add(r.Remaining)
+
 	for time.Now().Before(deadline) {
 		runtime.Gosched()
 	}
+
 	return r
 }
 
@@ -321,6 +361,7 @@ func TestSharedAcquireRejectsInvalidOrLateResults(t *testing.T) {
 		{"terminal", func(r Result) Result { r.Status = Released; return r }},
 		{"roundtrip exhausted", clientExhaustRemaining},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
@@ -333,6 +374,7 @@ func TestSharedAcquireRejectsInvalidOrLateResults(t *testing.T) {
 			if l, err := c.Acquire(context.Background()); l != nil || !errors.Is(err, ErrLeaseLost) {
 				t.Fatalf("lease %v error %v", l, err)
 			}
+
 			calls := d.commands()
 			if calls[len(calls)-1].Kind != Cancel {
 				t.Fatal("missing cleanup")
@@ -358,10 +400,12 @@ func TestSharedAmbiguousSubmitAndCleanupErrors(t *testing.T) {
 	if l != nil || !errors.Is(err, lost) || !errors.Is(err, cleanup) {
 		t.Fatalf("lease %v error %v", l, err)
 	}
+
 	calls := d.commands()
 	if len(calls) != 2 || calls[1].Kind != Cancel || calls[0].Request.ID != calls[1].Request.ID {
 		t.Fatal("cleanup changed identity or retried admission")
 	}
+
 	d.mu.Lock()
 	_, r, e := transitionSnapshot(d.state, time.Now(), Command{Kind: Observe, Request: calls[0].Request})
 	d.mu.Unlock()
@@ -439,6 +483,7 @@ func TestSharedRenewErrorsPermanentlyInvalidate(t *testing.T) {
 		{"elapsed ttl", func(_ context.Context, r Result) (Result, error) { return clientExhaustRemaining(r), nil }},
 		{"timeout", func(ctx context.Context, r Result) (Result, error) { <-ctx.Done(); return r, nil }},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var renews atomic.Int32
@@ -456,6 +501,7 @@ func TestSharedRenewErrorsPermanentlyInvalidate(t *testing.T) {
 			if err := l.Renew(context.Background()); err == nil {
 				t.Fatal("renew authorized invalid response")
 			}
+
 			clientClosed(t, l)
 			if err := l.Renew(context.Background()); !errors.Is(err, ErrLeaseLost) {
 				t.Fatal(err)
@@ -483,7 +529,10 @@ func TestSharedRenewCannotResurrectExpiredLease(t *testing.T) {
 	l := clientAcquire(t, c)
 	finished := make(chan struct{})
 	var err error
-	go func() { err = l.Renew(context.Background()); close(finished) }()
+	go func() {
+		err = l.Renew(context.Background())
+		close(finished)
+	}()
 	clientAwait(t, entered)
 	clientAwait(t, l.Done())
 	close(respond)
@@ -491,6 +540,7 @@ func TestSharedRenewCannotResurrectExpiredLease(t *testing.T) {
 	if !errors.Is(err, ErrLeaseLost) {
 		t.Fatal(err)
 	}
+
 	clientClosed(t, l)
 }
 
@@ -511,7 +561,10 @@ func TestSharedReleaseInvalidatesBeforeIOAndRetries(t *testing.T) {
 	l := clientAcquire(t, c)
 	finished := make(chan struct{})
 	var err error
-	go func() { err = l.Release(context.Background()); close(finished) }()
+	go func() {
+		err = l.Release(context.Background())
+		close(finished)
+	}()
 	clientAwait(t, entered)
 	clientClosed(t, l)
 	close(respond)
@@ -522,6 +575,7 @@ func TestSharedReleaseInvalidatesBeforeIOAndRetries(t *testing.T) {
 	if err = l.Release(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	clientClosed(t, l)
 }
 
@@ -537,6 +591,7 @@ func TestSharedReleaseRejectsWrongStatus(t *testing.T) {
 	if err := l.Release(context.Background()); !errors.Is(err, ErrLeaseLost) {
 		t.Fatal(err)
 	}
+
 	clientClosed(t, l)
 }
 
@@ -549,6 +604,7 @@ func TestSharedCancelledRenewAndReleaseDoNotCallDriver(t *testing.T) {
 	if err := l.Renew(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
+
 	clientClosed(t, l)
 	if err := l.Release(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
@@ -566,20 +622,24 @@ func TestSharedConcurrentLeaseOperations(t *testing.T) {
 	c := clientNew(t, d, clientOptions())
 	l := clientAcquire(t, c)
 	var wg sync.WaitGroup
+
 	for i := 0; i < 30; i++ {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
+
 			for j := 0; j < 20; j++ {
 				_ = l.Valid()
 				_ = l.Weight()
 				_ = l.Done()
+
 				switch n % 3 {
 				case 0:
 					err := l.Renew(context.Background())
 					if err != nil && !errors.Is(err, ErrLeaseLost) {
 						t.Error(err)
 					}
+
 				case 1:
 					if err := l.Release(context.Background()); err != nil {
 						t.Error(err)
@@ -588,6 +648,7 @@ func TestSharedConcurrentLeaseOperations(t *testing.T) {
 			}
 		}(i)
 	}
+
 	wg.Wait()
 	clientClosed(t, l)
 }
@@ -625,6 +686,7 @@ func TestSharedDefaultsInteroperateWithExplicitConfig(t *testing.T) {
 	if options.Config.LeaseTTL != 0 || options.OperationTimeout != 0 || len(d.commands()) != 0 {
 		t.Fatal("construction changed input or contacted backend")
 	}
+
 	explicitOptions := SharedOptions{
 		Resource: "jobs",
 		Config: ResourceConfig{
@@ -637,6 +699,7 @@ func TestSharedDefaultsInteroperateWithExplicitConfig(t *testing.T) {
 	if !reflect.DeepEqual(implicit.options, explicitOptions) {
 		t.Fatalf("resolved options: %+v", implicit.options)
 	}
+
 	explicit := clientNew(t, d, explicitOptions)
 	first := clientAcquire(t, implicit)
 	second := clientAcquire(t, explicit)
@@ -655,6 +718,7 @@ func TestSharedProtocolOverridesAndValidation(t *testing.T) {
 	if !reflect.DeepEqual(c.options, o) {
 		t.Fatal("explicit options were overwritten")
 	}
+
 	for name, mutate := range map[string]func(*SharedOptions){
 		"lease":               func(o *SharedOptions) { o.Config.LeaseTTL = -time.Second },
 		"wait":                func(o *SharedOptions) { o.Config.MaxWait = -time.Second },
@@ -706,6 +770,7 @@ func TestSharedClockAllowanceValidation(t *testing.T) {
 			} else if !errors.Is(err, ErrInvalidConfig) || c != nil {
 				t.Fatalf("invalid allowance accepted: %+v %v", c, err)
 			}
+
 			if len(d.commands()) != 0 {
 				t.Fatal("constructor accessed backend")
 			}
@@ -741,10 +806,12 @@ func TestSharedRejectsNonPortableTextBeforeBackend(t *testing.T) {
 			if len(d.commands()) != 0 {
 				t.Fatal("invalid tenant contacted backend")
 			}
+
 			for _, field := range []string{"resource", "group", "mapping key", "mapping value"} {
 				t.Run(field, func(t *testing.T) {
 					o := clientOptions()
 					o.Config.Admission.Priority = &PriorityPolicy{Groups: []PriorityGroup{{Name: "default", Turns: 1, MaxQueued: 16}}, DefaultGroup: "default", TenantGroups: map[string]string{"tenant": "default"}}
+
 					switch field {
 					case "resource":
 						o.Resource = tc.value
@@ -757,6 +824,7 @@ func TestSharedRejectsNonPortableTextBeforeBackend(t *testing.T) {
 					case "mapping value":
 						o.Config.Admission.Priority.TenantGroups["tenant"] = tc.value
 					}
+
 					if _, err := NewShared(d, o); !errors.Is(err, ErrInvalidConfig) {
 						t.Fatalf("invalid %s accepted: %v", field, err)
 					}
@@ -782,6 +850,7 @@ func TestSharedUnicodeNamesSurviveSnapshotRoundTrip(t *testing.T) {
 	if err = lease.Release(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	clientClosed(t, lease)
 }
 
@@ -790,6 +859,7 @@ func TestDistributedCompatibility(t *testing.T) {
 	if _, err := NewDistributed(nil, options); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("legacy constructor validation: %v", err)
 	}
+
 	driver := &clientStateDriver{}
 	legacy, err := NewDistributed(driver, options)
 	if err != nil {
@@ -798,6 +868,7 @@ func TestDistributedCompatibility(t *testing.T) {
 	if len(driver.commands()) != 0 {
 		t.Fatal("construction accessed the backend")
 	}
+
 	// Both exported names identify the same type and share one lease lifecycle.
 	var current *Shared = legacy //nolint:staticcheck // ST1023: assert source compatibility between the exported client types.
 	lease, err := current.AcquireN(context.Background(), 2)

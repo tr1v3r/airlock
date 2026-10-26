@@ -17,6 +17,7 @@ import (
 func TestLoadRelationalFailures(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	r := request(now)
+
 	for _, mode := range []string{"query", "scan", "rows", "status-position", "position-negative", "queued", "initial-record", "initial-config", "bad-revision", "bad-rotations"} {
 		t.Run(mode, func(t *testing.T) {
 			d, m := mockDriver(t)
@@ -32,20 +33,25 @@ func TestLoadRelationalFailures(t *testing.T) {
 			if mode == "bad-revision" {
 				revision = "invalid"
 			}
+
 			if mode == "bad-rotations" {
 				rotations = "invalid"
 			}
+
 			if mode == "initial-record" || mode == "initial-config" {
 				revision = "0"
 				rotations = "[]"
 			}
+
 			if mode == "initial-config" {
 				config = []byte(`{}`)
 			}
+
 			var observed any = now.UnixMilli()
 			if revision == "0" {
 				observed = nil
 			}
+
 			m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"v", "c", "r", "p", "cursor", "rev", "time"}).AddRow(1, config, rotations, "", 0, revision, observed))
 			if mode != "bad-revision" && mode != "bad-rotations" {
 				q := m.ExpectQuery("SELECT id")
@@ -57,22 +63,28 @@ func TestLoadRelationalFailures(t *testing.T) {
 					if mode == "status-position" {
 						position = nil
 					}
+
 					if mode == "position-negative" {
 						position = int64(-1)
 					}
+
 					var weight any = 1
 					if mode == "scan" {
 						weight = "bad"
 					}
+
 					if mode != "initial-config" {
 						rows.AddRow(r.ID, r.Owner, r.Tenant, weight, r.SubmitUntil.UnixMilli(), r.WaitUntil.UnixMilli(), "queued", "", r.WaitUntil.UnixMilli(), nil, "", position)
 					}
+
 					if mode == "rows" {
 						rows.RowError(0, errors.New("stream failed"))
 					}
+
 					q.WillReturnRows(rows)
 				}
 			}
+
 			m.ExpectRollback()
 			s, _, err := d.load(context.Background(), tx, r)
 			if mode == "queued" {
@@ -107,6 +119,7 @@ func TestPersistDeltasAndFailures(t *testing.T) {
 			} else {
 				del.WillReturnResult(sqlmock.NewResult(0, 1))
 			}
+
 			if failure != "delete" {
 				ins := m.ExpectExec("INSERT")
 				if failure == "insert" {
@@ -115,6 +128,7 @@ func TestPersistDeltasAndFailures(t *testing.T) {
 					ins.WillReturnResult(sqlmock.NewResult(0, 1))
 				}
 			}
+
 			m.ExpectRollback()
 			err = d.persist(context.Background(), tx, state, map[string]row{"expired": {}})
 			if (err != nil) != (failure != "") {
@@ -134,6 +148,7 @@ func TestNamedCancelAndRelease(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			beforeTransition(m, data, now)
 			m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 			m.ExpectExec("INSERT").WillReturnResult(sqlmock.NewResult(0, 1))
@@ -143,6 +158,7 @@ func TestNamedCancelAndRelease(t *testing.T) {
 			} else {
 				_, err = d.Release(context.Background(), airlock.LeaseRef{Request: r, ID: grant.LeaseID})
 			}
+
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -158,6 +174,7 @@ func TestTransitionFailureRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	beforeTransition(m, data, now.Add(-time.Second))
 	m.ExpectRollback()
 	result, err := d.Submit(context.Background(), r)
@@ -183,6 +200,7 @@ func TestQueuePositionExhaustionFailsClosed(t *testing.T) {
 			if mode == "out-of-order" {
 				before["b"] = row{position: sql.NullInt64{Int64: 1, Valid: true}}
 			}
+
 			if err = d.persist(context.Background(), tx, s, before); !errors.Is(err, airlock.ErrCorruptState) {
 				t.Fatal(err)
 			}

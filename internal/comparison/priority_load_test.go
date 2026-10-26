@@ -30,11 +30,13 @@ func priorityAdapter(t *testing.T, name string, capacity int) priorityAdmission 
 	if name == "fifo" || name == "nested" {
 		global := semaphore.NewWeighted(int64(capacity))
 		locals := make(map[string]*semaphore.Weighted)
+
 		for _, group := range []string{"H", "M", "L"} {
 			for i := 0; i < 2; i++ {
 				locals[fmt.Sprintf("%s%d", group, i)] = semaphore.NewWeighted(int64(capacity))
 			}
 		}
+
 		return func(ctx context.Context, tenant string, n int) (func(), error) {
 			local := locals[tenant]
 			if name == "nested" {
@@ -42,6 +44,7 @@ func priorityAdapter(t *testing.T, name string, capacity int) priorityAdmission 
 					return nil, err
 				}
 			}
+
 			if err := global.Acquire(ctx, int64(n)); err != nil {
 				if name == "nested" {
 					local.Release(int64(n))
@@ -56,6 +59,7 @@ func priorityAdapter(t *testing.T, name string, capacity int) priorityAdmission 
 			}, nil
 		}
 	}
+
 	cfg := airlock.Config{Capacity: capacity, MaxQueued: 576, MaxQueuedPerTenant: 192}
 	if name == "priority" {
 		cfg.Priority = &airlock.PriorityPolicy{
@@ -68,10 +72,12 @@ func priorityAdapter(t *testing.T, name string, capacity int) priorityAdmission 
 			TenantGroups: map[string]string{"H0": "H", "H1": "H", "M0": "M", "M1": "M", "L0": "L", "L1": "L"},
 		}
 	}
+
 	a, err := airlock.New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() {
 		if s := a.Stats(); s.InUse != 0 || s.Queued != 0 || s.ActivePermits != 0 {
 			t.Errorf("leaked admission state: %+v", s)
@@ -90,6 +96,7 @@ func priorityTrace(scenario string, seed int64) []priorityArrival {
 	rng := rand.New(rand.NewSource(seed))
 	trace := make([]priorityArrival, 192)
 	counts := map[string]int{}
+
 	for i := range trace {
 		group := []string{"H", "M", "L"}[i%3]
 		if scenario == "sparse-low" {
@@ -97,10 +104,12 @@ func priorityTrace(scenario string, seed int64) []priorityArrival {
 			if i%4 == 2 {
 				group = "M"
 			}
+
 			if i%24 == 23 {
 				group = "L"
 			}
 		}
+
 		weight := 1
 		hold := time.Duration(2+rng.Intn(3)) * time.Millisecond
 		if scenario == "low-large" {
@@ -111,17 +120,21 @@ func priorityTrace(scenario string, seed int64) []priorityArrival {
 				weight = 2
 			}
 		}
+
 		if scenario == "cancel-mixed" {
 			weight = 1 + rng.Intn(4)
 		}
+
 		j := priorityArrival{group: group, tenant: fmt.Sprintf("%s%d", group, counts[group]%2), weight: weight,
 			arrival: time.Duration(i) * 100 * time.Microsecond, hold: hold}
 		if scenario == "cancel-mixed" && rng.Intn(3) == 0 {
 			j.deadline = time.Duration(3+rng.Intn(8)) * time.Millisecond
 		}
+
 		counts[group]++
 		trace[i] = j
 	}
+
 	return trace
 }
 
@@ -150,6 +163,7 @@ func (m *priorityMeter) event(pendingDelta, usedDelta int, grant bool) int {
 	if m.pending > 0 && m.used < 8 {
 		m.idlePending += d
 	}
+
 	m.last = now
 	m.pending += pendingDelta
 	m.used += usedDelta
@@ -165,9 +179,11 @@ func TestPriorityLoadComparison(t *testing.T) {
 	if os.Getenv("AIRLOCK_PRIORITY_LOAD") != "1" {
 		t.Skip("set AIRLOCK_PRIORITY_LOAD=1 for priority workload measurements")
 	}
+
 	for _, scenario := range []string{"saturated", "sparse-low", "low-large", "cancel-mixed"} {
 		for seed := int64(1); seed <= 3; seed++ {
 			trace := priorityTrace(scenario, seed)
+
 			for _, name := range []string{"fifo", "nested", "airlock", "priority"} {
 				t.Run(fmt.Sprintf("%s/seed%d/%s", scenario, seed, name), func(t *testing.T) {
 					admit := priorityAdapter(t, name, 8)
@@ -177,10 +193,12 @@ func TestPriorityLoadComparison(t *testing.T) {
 					var wg sync.WaitGroup
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 					defer cancel()
+
 					for i, j := range trace {
 						if d := time.Until(start.Add(j.arrival)); d > 0 {
 							time.Sleep(d)
 						}
+
 						wg.Add(1)
 						go func(i int, j priorityArrival) {
 							defer wg.Done()
@@ -190,6 +208,7 @@ func TestPriorityLoadComparison(t *testing.T) {
 								requestCtx, done = context.WithDeadline(ctx, start.Add(j.arrival+j.deadline))
 								defer done()
 							}
+
 							begin := time.Now()
 							meter.event(1, 0, false)
 							release, err := admit(requestCtx, j.tenant, j.weight)
@@ -207,32 +226,39 @@ func TestPriorityLoadComparison(t *testing.T) {
 								release()
 								r.outcome = "granted"
 							}
+
 							results[i] = r
 						}(i, j)
 					}
+
 					wg.Wait()
 					meter.event(0, 0, false)
 					elapsed := time.Since(start)
 					total := 0
+
 					for _, group := range []string{"H", "M", "L"} {
 						var waits []time.Duration
 						rejected, cancelled, first48 := 0, 0, 0
+
 						for _, r := range results {
 							if r.group != group {
 								continue
 							}
+
 							switch r.outcome {
 							case "granted":
 								waits = append(waits, r.wait)
 								if r.grant <= 48 {
 									first48++
 								}
+
 							case "rejected":
 								rejected++
 							case "cancelled":
 								cancelled++
 							}
 						}
+
 						sort.Slice(waits, func(i, j int) bool { return waits[i] < waits[j] })
 						q := func(p int) float64 {
 							if len(waits) == 0 {
@@ -246,10 +272,12 @@ func TestPriorityLoadComparison(t *testing.T) {
 							t.Errorf("unexpected rejection with queue budgets >= offered requests: group=%s rejected=%d", group, rejected)
 						}
 					}
+
 					t.Logf("throughput=%.1f/s utilization_proxy=%.4f idle_pending_proxy_ms=%.3f elapsed_ms=%.3f", float64(total)/elapsed.Seconds(), float64(meter.tokenTime)/float64(8*elapsed), float64(meter.idlePending)/float64(time.Millisecond), float64(elapsed)/float64(time.Millisecond))
 					if scenario != "cancel-mixed" && total != len(trace) {
 						t.Errorf("non-cancelling trace granted=%d, want %d", total, len(trace))
 					}
+
 					if meter.used != 0 || meter.pending != 0 {
 						t.Fatalf("meter leaked: used=%d pending=%d", meter.used, meter.pending)
 					}
@@ -264,11 +292,13 @@ func TestPriorityLoadComparison(t *testing.T) {
 // before the next slot, so the three group queues remain continuously nonempty.
 func TestPriorityStrictStarvationCounterexample(t *testing.T) {
 	const slots = 1200
+
 	for _, policy := range []string{"strict", "8:3:1"} {
 		pending := [3]int{1, 1, 1}
 		granted, last, gap := [3]int{}, [3]int{-1, -1, -1}, [3]int{}
 		cycle := []int{0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2}
 		cursor := 0
+
 		for i := 0; i < slots; i++ {
 			selected := -1
 			if policy == "strict" {
@@ -288,17 +318,21 @@ func TestPriorityStrictStarvationCounterexample(t *testing.T) {
 					}
 				}
 			}
+
 			if selected < 0 {
 				t.Fatal("no selection with nonempty queues")
 			}
+
 			pending[selected]--
 			granted[selected]++
 			if last[selected] >= 0 && i-last[selected]-1 > gap[selected] {
 				gap[selected] = i - last[selected] - 1
 			}
+
 			last[selected] = i
 			pending[selected]++
 		}
+
 		if policy == "strict" {
 			if granted != [3]int{slots, 0, 0} {
 				t.Fatalf("strict grants=%v", granted)
@@ -306,6 +340,7 @@ func TestPriorityStrictStarvationCounterexample(t *testing.T) {
 		} else if granted != [3]int{800, 300, 100} || gap != [3]int{4, 9, 11} {
 			t.Fatalf("weighted grants=%v max intervening selections=%v", granted, gap)
 		}
+
 		t.Logf("model=%s slots=%d grants(H/M/L)=%v max_intervening_selections=%v (gap undefined for never-selected groups)", policy, slots, granted, gap)
 	}
 }

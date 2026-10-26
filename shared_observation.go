@@ -23,6 +23,7 @@ type Observation struct {
 // Compute it once per committed transition, not once per waiting request.
 func (s *SharedState) NextMaintenance() time.Time {
 	var next time.Time
+
 	for _, rec := range s.Records {
 		at := rec.Until
 		if rec.Status != Queued && rec.Status != Granted {
@@ -31,10 +32,12 @@ func (s *SharedState) NextMaintenance() time.Time {
 				at = rec.Request.SubmitUntil
 			}
 		}
+
 		if next.IsZero() || at.Before(next) {
 			next = at
 		}
 	}
+
 	return next
 }
 
@@ -47,6 +50,7 @@ func (o Observation) Observe(now time.Time, request Request) (result Result, rea
 	if err := ValidateCommand(Command{Kind: Observe, Request: request}); err != nil {
 		return Result{}, true, err
 	}
+
 	request.SubmitUntil = request.SubmitUntil.UTC()
 	request.WaitUntil = request.WaitUntil.UTC()
 	if o.Resource != request.Resource || !reflect.DeepEqual(o.Config, request.Config) {
@@ -61,6 +65,7 @@ func (o Observation) Observe(now time.Time, request Request) (result Result, rea
 	if o.Record == nil {
 		return Result{}, false, nil
 	}
+
 	rec := *o.Record
 	rec.Request.Config = o.Config
 	if !reflect.DeepEqual(rec.Request, request) {
@@ -73,10 +78,12 @@ func (o Observation) Observe(now time.Time, request Request) (result Result, rea
 	if (rec.Status == Granted || rec.Status == Queued) && !now.Before(rec.Until) {
 		return Result{}, false, nil
 	}
+
 	result = Result{Status: rec.Status, LeaseID: rec.LeaseID, Weight: rec.Request.Weight, Revision: o.Revision}
 	if rec.Status == Granted {
 		result.Remaining = rec.Until.Sub(now)
 	}
+
 	if rec.Status == Rejected {
 		err = admissionError(rec.Failure)
 	}

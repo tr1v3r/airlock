@@ -18,17 +18,20 @@ type stateHarness struct {
 func newStateHarness(t *testing.T) *stateHarness {
 	return &stateHarness{t: t, now: time.Unix(1000, 0).UTC()}
 }
+
 func (h *stateHarness) call(kind Operation, r Request, lease string, wantErr error) Result {
 	h.t.Helper()
 	data, res, err := transitionSnapshot(h.data, h.now, Command{Kind: kind, Request: r, LeaseID: lease})
 	if !errors.Is(err, wantErr) {
 		h.t.Fatalf("%s %s: got %v want %v", kind, r.Tenant, err, wantErr)
 	}
+
 	if data != nil {
 		h.data = data
 	}
 	return res
 }
+
 func (h *stateHarness) snapshot() durableSnapshot {
 	h.t.Helper()
 	var s durableSnapshot
@@ -37,6 +40,7 @@ func (h *stateHarness) snapshot() durableSnapshot {
 	}
 	return s
 }
+
 func expectState(t *testing.T, r Result, want Status) {
 	t.Helper()
 	if r.Status != want {
@@ -53,17 +57,20 @@ func TestTransitionLeaseLifecycle(t *testing.T) {
 	if first.Remaining != cfg.LeaseTTL || first.LeaseID == "" || first.Weight != 3 || first.Revision != 1 {
 		t.Fatalf("initial grant: %+v", first)
 	}
+
 	h.now = h.now.Add(100 * time.Millisecond)
 	again := h.call(Submit, r, "", nil)
 	if again.LeaseID != first.LeaseID || again.Remaining != 900*time.Millisecond || again.Revision != 2 {
 		t.Fatalf("retry refreshed grant: %+v", again)
 	}
+
 	h.call(Renew, r, "wrong", ErrLeaseLost)
 	h.call(Release, r, "wrong", ErrLeaseLost)
 	renewed := h.call(Renew, r, first.LeaseID, nil)
 	if renewed.Remaining != cfg.LeaseTTL {
 		t.Fatal(renewed)
 	}
+
 	h.now = h.now.Add(cfg.LeaseTTL - time.Millisecond)
 	expectState(t, h.call(Observe, r, "", nil), Granted)
 	h.now = h.now.Add(time.Millisecond)
@@ -116,11 +123,13 @@ func TestTransitionRecoveryHistoryAndLateSubmission(t *testing.T) {
 	if len(h.snapshot().Records) != 2 {
 		t.Fatal("terminal record collected before submit deadline")
 	}
+
 	h.now = a.SubmitUntil
 	h.call(Submit, a, "", ErrSubmitExpired)
 	if len(h.snapshot().Records) != 1 {
 		t.Fatal("terminal record not collected at both bounds")
 	}
+
 	// A live renewed grant survives the immutable submission deadline and retention.
 	h.call(Renew, b, br.LeaseID, nil)
 	expectState(t, h.call(Submit, b, "", nil), Granted)
@@ -132,6 +141,7 @@ func TestTransitionRecoveryHistoryAndLateSubmission(t *testing.T) {
 	if len(h.snapshot().Records) != 0 {
 		t.Fatal("released history retained beyond retention")
 	}
+
 	// Old identity cannot be reused by extending its submission deadline.
 	changed := a
 	changed.SubmitUntil = changed.SubmitUntil.Add(time.Minute)
@@ -154,6 +164,7 @@ func TestTransitionExpirySweepsBeforeDispatch(t *testing.T) {
 	if s.Records[expired.ID].Status != Expired || s.Records[holder.ID].Status != Expired {
 		t.Fatal("expiry sweep did not remove both blockers")
 	}
+
 	r := stateTestRequest(h.now, cfg, "already expired", 1)
 	r.WaitUntil = h.now
 	expectState(t, h.call(Submit, r, "", nil), Expired)
@@ -169,6 +180,7 @@ func TestTransitionErrorIdentityAndMaintenance(t *testing.T) {
 	if h.snapshot().Revision != before+1 {
 		t.Fatal("business error lost maintenance revision")
 	}
+
 	future := stateTestRequest(h.now, cfg, "future", 1)
 	x := NewRequest(h.now.Add(cfg.SubmitWindow + time.Millisecond))
 	future.ID = x.ID
@@ -202,6 +214,7 @@ func TestTransitionStableAdmissionRejections(t *testing.T) {
 			c.Admission.Priority = &PriorityPolicy{Groups: []PriorityGroup{{Name: "all", Turns: 1, MaxQueued: 1}}, DefaultGroup: "all"}
 		}, ErrGroupQueueFull},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newStateHarness(t)
@@ -218,6 +231,7 @@ func TestTransitionStableAdmissionRejections(t *testing.T) {
 			expectState(t, h.call(Cancel, rejected, "", tc.want), Rejected)
 		})
 	}
+
 	if !errors.Is(admissionError("unknown rejection"), ErrCorruptState) {
 		t.Fatal("unknown rejection not corrupt")
 	}
@@ -232,6 +246,7 @@ func TestTransitionTenantRoundRobinAcrossSnapshots(t *testing.T) {
 	previous := holder
 	var order []Request
 	byTenant := map[string][]Request{}
+
 	for _, tenant := range []string{"a", "b", "c"} {
 		for i := 0; i < 3; i++ {
 			r := stateTestRequest(h.now, cfg, tenant, 1)
@@ -239,21 +254,25 @@ func TestTransitionTenantRoundRobinAcrossSnapshots(t *testing.T) {
 			h.call(Submit, r, "", nil)
 		}
 	}
+
 	for i := 0; i < 3; i++ {
 		for _, tenant := range []string{"a", "b", "c"} {
 			order = append(order, byTenant[tenant][i])
 		}
 	}
+
 	for i, r := range order {
 		h.call(Release, previous, last.LeaseID, nil)
 		last = h.call(Observe, r, "", nil)
 		expectState(t, last, Granted)
 		s := h.snapshot()
+
 		for j := i + 1; j < len(order); j++ {
 			if s.Records[order[j].ID].Status != Queued {
 				t.Fatalf("request %d bypassed %d", j, i)
 			}
 		}
+
 		previous = r
 	}
 }
@@ -267,14 +286,17 @@ func TestTransitionPriorityFullCycles(t *testing.T) {
 	last := h.call(Submit, holder, "", nil)
 	previous := holder
 	queues := map[string][]Request{}
+
 	for _, tenant := range []string{"l", "m", "h"} {
 		count := map[string]int{"h": 24, "m": 9, "l": 3}[tenant]
+
 		for i := 0; i < count; i++ {
 			r := stateTestRequest(h.now, cfg, tenant, 1)
 			queues[tenant] = append(queues[tenant], r)
 			h.call(Submit, r, "", nil)
 		}
 	}
+
 	for cycle := 0; cycle < 3; cycle++ {
 		for _, tenant := range []string{"h", "h", "h", "h", "h", "h", "h", "h", "m", "m", "m", "l"} {
 			r := queues[tenant][0]
@@ -285,6 +307,7 @@ func TestTransitionPriorityFullCycles(t *testing.T) {
 			previous = r
 		}
 	}
+
 	h.call(Release, previous, last.LeaseID, nil)
 	if len(h.snapshot().Queues) != 0 {
 		t.Fatal("queues not drained")
@@ -307,13 +330,16 @@ func TestTransitionProtectedHeadSurvivesRestartAndCancellation(t *testing.T) {
 			if s.Protected != big.ID {
 				t.Fatalf("protected %q", s.Protected)
 			}
+
 			cursor := s.Cursor
+
 			for i := 0; i < 3; i++ {
 				expectState(t, h.call(Observe, small, "", nil), Queued)
 				if h.snapshot().Cursor != cursor {
 					t.Fatal("restore reselected protected head")
 				}
 			}
+
 			if cancel {
 				h.call(Cancel, big, "", nil)
 				expectState(t, h.call(Observe, small, "", nil), Granted)
@@ -340,19 +366,22 @@ func TestTransitionCorruptSnapshots(t *testing.T) {
 	h.call(Submit, b, "", nil)
 	baseline := append([]byte(nil), h.data...)
 	mutations := map[string]func(*durableSnapshot){
-		"version":                func(s *durableSnapshot) { s.Version = 2 },
-		"records nil":            func(s *durableSnapshot) { s.Records = nil },
-		"revision overflow":      func(s *durableSnapshot) { s.Revision = ^uint64(0) },
-		"backward time":          func(s *durableSnapshot) { s.Time = h.now.Add(time.Millisecond) },
-		"negative cursor":        func(s *durableSnapshot) { s.Cursor = -1 },
-		"large cursor":           func(s *durableSnapshot) { s.Cursor = 1 },
-		"rotation count":         func(s *durableSnapshot) { s.Rotations = append(s.Rotations, []string{}) },
-		"nil record":             func(s *durableSnapshot) { s.Records[b.ID] = nil },
-		"id mismatch":            func(s *durableSnapshot) { s.Records[b.ID].Request.ID = a.ID },
-		"resource mismatch":      func(s *durableSnapshot) { s.Records[b.ID].Request.Resource = "other" },
-		"invalid request":        func(s *durableSnapshot) { s.Records[b.ID].Request.Weight = 0 },
-		"unknown status":         func(s *durableSnapshot) { s.Records[b.ID].Status = "invalid" },
-		"capacity excess":        func(s *durableSnapshot) { s.Records[b.ID].Request.Config = cfg; grant(s.Records[b.ID], h.now) },
+		"version":           func(s *durableSnapshot) { s.Version = 2 },
+		"records nil":       func(s *durableSnapshot) { s.Records = nil },
+		"revision overflow": func(s *durableSnapshot) { s.Revision = ^uint64(0) },
+		"backward time":     func(s *durableSnapshot) { s.Time = h.now.Add(time.Millisecond) },
+		"negative cursor":   func(s *durableSnapshot) { s.Cursor = -1 },
+		"large cursor":      func(s *durableSnapshot) { s.Cursor = 1 },
+		"rotation count":    func(s *durableSnapshot) { s.Rotations = append(s.Rotations, []string{}) },
+		"nil record":        func(s *durableSnapshot) { s.Records[b.ID] = nil },
+		"id mismatch":       func(s *durableSnapshot) { s.Records[b.ID].Request.ID = a.ID },
+		"resource mismatch": func(s *durableSnapshot) { s.Records[b.ID].Request.Resource = "other" },
+		"invalid request":   func(s *durableSnapshot) { s.Records[b.ID].Request.Weight = 0 },
+		"unknown status":    func(s *durableSnapshot) { s.Records[b.ID].Status = "invalid" },
+		"capacity excess": func(s *durableSnapshot) {
+			s.Records[b.ID].Request.Config = cfg
+			grant(s.Records[b.ID], h.now)
+		},
 		"duplicate tenant":       func(s *durableSnapshot) { s.Rotations[0] = append(s.Rotations[0], "a") },
 		"empty tenant queue":     func(s *durableSnapshot) { s.Queues["a"] = nil },
 		"missing queue record":   func(s *durableSnapshot) { s.Queues["a"][0] = "missing" },
@@ -364,23 +393,27 @@ func TestTransitionCorruptSnapshots(t *testing.T) {
 		"missing protected":      func(s *durableSnapshot) { s.Protected = "missing" },
 		"nonhead protected":      func(s *durableSnapshot) { s.Protected = b.ID },
 	}
+
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
 			var s durableSnapshot
 			if err := json.Unmarshal(baseline, &s); err != nil {
 				t.Fatal(err)
 			}
+
 			mutate(&s)
 			data, err := json.Marshal(s)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			out, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: holder})
 			if !errors.Is(err, ErrCorruptState) || out != nil {
 				t.Fatalf("got data=%t err=%v", out != nil, err)
 			}
 		})
 	}
+
 	for _, data := range [][]byte{[]byte("{"), []byte("null")} {
 		if _, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: holder}); !errors.Is(err, ErrCorruptState) {
 			t.Fatal(err)
@@ -398,11 +431,13 @@ func TestDurableRestoreRejectsInvalidLimits(t *testing.T) {
 	h.call(Submit, a, "", nil)
 	h.call(Submit, b, "", nil)
 	baseline := h.snapshot()
+
 	for name, mutate := range map[string]func(*durableSnapshot){
 		"invalid admission": func(s *durableSnapshot) { s.Config.Admission.Capacity = 0 },
 		"records limit":     func(s *durableSnapshot) { s.Config.MaxRecords = 1 },
 		"queue limit": func(s *durableSnapshot) {
 			s.Config.Admission.MaxQueuedPerTenant = 1
+
 			for _, rec := range s.Records {
 				rec.Request.Config = s.Config
 			}
@@ -414,6 +449,7 @@ func TestDurableRestoreRejectsInvalidLimits(t *testing.T) {
 			if err := json.Unmarshal(data, &s); err != nil {
 				t.Fatal(err)
 			}
+
 			mutate(&s)
 			if _, _, err := s.restore(); !errors.Is(err, ErrCorruptState) {
 				t.Fatal(err)
@@ -427,16 +463,19 @@ func TestTransitionSnapshotsAreDeterministic(t *testing.T) {
 	cfg := stateTestConfig()
 	holder := stateTestRequest(h.now, cfg, "hold", 3)
 	h.call(Submit, holder, "", nil)
+
 	for i := 0; i < 6; i++ {
 		r := stateTestRequest(h.now, cfg, fmt.Sprint(i%2), 1)
 		h.call(Submit, r, "", nil)
 	}
+
 	original := append([]byte(nil), h.data...)
 	h.now = h.now.Add(time.Second)
 	data, result, err := transitionSnapshot(original, h.now, Command{Kind: Observe, Request: holder})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for i := 0; i < 20; i++ {
 		got, res, e := transitionSnapshot(original, h.now, Command{Kind: Observe, Request: holder})
 		if e != nil || !reflect.DeepEqual(got, data) || res != result {
@@ -501,17 +540,20 @@ func TestTransitionRejectsCorruptLifecycleFields(t *testing.T) {
 		"reject empty failure":     func(s *durableSnapshot) { s.Records[rejected.ID].Failure = "" },
 		"reject unknown failure":   func(s *durableSnapshot) { s.Records[rejected.ID].Failure = "not an admission error" },
 	}
+
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
 			var s durableSnapshot
 			if err := json.Unmarshal(baseline, &s); err != nil {
 				t.Fatal(err)
 			}
+
 			mutate(&s)
 			data, err := json.Marshal(s)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			out, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: active})
 			if !errors.Is(err, ErrCorruptState) || out != nil {
 				t.Fatalf("corrupt lifecycle accepted: output=%t error=%v", out != nil, err)
@@ -530,6 +572,7 @@ func TestTransitionRemainingIncludesFractionalBackendTime(t *testing.T) {
 	if result.Remaining != r.Config.LeaseTTL-900*time.Microsecond {
 		t.Fatalf("optimistic TTL: %s", result.Remaining)
 	}
+
 	_, result, err = transitionSnapshot(data, now.Add(100*time.Millisecond), Command{Kind: Observe, Request: r})
 	if err != nil || result.Remaining != r.Config.LeaseTTL-100*time.Millisecond-900*time.Microsecond {
 		t.Fatalf("observation TTL: %s %v", result.Remaining, err)
@@ -547,6 +590,7 @@ func TestTransitionStateStorageIndependence(t *testing.T) {
 	var state *SharedState
 	var snapshot []byte
 	var lease string
+
 	for _, command := range []Command{{Kind: Submit, Request: r}, {Kind: Submit, Request: other}, {Kind: Observe, Request: other}, {Kind: Renew, Request: r}, {Kind: Release, Request: r}, {Kind: Cancel, Request: other}} {
 		command.LeaseID = lease
 		before := append([]byte(nil), snapshot...)
@@ -555,14 +599,17 @@ func TestTransitionStateStorageIndependence(t *testing.T) {
 		if !reflect.DeepEqual(result, want) || err != wantErr {
 			t.Fatalf("%s: %+v %v != %+v %v", command.Kind, result, err, want, wantErr)
 		}
+
 		encoded, marshalErr := json.Marshal(next)
 		if marshalErr != nil || string(encoded) != string(data) {
 			t.Fatalf("structured/wire state mismatch: %s %s %v", encoded, data, marshalErr)
 		}
+
 		state, snapshot = next, data
 		if command.Request.ID == r.ID {
 			lease = result.LeaseID
 		}
+
 		now = now.Add(time.Millisecond)
 	}
 }
@@ -578,29 +625,35 @@ func transitionSnapshot(data []byte, now time.Time, cmd Command) ([]byte, Result
 	if err != nil {
 		return nil, Result{}, err
 	}
+
 	next, result, _, err := Transition(state, now, cmd)
 	if next == nil {
 		return nil, result, err
 	}
+
 	encoded, codecErr := EncodeState(next)
 	if codecErr != nil {
 		return nil, Result{}, codecErr
 	}
 	return encoded, result, err
 }
+
 func transitionStructured(state *SharedState, now time.Time, cmd Command) (*SharedState, Result, error) {
 	next, result, _, err := Transition(state, now, cmd)
 	return next, result, err
 }
+
 func transitionOptimistic(data []byte, now time.Time, cmd Command) ([]byte, Result, CommitWindow, error) {
 	state, err := DecodeState(data)
 	if err != nil {
 		return nil, Result{}, CommitWindow{}, err
 	}
+
 	next, result, window, err := Transition(state, now, cmd)
 	if next == nil {
 		return nil, result, window, err
 	}
+
 	encoded, codecErr := EncodeState(next)
 	if codecErr != nil {
 		return nil, Result{}, CommitWindow{}, codecErr
@@ -623,18 +676,22 @@ func TestSharedDispatchWithoutLocalNotifications(t *testing.T) {
 	pending := stateTestRequest(h.now, cfg, "waiting", 2)
 	expectState(t, h.call(Submit, pending, "", nil), Queued)
 	s := h.snapshot()
+
 	// Decoded snapshots omit per-request Config; restore expects normalized records.
 	for _, r := range s.Records {
 		r.Request.Config = s.Config
 	}
+
 	g, ws, err := s.restore()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	w := ws[pending.ID]
 	if w == nil || w.ready != nil {
 		t.Fatal("shared waiter has a local notification channel")
 	}
+
 	// Free the holder's accounting, then exercise the shared dispatch wrapper.
 	g.used -= holder.Weight
 	g.active--
@@ -643,6 +700,7 @@ func TestSharedDispatchWithoutLocalNotifications(t *testing.T) {
 	if !w.granted || w.ready != nil || rec.Status != Granted || rec.LeaseID == "" || len(ws) != 0 {
 		t.Fatalf("shared grant: waiter=%+v record=%+v remaining=%d", w, rec, len(ws))
 	}
+
 	// The public transition path must produce the same usable lease outcome.
 	expectState(t, h.call(Release, holder, lease.LeaseID, nil), Released)
 	expectState(t, h.call(Observe, pending, "", nil), Granted)
@@ -661,21 +719,25 @@ func TestObservationFastPathAndMaintenance(t *testing.T) {
 	if !o.NextMaintenance.Equal(s.Records[holder.ID].Until) {
 		t.Fatal(o.NextMaintenance)
 	}
+
 	now := h.now.Add(time.Millisecond)
 	got, ready, err := o.Observe(now, pending)
 	if !ready || err != nil || got.Status != Queued || got.Revision != s.Revision {
 		t.Fatalf("%+v %t %v", got, ready, err)
 	}
+
 	o.Record = s.Records[holder.ID]
 	got, ready, err = o.Observe(now, holder)
 	if !ready || err != nil || got.LeaseID != grant.LeaseID || got.Remaining != cfg.LeaseTTL-time.Millisecond {
 		t.Fatalf("%+v %t %v", got, ready, err)
 	}
+
 	for _, at := range []time.Time{o.NextMaintenance, o.NextMaintenance.Add(time.Millisecond)} {
 		if _, ready, err := o.Observe(at, holder); ready || err != nil {
 			t.Fatalf("due: %t %v", ready, err)
 		}
 	}
+
 	// Expiry-driven Observe remains sufficient without any holder Release.
 	h.now = o.NextMaintenance
 	expectState(t, h.call(Observe, pending, "", nil), Granted)
@@ -694,6 +756,7 @@ func TestObservationValidationAndFallback(t *testing.T) {
 	s := h.snapshot()
 	base := Observation{Resource: s.Resource, Config: s.Config, Time: s.Time, Revision: s.Revision,
 		NextMaintenance: s.NextMaintenance(), Record: s.Records[r.ID]}
+
 	for _, tc := range []struct {
 		name   string
 		change func(*Observation, *Request)
@@ -726,6 +789,7 @@ func TestObservationValidationAndFallback(t *testing.T) {
 			}
 		})
 	}
+
 	// Rejected/terminal records restore their stable error without writing state.
 	rec := *base.Record
 	rec.Status, rec.LeaseID, rec.Until, rec.Finished, rec.Failure = Rejected, "", time.Time{}, h.now, ErrQueueFull.Error()
@@ -735,10 +799,12 @@ func TestObservationValidationAndFallback(t *testing.T) {
 	if !ready || !errors.Is(err, ErrQueueFull) || result.Status != Rejected {
 		t.Fatalf("%+v %t %v", result, ready, err)
 	}
+
 	empty := SharedState{}
 	if !empty.NextMaintenance().IsZero() {
 		t.Fatal("empty state has maintenance")
 	}
+
 	// A terminal record cannot be collected until both retention and SubmitUntil.
 	empty.Config = cfg
 	empty.Records = map[string]*DriverRecord{r.ID: &rec}
@@ -746,6 +812,7 @@ func TestObservationValidationAndFallback(t *testing.T) {
 	if r.SubmitUntil.After(want) {
 		want = r.SubmitUntil
 	}
+
 	if !empty.NextMaintenance().Equal(want) {
 		t.Fatal(empty.NextMaintenance(), want)
 	}

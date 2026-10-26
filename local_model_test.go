@@ -44,19 +44,25 @@ func newLocalModel(cfg Config) *localModel {
 		m.slots = []int{0}
 		return m
 	}
+
 	groups := make(map[string]int)
+
 	for i, group := range cfg.Priority.Groups {
 		groups[group.Name] = i
 		m.rotation = append(m.rotation, nil)
 		m.budgets = append(m.budgets, group.MaxQueued)
+
 		for range group.Turns {
 			m.slots = append(m.slots, i)
 		}
 	}
+
 	m.fallback = groups[cfg.Priority.DefaultGroup]
+
 	for tenant, group := range cfg.Priority.TenantGroups {
 		m.assignment[tenant] = groups[group]
 	}
+
 	return m
 }
 
@@ -69,11 +75,13 @@ func (m *localModel) group(tenant string) int {
 
 func (m *localModel) waiting(group int) int {
 	n := 0
+
 	for tenant, queue := range m.queues {
 		if group < 0 || m.group(tenant) == group {
 			n += len(queue)
 		}
 	}
+
 	return n
 }
 
@@ -81,6 +89,7 @@ func (m *localModel) arrive(tenant string, weight int, try bool) int {
 	id := len(m.requests)
 	r := localModelRequest{tenant: tenant, weight: weight, state: "pending"}
 	group := m.group(tenant)
+
 	switch {
 	case weight <= 0:
 		r.err = ErrInvalidWeight
@@ -98,14 +107,17 @@ func (m *localModel) arrive(tenant string, weight int, try bool) int {
 	case len(m.queues[tenant]) >= m.cfg.MaxQueuedPerTenant:
 		r.err = ErrTenantQueueFull
 	}
+
 	if r.err != nil {
 		r.state = "rejected"
 	}
+
 	m.requests = append(m.requests, r)
 	if r.state == "pending" {
 		if len(m.queues[tenant]) == 0 {
 			m.rotation[group] = append(m.rotation[group], tenant)
 		}
+
 		m.queues[tenant] = append(m.queues[tenant], id)
 		m.schedule()
 	}
@@ -115,17 +127,20 @@ func (m *localModel) arrive(tenant string, weight int, try bool) int {
 func (m *localModel) unlink(id int) {
 	tenant := m.requests[id].tenant
 	q := m.queues[tenant]
+
 	for i, candidate := range q {
 		if candidate == id {
 			q = append(q[:i], q[i+1:]...)
 			break
 		}
 	}
+
 	if len(q) != 0 {
 		m.queues[tenant] = q
 	} else {
 		delete(m.queues, tenant)
 		group := m.group(tenant)
+
 		for i, candidate := range m.rotation[group] {
 			if candidate == tenant {
 				m.rotation[group] = append(m.rotation[group][:i], m.rotation[group][i+1:]...)
@@ -133,6 +148,7 @@ func (m *localModel) unlink(id int) {
 			}
 		}
 	}
+
 	if m.protected == id {
 		m.protected = -1
 	}
@@ -146,16 +162,19 @@ func (m *localModel) schedule() {
 			for len(m.rotation[m.slots[m.cursor]]) == 0 {
 				m.cursor = (m.cursor + 1) % len(m.slots)
 			}
+
 			group := m.slots[m.cursor]
 			m.cursor = (m.cursor + 1) % len(m.slots)
 			tenant := m.rotation[group][0]
 			m.rotation[group] = append(m.rotation[group][1:], tenant)
 			m.protected = m.queues[tenant][0]
 		}
+
 		id := m.protected
 		if m.requests[id].weight > m.cfg.Capacity-m.used {
 			return
 		}
+
 		m.unlink(id)
 		m.requests[id].state = "granted"
 		m.used += m.requests[id].weight
@@ -194,20 +213,24 @@ func (m *localModel) snapshot() localModelSnapshot {
 		Cursor: m.cursor, Rotation: make([][]string, len(m.rotation)),
 		Weights: make(map[string][]int), GroupQueue: make([]int, len(m.rotation)),
 	}
+
 	for _, r := range m.requests {
 		if r.state == "granted" {
 			s.Stats.ActivePermits++
 		}
 	}
+
 	for group, rotation := range m.rotation {
 		s.Rotation[group] = append([]string(nil), rotation...)
 		s.GroupQueue[group] = m.waiting(group)
 	}
+
 	for tenant, ids := range m.queues {
 		for _, id := range ids {
 			s.Weights[tenant] = append(s.Weights[tenant], m.requests[id].weight)
 		}
 	}
+
 	if m.protected >= 0 {
 		r := m.requests[m.protected]
 		s.Protected = fmt.Sprintf("%q/%d", r.tenant, r.weight)
@@ -226,24 +249,30 @@ func localActualSnapshot(a *Airlock, cfg Config) localModelSnapshot {
 	if cfg.Priority != nil {
 		groups = nil
 		slot := 0
+
 		for _, spec := range cfg.Priority.Groups {
 			groups = append(groups, a.priority.schedule[slot])
 			slot += spec.Turns
 		}
 	}
+
 	for _, group := range groups {
 		var tenants []string
+
 		for node := group.rotation.Front(); node != nil; node = node.Next() {
 			tenants = append(tenants, node.Value.(*tenantQueue).id)
 		}
+
 		s.Rotation = append(s.Rotation, tenants)
 		s.GroupQueue = append(s.GroupQueue, group.queued)
 	}
+
 	for tenant, q := range a.tenants {
 		for node := q.requests.Front(); node != nil; node = node.Next() {
 			s.Weights[tenant] = append(s.Weights[tenant], node.Value.(*waiter).weight)
 		}
 	}
+
 	if w := a.protected; w != nil {
 		s.Protected = fmt.Sprintf("%q/%d", w.tenant.id, w.weight)
 	}
@@ -288,19 +317,23 @@ func newLocalModelRun(t testing.TB, cfg Config) *localModelRun {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	r := &localModelRun{t: t, a: a, m: newLocalModel(cfg), ctx: ctx}
 	t.Cleanup(func() {
 		cancel()
+
 		for _, call := range r.calls {
 			call.cancel()
 			if call.permit != nil {
 				call.permit.Release()
 			}
 		}
+
 		// Drain successful cancellation/grant races even on an assertion failure.
 		timer := time.NewTimer(3 * time.Second)
 		defer timer.Stop()
+
 		for _, call := range r.calls {
 			if !call.received {
 				select {
@@ -342,6 +375,7 @@ func (r *localModelRun) arrive(tenant string, weight int, try bool) {
 		} else {
 			p, err = r.a.AcquireNFor(ctx, tenant, weight)
 		}
+
 		call.result <- localCallResult{p, err}
 	}()
 	r.settle()
@@ -363,32 +397,39 @@ func (r *localModelRun) release(id int) {
 
 func (r *localModelRun) settle() {
 	r.t.Helper()
+
 	for id, want := range r.m.requests {
 		call := r.calls[id]
 		if want.state == "pending" || call.received {
 			continue
 		}
+
 		select {
 		case result := <-call.result:
 			call.received, call.permit = true, result.permit
 			if !errors.Is(result.err, want.err) || (result.permit == nil) != (want.err != nil) {
 				r.fail("request=%d state=%s: permit=%v err=%v wantErr=%v", id, want.state, result.permit != nil, result.err, want.err)
 			}
+
 		case <-r.ctx.Done():
 			r.fail("request=%d did not reach expected state=%s", id, want.state)
 		}
 	}
+
 	// An arrival expected to remain pending has no return value as a barrier.
 	// Observe queue count under the implementation mutex, not goroutine order.
 	want := r.m.snapshot()
+
 	for {
 		got := localActualSnapshot(r.a, r.m.cfg)
 		if got.Stats.Queued == want.Stats.Queued {
 			if !reflect.DeepEqual(got, want) {
 				r.fail("state mismatch\ngot  %+v\nwant %+v", got, want)
 			}
+
 			break
 		}
+
 		select {
 		case <-r.ctx.Done():
 			r.fail("queue did not settle\ngot  %+v\nwant %+v", got, want)
@@ -396,6 +437,7 @@ func (r *localModelRun) settle() {
 			runtime.Gosched()
 		}
 	}
+
 	for id, want := range r.m.requests {
 		if want.state == "pending" {
 			select {
@@ -415,49 +457,61 @@ func runLocalEvents(t testing.TB, priority bool, events []byte) {
 	r.arrive("holder", 5, false)
 	r.arrive("holder", 2, true)
 	tenants := []string{"", "default", "A", "B", "M", "L", "unknown"}
+
 	for i := 0; i+2 < len(events); i += 3 {
 		action, arg, value := events[i]%8, int(events[i+1]), int(events[i+2])
+
 		switch action {
 		case 0, 1, 2, 3:
 			// Include zero and oversized weights in addition to every legal weight.
 			r.arrive(tenants[arg%len(tenants)], value%(r.m.cfg.Capacity+2), action == 3)
 		case 4, 5:
 			var candidates []int
+
 			for id, request := range r.m.requests {
 				if request.state == "pending" || request.state == "granted" {
 					candidates = append(candidates, id)
 				}
 			}
+
 			if len(candidates) != 0 {
 				r.cancel(candidates[arg%len(candidates)])
 			}
+
 		case 6, 7:
 			var candidates []int
+
 			for id, request := range r.m.requests {
 				if request.state == "granted" {
 					candidates = append(candidates, id)
 				}
 			}
+
 			if len(candidates) != 0 {
 				r.release(candidates[arg%len(candidates)])
 			}
 		}
 	}
+
 	// Drain by release rather than cancellation: every accepted, uncancelled
 	// request must eventually succeed when all preceding holders release.
 	for {
 		id := -1
+
 		for candidate, request := range r.m.requests {
 			if request.state == "granted" {
 				id = candidate
 				break
 			}
 		}
+
 		if id < 0 {
 			break
 		}
+
 		r.release(id)
 	}
+
 	if got := r.a.Stats(); got.InUse != 0 || got.ActivePermits != 0 || got.Queued != 0 || got.WaitingTenants != 0 {
 		r.fail("drain leaked state: %+v", got)
 	}
@@ -469,9 +523,11 @@ func TestLocalDynamicModel(t *testing.T) {
 			t.Run(fmt.Sprintf("priority=%v/seed=%d", priority, seed), func(t *testing.T) {
 				rng := rand.New(rand.NewSource(seed))
 				events := make([]byte, 3*128)
+
 				for i := range events {
 					events[i] = byte(rng.Intn(256))
 				}
+
 				runLocalEvents(t, priority, events)
 			})
 		}
@@ -490,6 +546,7 @@ func TestLocalProtectedArrivalAndCancellationModel(t *testing.T) {
 			r.arrive("L", 1, false)
 			r.cancel(1) // Consume A's selected turn, not B's or the next group slot.
 			r.release(0)
+
 			for id, request := range r.m.requests {
 				if request.state == "granted" {
 					r.release(id)
@@ -548,6 +605,7 @@ func TestLocalModelMutationSensitivity(t *testing.T) {
 			if reflect.DeepEqual(changed, want) {
 				t.Fatal("oracle did not detect the injected implementation-state fault")
 			}
+
 			r.settle()
 		})
 	}
@@ -561,31 +619,39 @@ func TestLocalQueueRecoveryModel(t *testing.T) {
 	cfg.Priority.Groups[2].MaxQueued = 2
 	r := newLocalModelRun(t, cfg)
 	r.arrive("holder", 7, false)
+
 	for range 3 {
 		r.arrive("A", 1, false)
 	}
+
 	r.arrive("A", 1, false) // Per-tenant rejection, without consuming a turn.
 	r.arrive("B", 1, false)
+
 	r.arrive("B", 1, false) // Group rejection while global space remains.
 	for _, tenant := range []string{"M", "M", "L", "L"} {
 		r.arrive(tenant, 1, false)
 	}
+
 	r.arrive("A", 1, false) // Global error must mask both group and tenant errors.
 	r.cancel(8)             // Cancel M's tail and reuse that group's queue budget.
 	r.arrive("M", 1, true)  // Free queue space is not immediate capacity.
 	r.arrive("M", 1, false)
+
 	// Anchor expected errors independently of the reference scheduler itself.
 	for id, want := range map[int]error{4: ErrTenantQueueFull, 6: ErrGroupQueueFull, 11: ErrQueueFull, 12: ErrWouldBlock} {
 		if got := r.m.requests[id].err; !errors.Is(got, want) {
 			t.Fatalf("oracle error anchor id=%d: got=%v want=%v", id, got, want)
 		}
 	}
+
 	r.release(0)
+
 	for id, request := range r.m.requests {
 		if request.state == "granted" {
 			r.release(id)
 		}
 	}
+
 	if got := r.a.Stats(); got != (Stats{Capacity: cfg.Capacity}) {
 		t.Fatalf("queue budget recovery leaked: %+v", got)
 	}
@@ -603,10 +669,12 @@ func FuzzLocalDynamicModel(f *testing.F) {
 		if len(input) == 0 {
 			return
 		}
+
 		const maxBytes = 1 + 3*96
 		if len(input) > maxBytes {
 			input = input[:maxBytes]
 		}
+
 		runLocalEvents(t, input[0]&1 != 0, input[1:])
 	})
 }

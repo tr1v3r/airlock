@@ -16,6 +16,7 @@ import (
 func doWork(ctx context.Context) error {
 	timer := time.NewTimer(time.Millisecond)
 	defer timer.Stop()
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -48,6 +49,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
 	low, err := airlock.New(airlock.Config{
 		Capacity: 8, MaxQueued: 64, MaxQueuedPerTenant: 32,
 		Priority: &airlock.PriorityPolicy{
@@ -62,6 +64,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
 	// Hold every low-pool token. High can still acquire from its own pool.
 	background, err := low.AcquireNFor(context.Background(), "maintenance", 8)
 	if err != nil {
@@ -71,6 +74,7 @@ func run() error {
 	if err := runOnline(context.Background(), high); err != nil {
 		return err
 	}
+
 	fmt.Printf("online completed; low still holds %d tokens\n", low.Stats().InUse)
 	background.Release()
 	fmt.Printf("finished: high=%d low=%d tokens\n", high.Stats().InUse, low.Stats().InUse)

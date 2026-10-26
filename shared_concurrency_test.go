@@ -53,7 +53,9 @@ func TestSharedConcurrentWorkloadBudget(t *testing.T) {
 	} {
 		t.Run(fmt.Sprint(tc.clients), func(t *testing.T) {
 			o := sharedConcurrentOptions(tc.clients)
-			if o.Config.LeaseTTL != tc.budget || o.Config.MaxWait != tc.budget || o.Config.SubmitWindow != tc.budget || o.Config.Retention != 2*tc.budget || o.OperationTimeout != tc.operationTimeout || o.PollInterval != 5*time.Millisecond {
+			if o.Config.LeaseTTL != tc.budget || o.Config.MaxWait != tc.budget ||
+				o.Config.SubmitWindow != tc.budget || o.Config.Retention != 2*tc.budget ||
+				o.OperationTimeout != tc.operationTimeout || o.PollInterval != 5*time.Millisecond {
 				t.Fatalf("unexpected workload budget: %+v", o)
 			}
 			if _, err := NewShared(&clientStateDriver{}, o); err != nil {
@@ -74,11 +76,13 @@ func sharedAssertDrained(t *testing.T, d *clientStateDriver, want int) {
 	if len(s.Records) != want {
 		t.Fatalf("retained %d requests, want %d", len(s.Records), want)
 	}
+
 	for id, rec := range s.Records {
 		if rec.Status != Released && rec.Status != Cancelled {
 			t.Errorf("request %s did not converge to released/cancelled: %s", id, rec.Status)
 		}
 	}
+
 	if s.Protected != "" || len(s.Queues) != 0 {
 		t.Fatal("terminal workload left a protected or queued request")
 	}
@@ -89,6 +93,7 @@ func TestSharedConcurrentWeightedLifecycle(t *testing.T) {
 	if os.Getenv("AIRLOCK_STRESS") == "1" {
 		clients, rounds = 128, 8
 	}
+
 	for round := 0; round < rounds; round++ {
 		t.Run(fmt.Sprint(round), func(t *testing.T) {
 			d := &clientStateDriver{}
@@ -102,13 +107,16 @@ func TestSharedConcurrentWeightedLifecycle(t *testing.T) {
 			started := time.Now()
 			defer func() {
 				counts := make(map[Operation]int)
+
 				for _, cmd := range d.commands() {
 					counts[cmd.Kind]++
 				}
+
 				t.Logf("clients=%d budget=%s elapsed=%s completed=%d used=%d submit=%d observe=%d renew=%d release=%d cancel=%d",
 					clients, o.Config.MaxWait, time.Since(started), completed.Load(), used.Load(),
 					counts[Submit], counts[Observe], counts[Renew], counts[Release], counts[Cancel])
 			}()
+
 			for i := 0; i < clients; i++ {
 				workers.Add(1)
 				go func(i int) {
@@ -120,40 +128,50 @@ func TestSharedConcurrentWeightedLifecycle(t *testing.T) {
 						t.Errorf("acquire %d: %v", i, err)
 						return
 					}
+
 					if total := used.Add(int64(weight)); total > int64(o.Config.Admission.Capacity) {
 						t.Errorf("live work owns %d > capacity %d", total, o.Config.Admission.Capacity)
 					}
+
 					if lease.Weight() != weight || !lease.Valid() {
 						t.Errorf("invalid allocation for worker %d", i)
 					}
+
 					for j := 0; j < 2; j++ {
 						if err := lease.Renew(ctx); err != nil {
 							t.Errorf("renew worker %d: %v", i, err)
 						}
 					}
+
 					// Finish all simulated work before release can grant another owner.
 					used.Add(-int64(weight))
+
 					for j := 0; j < 2; j++ {
 						if err := lease.Release(ctx); err != nil {
 							t.Errorf("release worker %d: %v", i, err)
 						}
 					}
+
 					if lease.Valid() {
 						t.Errorf("worker %d lease remained valid after release", i)
 					}
+
 					select {
 					case <-lease.Done():
 					default:
 						t.Errorf("worker %d Done remained open", i)
 					}
+
 					completed.Add(1)
 				}(i)
 			}
+
 			close(start)
 			workers.Wait()
 			if completed.Load() != int64(clients) || used.Load() != 0 {
 				t.Fatalf("completed=%d want=%d used=%d", completed.Load(), clients, used.Load())
 			}
+
 			sharedAssertDrained(t, d, clients)
 		})
 	}
@@ -164,6 +182,7 @@ func TestSharedConcurrentQueuedCancellation(t *testing.T) {
 	if os.Getenv("AIRLOCK_STRESS") == "1" {
 		clients = 96
 	}
+
 	queued := make(chan struct{}, clients)
 	d := &clientStateDriver{after: func(_ context.Context, cmd Command, r Result, err error) (Result, error) {
 		if cmd.Kind == Submit && r.Status == Queued {
@@ -183,6 +202,7 @@ func TestSharedConcurrentQueuedCancellation(t *testing.T) {
 	cancels := make([]context.CancelFunc, clients)
 	results := make([]chan error, clients)
 	var workers sync.WaitGroup
+
 	for i := range cancels {
 		waitCtx, stop := context.WithCancel(ctx)
 		cancels[i] = stop
@@ -195,10 +215,16 @@ func TestSharedConcurrentQueuedCancellation(t *testing.T) {
 			if err == nil {
 				err = lease.Release(ctx)
 			}
+
 			results[i] <- err
 		}(i)
 	}
-	defer func() { cancel(); workers.Wait() }()
+
+	defer func() {
+		cancel()
+		workers.Wait()
+	}()
+
 	for i := 0; i < clients; i++ {
 		select {
 		case <-queued:
@@ -206,10 +232,12 @@ func TestSharedConcurrentQueuedCancellation(t *testing.T) {
 			t.Fatal("not all requests entered the queue")
 		}
 	}
+
 	// Keep capacity occupied until every cancelled acquisition has finished cleanup.
 	for i := 0; i < clients; i += 2 {
 		cancels[i]()
 	}
+
 	for i := 0; i < clients; i += 2 {
 		select {
 		case err := <-results[i]:
@@ -220,9 +248,11 @@ func TestSharedConcurrentQueuedCancellation(t *testing.T) {
 			t.Fatal("cancelled acquisitions did not join")
 		}
 	}
+
 	if err := holder.Release(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	for i := 1; i < clients; i += 2 {
 		select {
 		case err := <-results[i]:
@@ -233,6 +263,7 @@ func TestSharedConcurrentQueuedCancellation(t *testing.T) {
 			t.Fatal("surviving acquisitions did not finish")
 		}
 	}
+
 	workers.Wait()
 	sharedAssertDrained(t, d, clients+1)
 }
@@ -247,17 +278,20 @@ func TestSharedConcurrentRenewReleaseUnknownOutcome(t *testing.T) {
 		switch cmd.Kind {
 		case Renew:
 			close(entered)
+
 			select {
 			case <-respond:
 				return r, lostRenew
 			case <-ctx.Done():
 				return r, ctx.Err()
 			}
+
 		case Release:
 			if releaseCalls.Add(1) == 1 {
 				return r, lostRelease
 			}
 		}
+
 		return r, err
 	}}
 	o := sharedConcurrentOptions(16)
@@ -269,24 +303,38 @@ func TestSharedConcurrentRenewReleaseUnknownOutcome(t *testing.T) {
 	unblock := func() { respondOnce.Do(func() { close(respond) }) }
 	// Register cleanup before the first goroutine: even clientAwait/Fatal must
 	// cancel blocked I/O, unblock the response and join every operation.
-	defer func() { cancel(); unblock(); workers.Wait() }()
+	defer func() {
+		cancel()
+		unblock()
+		workers.Wait()
+	}()
 	renewResult := make(chan error, 1)
 	workers.Add(1)
-	go func() { defer workers.Done(); renewResult <- lease.Renew(ctx) }()
+	go func() {
+		defer workers.Done()
+		renewResult <- lease.Renew(ctx)
+	}()
 	clientAwait(t, entered)
 	const releasers = 16
 	results := make(chan error, releasers)
+
 	for i := 0; i < releasers; i++ {
 		workers.Add(1)
-		go func() { defer workers.Done(); results <- lease.Release(ctx) }()
+		go func() {
+			defer workers.Done()
+			results <- lease.Release(ctx)
+		}()
 	}
+
 	unblock()
 	if err := <-renewResult; !errors.Is(err, lostRenew) {
 		t.Fatalf("renew error lost: %v", err)
 	}
+
 	workers.Wait()
 	close(results)
 	unknown := 0
+
 	for err := range results {
 		switch {
 		case errors.Is(err, lostRelease):
@@ -295,14 +343,18 @@ func TestSharedConcurrentRenewReleaseUnknownOutcome(t *testing.T) {
 			t.Errorf("unexpected release result: %v", err)
 		}
 	}
+
 	if unknown != 1 || releaseCalls.Load() != releasers {
 		t.Fatalf("unknown=%d release attempts=%d", unknown, releaseCalls.Load())
 	}
+
 	clientClosed(t, lease)
 	if err := lease.Renew(ctx); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("uncertain renewal resurrected lease: %v", err)
 	}
+
 	sharedAssertDrained(t, d, 1)
+
 	for _, cmd := range d.commands() {
 		if cmd.Request.ID != lease.request.ID || ((cmd.Kind == Renew || cmd.Kind == Release) && cmd.LeaseID != lease.id) {
 			t.Fatal("concurrent recovery changed request or lease identity")
@@ -315,6 +367,7 @@ func TestSharedConcurrentExpiryRejectsLateRenewal(t *testing.T) {
 	d := &clientStateDriver{after: func(ctx context.Context, cmd Command, r Result, err error) (Result, error) {
 		if cmd.Kind == Renew {
 			close(entered)
+
 			select {
 			case <-respond:
 			case <-ctx.Done():
@@ -331,16 +384,25 @@ func TestSharedConcurrentExpiryRejectsLateRenewal(t *testing.T) {
 	var operations, readers sync.WaitGroup
 	var respondOnce sync.Once
 	unblock := func() { respondOnce.Do(func() { close(respond) }) }
-	defer func() { cancel(); unblock(); readers.Wait(); operations.Wait() }()
+	defer func() {
+		cancel()
+		unblock()
+		readers.Wait()
+		operations.Wait()
+	}()
 	renewResult := make(chan error, 1)
 	operations.Add(1)
-	go func() { defer operations.Done(); renewResult <- lease.Renew(ctx) }()
+	go func() {
+		defer operations.Done()
+		renewResult <- lease.Renew(ctx)
+	}()
 	clientAwait(t, entered)
 	// Model a process resuming after its conservative local deadline. Do not wait
 	// for a real sleep/timer ordering; the backend renewal has already committed.
 	lease.mu.Lock()
 	lease.deadline = time.Now().Add(-time.Millisecond)
 	lease.mu.Unlock()
+
 	for i := 0; i < 32; i++ {
 		readers.Add(1)
 		go func() {
@@ -348,6 +410,7 @@ func TestSharedConcurrentExpiryRejectsLateRenewal(t *testing.T) {
 			if lease.Valid() {
 				t.Error("expired local lease authorized work while renewal response was blocked")
 			}
+
 			select {
 			case <-lease.Done():
 			default:
@@ -355,10 +418,14 @@ func TestSharedConcurrentExpiryRejectsLateRenewal(t *testing.T) {
 			}
 		}()
 	}
+
 	readers.Wait()
 	released := make(chan error, 1)
 	operations.Add(1)
-	go func() { defer operations.Done(); released <- lease.Release(ctx) }()
+	go func() {
+		defer operations.Done()
+		released <- lease.Release(ctx)
+	}()
 	unblock()
 	if err := <-renewResult; !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("late successful response revived expired lease: %v", err)
@@ -366,10 +433,12 @@ func TestSharedConcurrentExpiryRejectsLateRenewal(t *testing.T) {
 	if err := <-released; err != nil {
 		t.Fatal(err)
 	}
+
 	clientClosed(t, lease)
 	if err := lease.Renew(ctx); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("closed lease retried renewal: %v", err)
 	}
+
 	sharedAssertDrained(t, d, 1)
 	next, err := c.Acquire(ctx)
 	if err != nil {
@@ -397,10 +466,12 @@ func TestSharedAcquireUnknownCleanupRemainsBounded(t *testing.T) {
 	if lease != nil || !errors.Is(err, lostSubmit) || !errors.Is(err, lostCleanup) {
 		t.Fatalf("unknown acquisition authorized work or lost errors: %v %v", lease, err)
 	}
+
 	calls := d.commands()
 	if len(calls) != 2 || calls[0].Kind != Submit || calls[1].Kind != Cancel {
 		t.Fatal("ambiguous acquisition automatically retried admission or cleanup")
 	}
+
 	sharedAssertDrained(t, d, 1)
 	result, err := d.Submit(context.Background(), calls[0].Request)
 	if !errors.Is(err, lostSubmit) || result.Status != Cancelled {

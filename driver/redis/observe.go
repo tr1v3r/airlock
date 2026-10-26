@@ -47,11 +47,13 @@ func index(state *airlock.SharedState) ([]byte, error) {
 		Meta:    string(meta),
 		Records: make(map[string]string, len(state.Records)),
 	}
+
 	for id, rec := range state.Records {
 		data, err := json.Marshal(observationRecord{Token: token, Record: rec})
 		if err != nil {
 			return nil, err
 		}
+
 		i.Records[id] = string(data)
 	}
 

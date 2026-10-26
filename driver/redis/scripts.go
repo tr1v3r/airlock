@@ -29,7 +29,9 @@ const casScript = `
 
 	local lower = integer(ARGV[4])
 	local upper = integer(ARGV[5])
-	if not lower or not upper or (upper ~= 0 and upper <= lower) then return redis.error_reply('invalid window') end
+	if not lower or not upper or (upper ~= 0 and upper <= lower) then
+		return redis.error_reply('invalid window')
+	end
 
 	local old = redis.call('HGET', KEYS[1], 'state')
 	if ARGV[1] == '0' then
@@ -42,7 +44,9 @@ const casScript = `
 	local tm = redis.call('TIME')
 	local sec = integer(tm[1])
 	local us = integer(tm[2])
-	if not sec or not us or us > 999999 or sec > 9007199254 then return redis.error_reply('invalid clock') end
+	if not sec or not us or us > 999999 or sec > 9007199254 then
+		return redis.error_reply('invalid clock')
+	end
 
 	local now = sec * 1000000 + us
 	if now > 9007199254740991 then return redis.error_reply('invalid clock') end
@@ -55,7 +59,9 @@ const casScript = `
 			return redis.error_reply('invalid observation index')
 		end
 		for id, value in pairs(index.Records) do
-			if type(id) ~= 'string' or type(value) ~= 'string' then return redis.error_reply('invalid observation record') end
+			if type(id) ~= 'string' or type(value) ~= 'string' then
+				return redis.error_reply('invalid observation record')
+			end
 		end
 
 		-- Prepare candidate-tagged derived records before publishing the authoritative

@@ -17,13 +17,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	var wg sync.WaitGroup
 	results := make([]int, 3)
+
 	for i := range results {
 		permit, err := lock.AcquireFor(context.Background(), "batch")
 		if err != nil {
 			log.Fatal(err)
 		}
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -31,9 +34,13 @@ func main() {
 			results[i] = i + 10
 		}()
 	}
+
 	// Completion belongs to the caller. Start waiting after all Add calls.
 	done := make(chan struct{})
-	go func() { wg.Wait(); close(done) }()
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 	fmt.Println("doing other work while the batch finishes")
 	<-done
 	fmt.Println(results)

@@ -35,6 +35,7 @@ func Transition(state *SharedState, now time.Time, cmd Command) (next *SharedSta
 		if s == nil {
 			return
 		}
+
 		for _, rec := range s.Records {
 			if rec == nil {
 				continue
@@ -43,10 +44,12 @@ func Transition(state *SharedState, now time.Time, cmd Command) (next *SharedSta
 				boundary(rec.Until)
 				continue
 			}
+
 			at := rec.Finished.Add(s.Config.Retention)
 			if rec.Request.SubmitUntil.After(at) {
 				at = rec.Request.SubmitUntil
 			}
+
 			boundary(at)
 		}
 	}
@@ -61,6 +64,7 @@ func Transition(state *SharedState, now time.Time, cmd Command) (next *SharedSta
 	if next == nil {
 		return nil, result, CommitWindow{}, err
 	}
+
 	collect(next)
 	return
 }
@@ -71,6 +75,7 @@ func DecodeState(data []byte) (*SharedState, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
+
 	state := new(SharedState)
 	if json.Unmarshal(data, state) != nil {
 		return nil, ErrCorruptState
@@ -83,6 +88,7 @@ func EncodeState(state *SharedState) ([]byte, error) {
 	if state == nil {
 		return nil, ErrCorruptState
 	}
+
 	data, err := json.Marshal(state)
 	if err != nil {
 		return nil, ErrCorruptState

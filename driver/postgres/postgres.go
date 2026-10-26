@@ -48,27 +48,34 @@ func WithTable(name string) Option {
 		if len(parts) == 1 {
 			parts = append([]string{"public"}, parts...)
 		}
+
 		if len(parts) != 2 {
 			return errors.New("airlock/postgres: invalid table name")
 		}
+
 		resourceName := parts[1]
+
 		for i, part := range parts {
 			if len(part) == 0 || len(part) > 63 || (i == 1 && len(part) > 54) {
 				return errors.New("airlock/postgres: invalid table name")
 			}
+
 			for j, c := range part {
 				valid := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || (j > 0 && c >= '0' && c <= '9')
 				if !valid {
 					return errors.New("airlock/postgres: invalid table name")
 				}
 			}
+
 			parts[i] = `"` + part + `"`
 		}
+
 		d.resourceTable = strings.Join(parts, ".")
 		requestName := resourceName + "_requests"
 		if resourceName == "airlock_resources" {
 			requestName = "airlock_requests"
 		}
+
 		d.requestTable = parts[0] + `."` + requestName + `"`
 		return nil
 	}
@@ -83,6 +90,7 @@ func WithOperationTimeout(timeout time.Duration) Option {
 		if timeout <= 0 {
 			return errors.New("airlock/postgres: timeout must be positive")
 		}
+
 		d.timeout = timeout
 		return nil
 	}
@@ -99,7 +107,15 @@ func New(db *sql.DB, namespace string, options ...Option) (*Driver, error) {
 	if len(namespace) > 256 || !utf8.ValidString(namespace) || strings.ContainsRune(namespace, 0) {
 		return nil, errors.New("airlock/postgres: invalid namespace")
 	}
-	d := &Driver{db: db, namespace: namespace, resourceTable: `"public"."airlock_resources"`, requestTable: `"public"."airlock_requests"`, timeout: 5 * time.Second}
+
+	d := &Driver{
+		db:            db,
+		namespace:     namespace,
+		resourceTable: `"public"."airlock_resources"`,
+		requestTable:  `"public"."airlock_requests"`,
+		timeout:       5 * time.Second,
+	}
+
 	for _, option := range options {
 		if option == nil {
 			return nil, errors.New("airlock/postgres: nil option")
@@ -108,6 +124,7 @@ func New(db *sql.DB, namespace string, options ...Option) (*Driver, error) {
 			return nil, err
 		}
 	}
+
 	return d, nil
 }
 
@@ -122,6 +139,7 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 	if err := airlock.ValidateCommand(cmd); err != nil {
 		return airlock.Result{}, err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()
 	tx, err := d.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
@@ -134,16 +152,19 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 			return result, err
 		}
 	}
+
 	state, before, err := d.load(ctx, tx, cmd.Request)
 	if err != nil {
 		return airlock.Result{}, err
 	}
+
 	// Evaluate time after the resource lock AND reading its request rows. The
 	// transaction start time must not revive a lease after a long lock wait.
 	var now time.Time
 	if err = tx.QueryRowContext(ctx, `SELECT pg_catalog.clock_timestamp()`).Scan(&now); err != nil {
 		return airlock.Result{}, fmt.Errorf("airlock/postgres: clock: %w", err)
 	}
+
 	next, result, _, transitionErr := airlock.Transition(state, now, cmd)
 	if next == nil {
 		return result, transitionErr
@@ -187,6 +208,7 @@ func (d *Driver) Observe(ctx context.Context, request airlock.Request) (airlock.
 	if err := airlock.ValidateCommand(airlock.Command{Kind: airlock.Observe, Request: request}); err != nil {
 		return airlock.Result{}, err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()
 	if result, ready, err := d.observe(ctx, d.db, request); ready || err != nil {

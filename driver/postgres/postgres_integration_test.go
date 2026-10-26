@@ -26,10 +26,12 @@ func integrationDB(t *testing.T) *sql.DB {
 	if dsn == "" {
 		t.Skip("set AIRLOCK_POSTGRES_DSN for real PostgreSQL tests")
 	}
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -38,6 +40,7 @@ func integrationDB(t *testing.T) *sql.DB {
 	}
 	return db
 }
+
 func integrationDriver(t *testing.T, db *sql.DB, namespace string, options ...Option) *Driver {
 	t.Helper()
 	d, err := New(db, namespace, options...)
@@ -49,7 +52,9 @@ func integrationDriver(t *testing.T, db *sql.DB, namespace string, options ...Op
 	}
 	return d
 }
+
 func uniqueNamespace() string { return "test-" + airlock.NewRequest(time.Now()).Owner }
+
 func executeStatus(t *testing.T, d *Driver, kind airlock.Operation, r airlock.Request, lease string, status airlock.Status) airlock.Result {
 	t.Helper()
 	got, err := driverconformance.Invoke(context.Background(), d, airlock.Command{Kind: kind, Request: r, LeaseID: lease})
@@ -74,11 +79,13 @@ func TestIntegrationFirstCreationAndIsolation(t *testing.T) {
 	var wg sync.WaitGroup
 	results := make(chan airlock.Result, 12)
 	failures := make(chan error, 12)
+
 	for i := 0; i < 12; i++ {
 		d := d1
 		if i%2 == 1 {
 			d = d2
 		}
+
 		req := r
 		identity := airlock.NewRequest(r.SubmitUntil)
 		req.ID, req.Owner = identity.ID, identity.Owner
@@ -89,24 +96,31 @@ func TestIntegrationFirstCreationAndIsolation(t *testing.T) {
 			if err != nil && !errors.Is(err, airlock.ErrQueueFull) && !errors.Is(err, airlock.ErrTenantQueueFull) {
 				failures <- err
 			}
+
 			results <- got
 		}()
 	}
+
 	wg.Wait()
 	close(results)
 	close(failures)
+
 	for err := range failures {
 		t.Error(err)
 	}
+
 	grants := 0
+
 	for got := range results {
 		if got.Status == airlock.Granted {
 			grants++
 		}
 	}
+
 	if grants != 3 {
 		t.Fatalf("grants=%d want3", grants)
 	}
+
 	// Independent namespace columns prevent ambiguous namespace/resource concatenation.
 	x := request(time.Now())
 	x.Resource = "bc"
@@ -139,11 +153,13 @@ func TestIntegrationPersistentPriorityCursor(t *testing.T) {
 	}
 	h1, h2, h3, l1, l2 := makeQueued("h"), makeQueued("h"), makeQueued("h"), makeQueued("l"), makeQueued("l")
 	current, lease := holder, held.LeaseID
+
 	for i, next := range []airlock.Request{h1, h2, l1, h3, l2} {
 		rebuilt, err := New(db2, namespace)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		executeStatus(t, rebuilt, airlock.Release, current, lease, airlock.Released)
 		got := executeStatus(t, rebuilt, airlock.Observe, next, "", airlock.Granted)
 		current, lease = next, got.LeaseID
@@ -170,20 +186,24 @@ func TestIntegrationLockWaitDoesNotReviveLease(t *testing.T) {
 	if err := tx.QueryRow(`SELECT revision FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.namespace, r.Resource).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
+
 	var blocker int
 	if err := tx.QueryRow(`SELECT pg_backend_pid()`).Scan(&blocker); err != nil {
 		t.Fatal(err)
 	}
+
 	done := make(chan error, 1)
 	go func() {
 		got, err := d.Renew(context.Background(), airlock.LeaseRef{Request: r, ID: grant.LeaseID})
 		if got.Status == airlock.Granted {
 			err = fmt.Errorf("expired lease revived: %+v", got)
 		}
+
 		done <- err
 	}()
 	// Verify the command really is waiting on our lock before letting TTL expire.
 	deadline := time.Now().Add(2 * time.Second)
+
 	for {
 		var blocked bool
 		err := observer.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))`, blocker).Scan(&blocked)
@@ -196,8 +216,10 @@ func TestIntegrationLockWaitDoesNotReviveLease(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("renew never waited on lock")
 		}
+
 		time.Sleep(time.Millisecond)
 	}
+
 	time.Sleep(350 * time.Millisecond)
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
@@ -205,6 +227,7 @@ func TestIntegrationLockWaitDoesNotReviveLease(t *testing.T) {
 	if err := <-done; !errors.Is(err, airlock.ErrLeaseLost) {
 		t.Fatalf("renew: %v", err)
 	}
+
 	executeStatus(t, d, airlock.Observe, r, "", airlock.Expired)
 }
 
@@ -221,6 +244,7 @@ func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 	if _, err := tx.Exec(`SELECT 1 FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.namespace, r.Resource); err != nil {
 		t.Fatal(err)
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	got, err := d.Renew(ctx, airlock.LeaseRef{Request: r, ID: grant.LeaseID})
 	cancel()
@@ -230,6 +254,7 @@ func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}
+
 	executeStatus(t, d, airlock.Observe, r, "", airlock.Granted)
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
@@ -256,6 +281,7 @@ func TestIntegrationAbandonedClientsReclaimed(t *testing.T) {
 	if err := db1.Close(); err != nil {
 		t.Fatal(err)
 	}
+
 	time.Sleep(150 * time.Millisecond)
 	executeStatus(t, d2, airlock.Observe, holder, "", airlock.Expired)
 	executeStatus(t, d2, airlock.Observe, queued, "", airlock.Expired)
@@ -279,10 +305,12 @@ func TestIntegrationTerminatedConnectionFailsClosed(t *testing.T) {
 	if _, err := tx.Exec(`SELECT 1 FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.namespace, r.Resource); err != nil {
 		t.Fatal(err)
 	}
+
 	var blocker int
 	if err := tx.QueryRow(`SELECT pg_backend_pid()`).Scan(&blocker); err != nil {
 		t.Fatal(err)
 	}
+
 	type response struct {
 		result airlock.Result
 		err    error
@@ -294,6 +322,7 @@ func TestIntegrationTerminatedConnectionFailsClosed(t *testing.T) {
 	}()
 	var target int
 	deadline := time.Now().Add(2 * time.Second)
+
 	for {
 		err := admin.QueryRow(`SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)) LIMIT 1`, blocker).Scan(&target)
 		if err == nil {
@@ -305,12 +334,15 @@ func TestIntegrationTerminatedConnectionFailsClosed(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("command never waited on lock")
 		}
+
 		time.Sleep(time.Millisecond)
 	}
+
 	var terminated bool
 	if err := admin.QueryRow(`SELECT pg_terminate_backend($1)`, target).Scan(&terminated); err != nil || !terminated {
 		t.Fatalf("terminate=%t err=%v", terminated, err)
 	}
+
 	got := <-done
 	if got.err == nil || got.result != (airlock.Result{}) {
 		t.Fatalf("terminated backend returned usable result: %+v err=%v", got.result, got.err)
@@ -318,6 +350,7 @@ func TestIntegrationTerminatedConnectionFailsClosed(t *testing.T) {
 	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}
+
 	recovered := executeStatus(t, d, airlock.Observe, r, "", airlock.Granted)
 	if recovered.LeaseID != held.LeaseID || recovered.Remaining > held.Remaining {
 		t.Fatalf("failed command changed lease: before=%+v after=%+v", held, recovered)
@@ -330,16 +363,19 @@ func TestIntegrationShared(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	acquisition, cancel := context.WithCancel(context.Background())
 	lease, err := client.AcquireNFor(acquisition, "online", 2)
 	if err != nil {
 		cancel()
 		t.Fatal(err)
 	}
+
 	cancel()
 	if !lease.Valid() {
 		t.Fatal("acquisition context revoked delivered lease")
 	}
+
 	waiting, stop := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	_, err = client.AcquireFor(waiting, "batch")
 	stop()
@@ -352,11 +388,13 @@ func TestIntegrationShared(t *testing.T) {
 	if err := lease.Release(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	select {
 	case <-lease.Done():
 	default:
 		t.Fatal("released lease still usable")
 	}
+
 	replacement, err := client.AcquireN(context.Background(), 2)
 	if err != nil {
 		t.Fatal(err)
@@ -390,16 +428,19 @@ func TestIntegrationRelationalDeltaWrites(t *testing.T) {
 	if readVersion(first) != va || readVersion(second) != vb {
 		t.Fatal("Observe rewrote unchanged requests")
 	}
+
 	time.Sleep(2 * time.Millisecond)
 	executeStatus(t, d, airlock.Renew, second, b.LeaseID, airlock.Granted)
 	if readVersion(first) != va || readVersion(second) == vb {
 		t.Fatal("Renew did not restrict writes to its request")
 	}
+
 	vb = readVersion(second)
 	executeStatus(t, d, airlock.Release, first, a.LeaseID, airlock.Released)
 	if readVersion(second) != vb {
 		t.Fatal("Release rewrote unrelated request")
 	}
+
 	var tenant, status string
 	var weight int
 	if err := db.QueryRow(`SELECT tenant,weight,status FROM public.airlock_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, first.Resource, first.ID).Scan(&tenant, &weight, &status); err != nil {
@@ -420,6 +461,7 @@ func TestIntegrationMissingColumnsRejected(t *testing.T) {
 	if _, err = db.Exec(fmt.Sprintf(`CREATE TABLE %s(namespace text COLLATE "C" NOT NULL,resource text COLLATE "C" NOT NULL,PRIMARY KEY(namespace,resource))`, d.resourceTable)); err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() {
 		_, _ = db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, d.requestTable))
 		_, _ = db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, d.resourceTable))
@@ -436,6 +478,7 @@ func TestIntegrationDequeuePreservesFollowerRows(t *testing.T) {
 	holder.Config.LeaseTTL = 30 * time.Second
 	held := executeStatus(t, d, airlock.Submit, holder, "", airlock.Granted)
 	var queued []airlock.Request
+
 	for i := 0; i < 3; i++ {
 		r := holder
 		id := airlock.NewRequest(r.SubmitUntil)
@@ -443,11 +486,13 @@ func TestIntegrationDequeuePreservesFollowerRows(t *testing.T) {
 		executeStatus(t, d, airlock.Submit, r, "", airlock.Queued)
 		queued = append(queued, r)
 	}
+
 	var version string
 	tail := queued[2]
 	if err := db.QueryRow(`SELECT xmin::text FROM public.airlock_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, tail.Resource, tail.ID).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
+
 	executeStatus(t, d, airlock.Release, holder, held.LeaseID, airlock.Released)
 	var after string
 	var position int64
@@ -457,11 +502,13 @@ func TestIntegrationDequeuePreservesFollowerRows(t *testing.T) {
 	if after != version || position != 2 {
 		t.Fatalf("follower rewritten/reindexed: %s -> %s position %d", version, after, position)
 	}
+
 	// Reading a queue whose first position is no longer zero must preserve FIFO.
 	for i := 0; i < 2; i++ {
 		got := executeStatus(t, d, airlock.Observe, queued[i], "", airlock.Granted)
 		executeStatus(t, d, airlock.Release, queued[i], got.LeaseID, airlock.Released)
 	}
+
 	executeStatus(t, d, airlock.Observe, tail, "", airlock.Granted)
 }
 
@@ -492,9 +539,11 @@ func (c *replyLossConn) BeginTx(ctx context.Context, options driver.TxOptions) (
 	}
 	return &replyLossTx{Tx: tx, armed: c.armed}, nil
 }
+
 func (c *replyLossConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	return c.Conn.(driver.ExecerContext).ExecContext(ctx, query, args)
 }
+
 func (c *replyLossConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	return c.Conn.(driver.QueryerContext).QueryContext(ctx, query, args)
 }
@@ -513,12 +562,14 @@ func (tx *replyLossTx) Commit() error {
 	}
 	return nil
 }
+
 func TestIntegrationCommittedResponseLoss(t *testing.T) {
 	normalDB := integrationDB(t)
 	base, err := stdlib.GetDefaultDriver().(driver.DriverContext).OpenConnector(os.Getenv("AIRLOCK_POSTGRES_DSN"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	connector := &replyLossConnector{Connector: base}
 	faultyDB := sql.OpenDB(connector)
 	t.Cleanup(func() { _ = faultyDB.Close() })
@@ -543,6 +594,7 @@ func TestIntegrationCommittedResponseLoss(t *testing.T) {
 	if retry.LeaseID != grant.LeaseID || retry.Remaining > grant.Remaining {
 		t.Fatal("lost Submit response caused a second grant/extended TTL")
 	}
+
 	other := r
 	identity := airlock.NewRequest(r.SubmitUntil)
 	other.ID, other.Owner = identity.ID, identity.Owner
@@ -553,6 +605,7 @@ func TestIntegrationCommittedResponseLoss(t *testing.T) {
 	if renewed.LeaseID != grant.LeaseID {
 		t.Fatal("renew changed identity")
 	}
+
 	unknown(airlock.Release, grant.LeaseID)
 	executeStatus(t, observer, airlock.Release, r, grant.LeaseID, airlock.Released)
 	next := executeStatus(t, observer, airlock.Observe, other, "", airlock.Granted)
@@ -577,18 +630,22 @@ func TestIntegrationObserveDoesNotLockOrWrite(t *testing.T) {
 	if _, err := tx.Exec(`SELECT resource FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.namespace, r.Resource); err != nil {
 		t.Fatal(err)
 	}
+
 	// A poll on this same resource must succeed while its mutation lock is held.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+
 	for range 10 {
 		result, err := d.Observe(ctx, pending)
 		if err != nil || result.Status != airlock.Queued || result.Revision != queued.Revision {
 			t.Fatalf("%+v %v", result, err)
 		}
 	}
+
 	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}
+
 	var revision string
 	if err := db.QueryRow(`SELECT revision FROM public.airlock_resources WHERE namespace=$1 AND resource=$2`, d.namespace, r.Resource).Scan(&revision); err != nil {
 		t.Fatal(err)
@@ -596,6 +653,7 @@ func TestIntegrationObserveDoesNotLockOrWrite(t *testing.T) {
 	if revision != fmt.Sprint(queued.Revision) {
 		t.Fatal("read-only polling wrote resource metadata")
 	}
+
 	executeStatus(t, d, airlock.Release, r, grant.LeaseID, airlock.Released)
 	executeStatus(t, d, airlock.Observe, pending, "", airlock.Granted)
 }
@@ -609,6 +667,7 @@ func benchmarkIntegrationObservation(b *testing.B, renew bool) {
 	if dsn == "" {
 		b.Skip("set AIRLOCK_POSTGRES_DSN")
 	}
+
 	for _, count := range []int{1, 100, 1000} {
 		b.Run(fmt.Sprint(count), func(b *testing.B) {
 			db, err := sql.Open("pgx", dsn)
@@ -621,6 +680,7 @@ func benchmarkIntegrationObservation(b *testing.B, renew bool) {
 			if err != nil {
 				b.Fatal(err)
 			}
+
 			ctx := context.Background()
 			if err := d.EnsureSchema(ctx); err != nil {
 				b.Fatal(err)
@@ -639,7 +699,9 @@ func benchmarkIntegrationObservation(b *testing.B, renew bool) {
 			if err != nil {
 				b.Fatal(err)
 			}
+
 			var pending airlock.Request
+
 			for range count {
 				pending = r
 				id := airlock.NewRequest(r.SubmitUntil)
@@ -648,8 +710,10 @@ func benchmarkIntegrationObservation(b *testing.B, renew bool) {
 					b.Fatal(err)
 				}
 			}
+
 			b.ReportAllocs()
 			b.ResetTimer()
+
 			for range b.N {
 				var result airlock.Result
 				var err error
@@ -660,10 +724,12 @@ func benchmarkIntegrationObservation(b *testing.B, renew bool) {
 				} else {
 					result, err = d.Observe(ctx, pending)
 				}
+
 				if err != nil || result.Status != want {
 					b.Fatalf("%+v %v", result, err)
 				}
 			}
+
 			b.StopTimer()
 		})
 	}
