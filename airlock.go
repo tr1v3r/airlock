@@ -102,7 +102,8 @@ type tenantQueue struct {
 
 // waiter tracks one pending atomic allocation under the owning Airlock mutex.
 type waiter struct {
-	// ready closes after a full grant; cancellation removes the waiter without closing it.
+	// ready is set only by local Acquire and closes after a full grant.
+	// Shared scheduling leaves it nil; cancellation does not close it.
 	ready chan struct{}
 	// granted records the winning grant transition under the Airlock mutex.
 	granted bool
@@ -219,6 +220,8 @@ func (g *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 		g.mu.Unlock()
 		return nil, err
 	}
+	// Install notification before dispatch while still holding mu.
+	w.ready = make(chan struct{})
 	g.dispatch()
 	g.mu.Unlock()
 	select {
@@ -256,7 +259,7 @@ func (g *Airlock) enqueue(tenant string, n int) (*waiter, error) {
 		tq.turn = group.rotation.PushBack(tq)
 		g.tenants[tenant] = tq
 	}
-	w := &waiter{ready: make(chan struct{}), tenant: tq, weight: n}
+	w := &waiter{tenant: tq, weight: n}
 	w.node = tq.requests.PushBack(w)
 	g.queued++
 	group.queued++
@@ -298,7 +301,9 @@ func (g *Airlock) dispatch() {
 		g.used += w.weight
 		g.active++
 		w.granted = true
-		close(w.ready)
+		if w.ready != nil {
+			close(w.ready)
+		}
 	}
 }
 
