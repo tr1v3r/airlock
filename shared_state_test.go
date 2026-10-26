@@ -607,3 +607,9 @@ func transitionOptimistic(data []byte, now time.Time, cmd Command) ([]byte, Resu
 	}
 	return encoded, result, window, err
 }
+
+func TestEncodeStateRejectsNil(t *testing.T) {
+	if data, err := EncodeState(nil); data != nil || err != ErrCorruptState {
+		t.Fatalf("nil transition output must not be persisted: %s %v", data, err)
+	}
+}

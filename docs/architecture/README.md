@@ -48,7 +48,7 @@ Choose New or NewShared; identify who runs work.
 
 Implementation: [airlock.go](../../airlock.go), [shared.go](../../shared.go), [driver.go](../../driver.go)
 
-Tests: [airlock_test.go](../../airlock_test.go), [shared_options_test.go](../../shared_options_test.go)
+Tests: [airlock_test.go](../../airlock_test.go), [shared_test.go](../../shared_test.go)
 
 ### 02 · Local admission and cancellation
 
