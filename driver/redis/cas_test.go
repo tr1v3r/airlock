@@ -43,14 +43,14 @@ func TestLuaCASRejectedCandidatePreservesState(t *testing.T) {
 			server.SetTime(now)
 			ctx := context.Background()
 			key := d.key(test.name)
-			if err := client.Set(ctx, key, "old", 0).Err(); err != nil {
+			if err := client.HSet(ctx, key, "state", "old").Err(); err != nil {
 				t.Fatal(err)
 			}
 			got, err := d.eval(ctx, casScript, key, test.args...)
 			if (err != nil) != test.wantError || (!test.wantError && got != int64(0)) {
 				t.Fatalf("CAS result=%v err=%v wantError=%t", got, err, test.wantError)
 			}
-			value, err := client.Get(ctx, key).Result()
+			value, err := client.HGet(ctx, key, "state").Result()
 			if err != nil || value != "old" {
 				t.Fatalf("rejected candidate changed state: %q err=%v", value, err)
 			}
@@ -81,7 +81,7 @@ func TestLuaCASTimeWindowEdges(t *testing.T) {
 			if err != nil || got != int64(1) {
 				t.Fatalf("inclusive lower / exclusive upper: result=%v err=%v", got, err)
 			}
-			if value, err := client.Get(ctx, key).Result(); err != nil || value != "new" {
+			if value, err := client.HGet(ctx, key, "state").Result(); err != nil || value != "new" {
 				t.Fatalf("committed value=%q err=%v", value, err)
 			}
 		})
@@ -189,7 +189,7 @@ func TestLuaCASGuards(t *testing.T) {
 			}
 		})
 	}
-	if got := client.Get(ctx, key).Val(); got != "newer" {
+	if got := client.HGet(ctx, key, "state").Val(); got != "newer" {
 		t.Fatal(got)
 	}
 }

@@ -3,8 +3,10 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -258,9 +260,7 @@ func TestAmbiguousCommitRecovery(t *testing.T) {
 	if got, err := d.Submit(context.Background(), r); err == nil || got != (airlock.Result{}) {
 		t.Fatalf("%+v %v", got, err)
 	}
-	beforeTransition(m, durable, now.Add(time.Millisecond))
-	m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
-	m.ExpectCommit()
+	m.ExpectQuery("SELECT r.config").WillReturnRows(observationRows(durable, r, now.Add(time.Millisecond)))
 	got, err := d.Observe(context.Background(), r)
 	if err != nil || got.Status != airlock.Granted || got.LeaseID != granted.LeaseID || got.Remaining >= granted.Remaining {
 		t.Fatalf("%+v %v", got, err)
@@ -301,9 +301,13 @@ func TestConflictingCommandsRollbackWithoutPersist(t *testing.T) {
 					wrong.Config.Admission.Capacity++
 					want = airlock.ErrConfigConflict
 				}
-				beforeTransition(mock, snapshot, now.Add(time.Millisecond))
-				// No UPDATE or COMMIT expectation: either would fail this test.
-				mock.ExpectRollback()
+				if operation == airlock.Observe {
+					mock.ExpectQuery("SELECT r.config").WillReturnRows(observationRows(snapshot, r, now.Add(time.Millisecond)))
+				} else {
+					beforeTransition(mock, snapshot, now.Add(time.Millisecond))
+					// No UPDATE or COMMIT expectation: either would fail this test.
+					mock.ExpectRollback()
+				}
 				got, err := driverconformance.Invoke(context.Background(), d, airlock.Command{Kind: operation, Request: wrong, LeaseID: grant.LeaseID})
 				if !errors.Is(err, want) || got != (airlock.Result{}) {
 					t.Fatalf("conflicting %s exposed result: %+v err=%v want=%v", operation, got, err, want)
@@ -343,4 +347,182 @@ func transitionSnapshot(data []byte, now time.Time, cmd airlock.Command) ([]byte
 		return nil, airlock.Result{}, codecErr
 	}
 	return encoded, result, err
+}
+
+// observationRows contains only a resource header and the selected request.
+func observationRows(snapshot []byte, request airlock.Request, now time.Time) *sqlmock.Rows {
+	var s airlock.SharedState
+	_ = json.Unmarshal(snapshot, &s)
+	config, _ := json.Marshal(s.Config)
+	values := []any{config, millis(s.Time), strconv.FormatUint(s.Revision, 10), millis(s.NextMaintenance())}
+	rec := s.Records[request.ID]
+	if rec == nil {
+		for range 11 {
+			values = append(values, nil)
+		}
+	} else {
+		values = append(values, rec.Request.ID, rec.Request.Owner, rec.Request.Tenant, rec.Request.Weight,
+			rec.Request.SubmitUntil.UnixMilli(), rec.Request.WaitUntil.UnixMilli(), string(rec.Status),
+			rec.LeaseID, millis(rec.Until), millis(rec.Finished), rec.Failure)
+	}
+	values = append(values, now)
+	rows := sqlmock.NewRows([]string{"config", "time", "revision", "next", "id", "owner", "tenant", "weight", "submit", "wait", "status", "lease", "until", "finished", "failure", "now"})
+	converted := make([]driver.Value, len(values))
+	for i, value := range values {
+		converted[i] = value
+	}
+	return rows.AddRow(converted...)
+}
+
+func TestObserveProjectionErrors(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	r := request(now)
+	snapshot, _, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"query", "missing", "revision", "config", "initial", "missing-record", "null-field", "backward"} {
+		t.Run(mode, func(t *testing.T) {
+			d, m := mockDriver(t)
+			e := m.ExpectQuery("SELECT r.config")
+			switch mode {
+			case "query":
+				e.WillReturnError(errors.New("read failed"))
+			case "missing":
+				e.WillReturnRows(sqlmock.NewRows([]string{"empty"}))
+			default:
+				// Construct explicit projection rows for malformed headers/records.
+				var s airlock.SharedState
+				_ = json.Unmarshal(snapshot, &s)
+				config, _ := json.Marshal(s.Config)
+				rec := s.Records[r.ID]
+				values := []driver.Value{config, millis(s.Time), fmt.Sprint(s.Revision), millis(s.NextMaintenance()),
+					rec.Request.ID, rec.Request.Owner, rec.Request.Tenant, rec.Request.Weight, rec.Request.SubmitUntil.UnixMilli(),
+					rec.Request.WaitUntil.UnixMilli(), string(rec.Status), rec.LeaseID, millis(rec.Until), millis(rec.Finished), rec.Failure, now}
+				switch mode {
+				case "revision":
+					values[2] = "invalid"
+				case "config":
+					values[0] = []byte("{")
+				case "initial":
+					values[2] = "0"
+				case "missing-record":
+					for i := 4; i < 15; i++ {
+						values[i] = nil
+					}
+				case "null-field":
+					values[5] = nil
+				case "backward":
+					values[15] = now.Add(-time.Second)
+				}
+				rows := sqlmock.NewRows([]string{"config", "time", "revision", "next", "id", "owner", "tenant", "weight", "submit", "wait", "status", "lease", "until", "finished", "failure", "now"}).AddRow(values...)
+				e.WillReturnRows(rows)
+			}
+			_, ready, err := d.observe(context.Background(), d.db, r)
+			fallback := mode == "missing" || mode == "initial" || mode == "missing-record"
+			if fallback {
+				if ready || err != nil {
+					t.Fatalf("%t %v", ready, err)
+				}
+			} else if !ready || err == nil {
+				t.Fatalf("%t %v", ready, err)
+			}
+		})
+	}
+}
+
+func TestObserveMaintenanceRecheck(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	r := request(now)
+	snapshot, _, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"missing", "lock-error", "peer-maintained", "due"} {
+		t.Run(mode, func(t *testing.T) {
+			d, m := mockDriver(t)
+			m.ExpectBegin()
+			tx, err := d.db.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			lock := m.ExpectQuery("SELECT resource")
+			switch mode {
+			case "missing":
+				lock.WillReturnRows(sqlmock.NewRows([]string{"resource"}))
+			case "lock-error":
+				lock.WillReturnError(errors.New("lock failed"))
+			default:
+				lock.WillReturnRows(sqlmock.NewRows([]string{"resource"}).AddRow(r.Resource))
+				at := now
+				if mode == "due" {
+					at = now.Add(r.Config.LeaseTTL)
+				}
+				m.ExpectQuery("SELECT r.config").WillReturnRows(observationRows(snapshot, r, at))
+			}
+			m.ExpectRollback()
+			_, ready, err := d.observeLocked(context.Background(), tx, r)
+			if mode == "lock-error" {
+				if err == nil {
+					t.Fatal("missing lock failure")
+				}
+			} else if err != nil || ready != (mode == "peer-maintained") {
+				t.Fatalf("%t %v", ready, err)
+			}
+			_ = tx.Rollback()
+		})
+	}
+}
+
+func TestObserveValidationAndMissingResource(t *testing.T) {
+	d, m := mockDriver(t)
+	r := request(time.Now())
+	bad := r
+	bad.Owner = ""
+	if _, err := d.Observe(context.Background(), bad); !errors.Is(err, airlock.ErrInvalidRequest) {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := d.Observe(ctx, r); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	// Unknown results still follow Transition's submission-window/error rules.
+	now := time.Now()
+	m.ExpectQuery("SELECT r.config").WillReturnRows(sqlmock.NewRows([]string{"empty"}))
+	m.ExpectBegin()
+	m.ExpectQuery("SELECT resource").WillReturnRows(sqlmock.NewRows([]string{"resource"}))
+	m.ExpectExec("INSERT INTO").WillReturnResult(sqlmock.NewResult(0, 1))
+	m.ExpectQuery("SELECT state_version").WillReturnRows(resourceRows(nil, now))
+	m.ExpectQuery("SELECT id").WillReturnRows(requestRows(nil))
+	m.ExpectQuery("SELECT pg_catalog.clock_timestamp").WillReturnRows(sqlmock.NewRows([]string{"now"}).AddRow(now))
+	m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
+	m.ExpectCommit()
+	if _, err := d.Observe(context.Background(), r); !errors.Is(err, airlock.ErrNotFound) {
+		t.Fatal(err)
+	}
+}
+
+func TestObservePeerRenewalAvoidsFullLoad(t *testing.T) {
+	d, m := mockDriver(t)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	r := request(now)
+	old, grant, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, _, err := transitionSnapshot(old, now.Add(r.Config.LeaseTTL/2), airlock.Command{Kind: airlock.Renew, Request: r, LeaseID: grant.LeaseID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := now.Add(r.Config.LeaseTTL)
+	m.ExpectQuery("SELECT r.config").WillReturnRows(observationRows(old, r, at))
+	m.ExpectBegin()
+	m.ExpectQuery("SELECT resource").WillReturnRows(sqlmock.NewRows([]string{"resource"}).AddRow(r.Resource))
+	m.ExpectQuery("SELECT r.config").WillReturnRows(observationRows(updated, r, at))
+	m.ExpectRollback()
+	got, err := d.Observe(context.Background(), r)
+	if err != nil || got.Status != airlock.Granted || got.Revision != grant.Revision+1 {
+		t.Fatalf("%+v %v", got, err)
+	}
 }

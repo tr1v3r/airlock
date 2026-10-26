@@ -160,7 +160,7 @@ func TestTransitionFailureRollsBack(t *testing.T) {
 	}
 	beforeTransition(m, data, now.Add(-time.Second))
 	m.ExpectRollback()
-	result, err := d.Observe(context.Background(), r)
+	result, err := d.Submit(context.Background(), r)
 	if !errors.Is(err, airlock.ErrCorruptState) || result != (airlock.Result{}) {
 		t.Fatal(result, err)
 	}

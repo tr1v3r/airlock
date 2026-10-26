@@ -19,6 +19,9 @@ type resource struct {
 	gate chan struct{}
 	// snapshot is the last committed opaque state; gate protects access.
 	snapshot []byte
+	// state and observation are immutable projections of snapshot, protected by gate.
+	state       *airlock.SharedState
+	observation airlock.Observation
 }
 
 // Driver owns volatile resource snapshots. Independent instances do not share
@@ -62,6 +65,16 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 	if err := ctx.Err(); err != nil {
 		return airlock.Result{}, err
 	}
+	if cmd.Kind == airlock.Observe && r.state != nil {
+		o := r.observation
+		o.Record = r.state.Records[cmd.Request.ID]
+		if result, ready, err := o.Observe(time.Now(), cmd.Request); ready || err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return airlock.Result{}, ctxErr
+			}
+			return result, err
+		}
+	}
 	state, err := airlock.DecodeState(r.snapshot)
 	if err != nil {
 		return airlock.Result{}, err
@@ -73,6 +86,9 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 			return airlock.Result{}, codecErr
 		}
 		r.snapshot = data
+		r.state = next
+		r.observation = airlock.Observation{Resource: next.Resource, Config: next.Config, Revision: next.Revision,
+			Time: next.Time, NextMaintenance: next.NextMaintenance()}
 	}
 	if err := ctx.Err(); err != nil {
 		return airlock.Result{}, err
@@ -88,7 +104,7 @@ func (d *Driver) Submit(ctx context.Context, request airlock.Request) (airlock.R
 	return d.execute(ctx, airlock.Command{Kind: airlock.Submit, Request: request})
 }
 
-// Observe returns the request outcome after advancing expiry and scheduling.
+// Observe reads the committed outcome, advancing expiry and scheduling when due.
 func (d *Driver) Observe(ctx context.Context, request airlock.Request) (airlock.Result, error) {
 	return d.execute(ctx, airlock.Command{Kind: airlock.Observe, Request: request})
 }

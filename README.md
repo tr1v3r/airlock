@@ -166,6 +166,9 @@ See the runnable [immediate acquisition example](examples/tryacquire/example.go)
 The [TryAcquire design decision](docs/decisions/002-try-acquire.md) records the
 fairness boundary and API alternatives (document in Chinese).
 
+For read-only Shared polling, due-maintenance fallback and write-path tradeoffs,
+see the [Shared guide](docs/guides/shared.md) and [observation benchmarks](docs/benchmarks/shared-observe/README.md).
+
 ## Local priority groups
 
 Priority is configured once at construction; existing acquisition signatures stay

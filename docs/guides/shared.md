@@ -227,6 +227,14 @@ implementation and uses the same defaults.
 | `PollInterval` | 50ms | Delay between queries while queued |
 | `ClockSkewAllowance` | 0 | Opt-in budget for a known client/backend clock-offset bound |
 
+Built-in memory, PostgreSQL and Redis drivers use a read-only Observe fast path
+until lease/queue expiry or history collection is due. Fast observations keep the
+committed Revision; due observations run the ordinary atomic transition. Waiters'
+own polling can advance maintenance without a holder calling Release.
+Every queued acquisition still polls at PollInterval; there is no notification
+transport or background maintenance worker.
+
+
 Terminal records remain until both the submission window and retention requirement
 permit removal. A full history can return `ErrHistoryFull` even when token capacity
 is available. MaxRecords is an on-demand record bound, not preallocated capacity;

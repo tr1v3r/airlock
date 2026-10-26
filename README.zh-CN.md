@@ -149,6 +149,8 @@ defer permit.Release()
 
 [TryAcquire 设计决定](docs/decisions/002-try-acquire.md)记录公平性边界及接口方案取舍。
 
+Shared 等待查询的只读快路径、到期维护回退和写入取舍，见[Shared 指南](docs/guides/shared.zh-CN.md)及[观察基准](docs/benchmarks/shared-observe/README.md)。
+
 ## 本地优先级分组
 
 优先级在构造时配置，现有申请方法的签名不变。例如让在线租户获得更多选择机会，

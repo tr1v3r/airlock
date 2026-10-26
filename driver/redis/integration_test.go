@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -109,4 +110,63 @@ func integrationSuite(t *testing.T, cluster bool) {
 			t.Fatal(got)
 		}
 	})
+}
+
+func BenchmarkIntegrationObserveQueued(b *testing.B) { benchmarkIntegrationObservation(b, false) }
+
+func BenchmarkIntegrationRenewWithWaiters(b *testing.B) { benchmarkIntegrationObservation(b, true) }
+
+func benchmarkIntegrationObservation(b *testing.B, renew bool) {
+	address := os.Getenv("AIRLOCK_REDIS_ADDR")
+	if address == "" {
+		b.Skip("set AIRLOCK_REDIS_ADDR")
+	}
+	for _, count := range []int{1, 100, 1000} {
+		b.Run(strconv.Itoa(count), func(b *testing.B) {
+			client := goredis.NewClient(&goredis.Options{Addr: address, ContextTimeoutEnabled: true})
+			defer func() { _ = client.Close() }()
+			d, err := New(client, "observe-bench-"+airlock.NewRequest(time.Now()).Owner)
+			if err != nil {
+				b.Fatal(err)
+			}
+			r := request()
+			r.Config.LeaseTTL, r.Config.MaxWait, r.Config.SubmitWindow = time.Hour, time.Hour, time.Hour
+			r.Config.Admission.MaxQueued, r.Config.Admission.MaxQueuedPerTenant, r.Config.MaxRecords = 1000, 1000, 1001
+			until := time.Now().Add(time.Hour).UTC().Truncate(time.Millisecond)
+			id := airlock.NewRequest(until)
+			r.ID, r.Owner, r.SubmitUntil, r.WaitUntil = id.ID, id.Owner, until, until
+			ctx := context.Background()
+			defer func() { _ = client.Del(ctx, d.key(r.Resource)).Err() }()
+			held, err := d.Submit(ctx, r)
+			if err != nil {
+				b.Fatal(err)
+			}
+			var pending airlock.Request
+			for range count {
+				pending = r
+				id := airlock.NewRequest(until)
+				pending.ID, pending.Owner = id.ID, id.Owner
+				if _, err := d.Submit(ctx, pending); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				var result airlock.Result
+				var err error
+				want := airlock.Queued
+				if renew {
+					result, err = d.Renew(ctx, airlock.LeaseRef{Request: r, ID: held.LeaseID})
+					want = airlock.Granted
+				} else {
+					result, err = d.Observe(ctx, pending)
+				}
+				if err != nil || result.Status != want {
+					b.Fatalf("%+v %v", result, err)
+				}
+			}
+			b.StopTimer()
+		})
+	}
 }

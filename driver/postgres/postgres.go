@@ -123,6 +123,11 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 		return airlock.Result{}, fmt.Errorf("airlock/postgres: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if cmd.Kind == airlock.Observe {
+		if result, ready, err := d.observeLocked(ctx, tx, cmd.Request); ready || err != nil {
+			return result, err
+		}
+	}
 	state, before, err := d.load(ctx, tx, cmd.Request)
 	if err != nil {
 		return airlock.Result{}, err
@@ -168,8 +173,19 @@ func (d *Driver) Submit(ctx context.Context, request airlock.Request) (airlock.R
 	return d.execute(ctx, airlock.Command{Kind: airlock.Submit, Request: request})
 }
 
-// Observe returns the request outcome after advancing expiry and scheduling.
+// Observe reads the committed outcome, advancing expiry and scheduling when due.
 func (d *Driver) Observe(ctx context.Context, request airlock.Request) (airlock.Result, error) {
+	if err := d.validate(ctx); err != nil {
+		return airlock.Result{}, err
+	}
+	if err := airlock.ValidateCommand(airlock.Command{Kind: airlock.Observe, Request: request}); err != nil {
+		return airlock.Result{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, d.timeout)
+	defer cancel()
+	if result, ready, err := d.observe(ctx, d.db, request); ready || err != nil {
+		return result, err
+	}
 	return d.execute(ctx, airlock.Command{Kind: airlock.Observe, Request: request})
 }
 
