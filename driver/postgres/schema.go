@@ -24,7 +24,7 @@ func (d *Driver) EnsureSchema(ctx context.Context) error {
 			return fmt.Errorf("airlock/postgres: schema: %w", err)
 		}
 	}
-	for _, query := range []string{fmt.Sprintf(`SELECT %s, next_maintenance_ms FROM %s WHERE false`, resourceColumns, d.table), fmt.Sprintf(`SELECT %s FROM %s WHERE false`, requestColumns, d.requests)} {
+	for _, query := range []string{fmt.Sprintf(`SELECT %s, next_maintenance_ms FROM %s WHERE false`, resourceColumns, d.resourceTable), fmt.Sprintf(`SELECT %s FROM %s WHERE false`, requestColumns, d.requestTable)} {
 		rows, e := tx.QueryContext(ctx, query)
 		if e != nil {
 			return fmt.Errorf("airlock/postgres: incompatible schema: %w", e)
@@ -50,7 +50,7 @@ func (d *Driver) schema() []string {
  observed_ms bigint,
  next_maintenance_ms bigint,
  PRIMARY KEY (namespace,resource)
-)`, d.table),
+)`, d.resourceTable),
 		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
  namespace text COLLATE pg_catalog."C" NOT NULL,
  resource text COLLATE pg_catalog."C" NOT NULL,
@@ -70,6 +70,6 @@ func (d *Driver) schema() []string {
  FOREIGN KEY (namespace,resource) REFERENCES %s(namespace,resource),
  UNIQUE (namespace,resource,tenant,queue_position) DEFERRABLE INITIALLY DEFERRED,
  CHECK ((status='queued')=(queue_position IS NOT NULL))
-)`, d.requests, d.table),
+)`, d.requestTable, d.resourceTable),
 	}
 }

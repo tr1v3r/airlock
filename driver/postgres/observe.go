@@ -31,7 +31,7 @@ func (d *Driver) observe(ctx context.Context, q observerQuery, request airlock.R
 			AND q.id = $3
 		WHERE r.namespace = $1
 			AND r.resource = $2
-	`, d.table, d.requests)
+	`, d.resourceTable, d.requestTable)
 
 	var config []byte
 	var observed, next sql.NullInt64
@@ -108,7 +108,7 @@ func (d *Driver) observeLocked(ctx context.Context, tx *sql.Tx, request airlock.
 		WHERE namespace = $1
 			AND resource = $2
 		FOR UPDATE
-	`, d.table)
+	`, d.resourceTable)
 
 	var resource string
 	err := tx.QueryRowContext(ctx, query, d.namespace, request.Resource).Scan(&resource)

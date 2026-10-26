@@ -25,10 +25,10 @@ type Driver struct {
 	db *sql.DB
 	// namespace is stored in a separate namespace column, preserving resource boundaries.
 	namespace string
-	// table is the validated and quoted schema-qualified resource table.
-	table string
-	// requests is the validated and quoted request table.
-	requests string
+	// resourceTable is the validated and quoted schema-qualified resource table.
+	resourceTable string
+	// requestTable is the validated and quoted request table.
+	requestTable string
 	// timeout caps database calls and transaction lock waits.
 	timeout time.Duration
 }
@@ -37,7 +37,8 @@ type Driver struct {
 type Option func(*Driver) error
 
 // WithTable selects table or schema.table. Unqualified tables use public.
-// The request table is named <table>_requests (default airlock_resources_requests).
+// The resource name airlock_resources uses airlock_requests in the same schema.
+// Other resource table names append _requests.
 // Schema identifiers allow 63 bytes; table identifiers allow 54 for the suffix.
 // Components must be ASCII SQL identifiers; quoting makes
 // them case-sensitive. Provision the schema separately.
@@ -50,6 +51,7 @@ func WithTable(name string) Option {
 		if len(parts) != 2 {
 			return errors.New("airlock/postgres: invalid table name")
 		}
+		resourceName := parts[1]
 		for i, part := range parts {
 			if len(part) == 0 || len(part) > 63 || (i == 1 && len(part) > 54) {
 				return errors.New("airlock/postgres: invalid table name")
@@ -62,8 +64,12 @@ func WithTable(name string) Option {
 			}
 			parts[i] = `"` + part + `"`
 		}
-		d.table = strings.Join(parts, ".")
-		d.requests = parts[0] + "." + strings.TrimSuffix(parts[1], `"`) + `_requests"`
+		d.resourceTable = strings.Join(parts, ".")
+		requestName := resourceName + "_requests"
+		if resourceName == "airlock_resources" {
+			requestName = "airlock_requests"
+		}
+		d.requestTable = parts[0] + `."` + requestName + `"`
 		return nil
 	}
 }
@@ -93,7 +99,7 @@ func New(db *sql.DB, namespace string, options ...Option) (*Driver, error) {
 	if len(namespace) > 256 || !utf8.ValidString(namespace) || strings.ContainsRune(namespace, 0) {
 		return nil, errors.New("airlock/postgres: invalid namespace")
 	}
-	d := &Driver{db: db, namespace: namespace, table: `"public"."airlock_resources"`, requests: `"public"."airlock_resources_requests"`, timeout: 5 * time.Second}
+	d := &Driver{db: db, namespace: namespace, resourceTable: `"public"."airlock_resources"`, requestTable: `"public"."airlock_requests"`, timeout: 5 * time.Second}
 	for _, option := range options {
 		if option == nil {
 			return nil, errors.New("airlock/postgres: nil option")
