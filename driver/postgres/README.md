@@ -52,9 +52,17 @@ this is not a comprehensive schema/constraint audit.
 | Table | Key | Stored fields |
 | --- | --- | --- |
 | `public.airlock_resources` | `(namespace, resource)` | `state_version`, immutable `config` JSONB, tenant `rotations` JSONB, `protected`, `cursor`, `revision`, `observed_ms`, `next_maintenance_ms` |
-| `public.airlock_resources_requests` | `(namespace, resource, id)` | `owner`, `tenant`, `weight`, `submit_until_ms`, `wait_until_ms`, `status`, `lease_id`, `until_ms`, `finished_ms`, `failure`, `queue_position` |
+| `public.airlock_requests` | `(namespace, resource, id)` | `owner`, `tenant`, `weight`, `submit_until_ms`, `wait_until_ms`, `status`, `lease_id`, `until_ms`, `finished_ms`, `failure`, `queue_position` |
 
-The request table is always `<resource_table>_requests`, in the same schema.
+The default tables are `public.airlock_resources` and `public.airlock_requests`.
+Explicitly selecting `airlock_resources` with `WithTable` uses `airlock_requests`
+in the selected schema as well. Other custom resource table names use the
+`<resource_table>_requests` naming rule.
+
+默认表名为 `airlock_resources` 和 `airlock_requests`。通过 `WithTable` 显式选择
+`airlock_resources` 时也使用同 schema 下的 `airlock_requests`；其他自定义资源表名
+追加 `_requests` 后缀。
+
 See the exact [DDL](schema.go). Request lifecycle/lease fields are ordinary SQL
 columns, not JSON. One request has at most one lease, so a third lease table would
 add joins without an independent lifecycle. Request rows reference the resource;
@@ -68,7 +76,7 @@ to execute work):
 
 ```sql
 SELECT tenant, status, sum(weight) AS tokens, count(*) AS requests
-FROM public.airlock_resources_requests
+FROM public.airlock_requests
 WHERE namespace = 'my-service' AND resource = 'export-jobs'
 GROUP BY tenant, status;
 ```

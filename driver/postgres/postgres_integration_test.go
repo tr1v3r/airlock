@@ -379,7 +379,7 @@ func TestIntegrationRelationalDeltaWrites(t *testing.T) {
 	b := executeStatus(t, d, airlock.Submit, second, "", airlock.Granted)
 	readVersion := func(r airlock.Request) string {
 		var version string
-		if err := db.QueryRow(`SELECT xmin::text FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, r.Resource, r.ID).Scan(&version); err != nil {
+		if err := db.QueryRow(`SELECT xmin::text FROM public.airlock_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, r.Resource, r.ID).Scan(&version); err != nil {
 			t.Fatal(err)
 		}
 		return version
@@ -402,7 +402,7 @@ func TestIntegrationRelationalDeltaWrites(t *testing.T) {
 	}
 	var tenant, status string
 	var weight int
-	if err := db.QueryRow(`SELECT tenant,weight,status FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, first.Resource, first.ID).Scan(&tenant, &weight, &status); err != nil {
+	if err := db.QueryRow(`SELECT tenant,weight,status FROM public.airlock_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, first.Resource, first.ID).Scan(&tenant, &weight, &status); err != nil {
 		t.Fatal(err)
 	}
 	if tenant != first.Tenant || weight != first.Weight || status != "released" {
@@ -445,13 +445,13 @@ func TestIntegrationDequeuePreservesFollowerRows(t *testing.T) {
 	}
 	var version string
 	tail := queued[2]
-	if err := db.QueryRow(`SELECT xmin::text FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, tail.Resource, tail.ID).Scan(&version); err != nil {
+	if err := db.QueryRow(`SELECT xmin::text FROM public.airlock_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, tail.Resource, tail.ID).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
 	executeStatus(t, d, airlock.Release, holder, held.LeaseID, airlock.Released)
 	var after string
 	var position int64
-	if err := db.QueryRow(`SELECT xmin::text,queue_position FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, tail.Resource, tail.ID).Scan(&after, &position); err != nil {
+	if err := db.QueryRow(`SELECT xmin::text,queue_position FROM public.airlock_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, tail.Resource, tail.ID).Scan(&after, &position); err != nil {
 		t.Fatal(err)
 	}
 	if after != version || position != 2 {
@@ -626,7 +626,7 @@ func benchmarkIntegrationObservation(b *testing.B, renew bool) {
 				b.Fatal(err)
 			}
 			defer func() {
-				_, _ = db.Exec(`DELETE FROM public.airlock_resources_requests WHERE namespace=$1`, namespace)
+				_, _ = db.Exec(`DELETE FROM public.airlock_requests WHERE namespace=$1`, namespace)
 				_, _ = db.Exec(`DELETE FROM public.airlock_resources WHERE namespace=$1`, namespace)
 			}()
 			r := request(time.Now())

@@ -96,11 +96,24 @@ func TestConfiguration(t *testing.T) {
 			t.Fatalf("accepted %q", name)
 		}
 	}
-	for name, want := range map[string]string{"abc_1": `"public"."abc_1"`, "MySchema.MyTable": `"MySchema"."MyTable"`} {
-		d, err := New(db, "", WithTable(name), WithOperationTimeout(time.Minute))
-		if err != nil || d.resourceTable != want || d.timeout != time.Minute {
-			t.Fatalf("%+v %v", d, err)
+	for _, tc := range []struct {
+		name, resources, requests string
+	}{
+		{"abc_1", `"public"."abc_1"`, `"public"."abc_1_requests"`},
+		{"MySchema.MyTable", `"MySchema"."MyTable"`, `"MySchema"."MyTable_requests"`},
+		{"airlock_resources", `"public"."airlock_resources"`, `"public"."airlock_requests"`},
+		{"public.airlock_resources", `"public"."airlock_resources"`, `"public"."airlock_requests"`},
+		{"app.jobs_resources", `"app"."jobs_resources"`, `"app"."jobs_resources_requests"`},
+	} {
+		d, err := New(db, "", WithTable(tc.name), WithOperationTimeout(time.Minute))
+		if err != nil || d.resourceTable != tc.resources || d.requestTable != tc.requests || d.timeout != time.Minute {
+			t.Fatalf("%s: %+v %v", tc.name, d, err)
 		}
+	}
+
+	d, err := New(db, "")
+	if err != nil || d.resourceTable != `"public"."airlock_resources"` || d.requestTable != `"public"."airlock_requests"` {
+		t.Fatalf("default tables: %+v %v", d, err)
 	}
 }
 
