@@ -12,7 +12,7 @@ import (
 )
 
 // Driver provides atomic admission operations for a resource. Implementations must
-// serialize all operations, use backend time after obtaining exclusive access
+// serialize mutations, use backend time after obtaining exclusive access
 // (or enforce the Transition publication window with atomic CAS),
 // atomically persist lifecycle/scheduling changes even on business rejection,
 // and honor ctx. Storage layout and use of the reference helpers are optional. Transport errors are ambiguous and never authorize work.
@@ -24,7 +24,8 @@ import (
 type Driver interface {
 	// Submit admits or queues the whole request; retries do not refresh an existing lease.
 	Submit(context.Context, Request) (Result, error)
-	// Observe advances expiry and scheduling, then returns the request's current outcome.
+	// Observe returns the current outcome, advancing expiry and scheduling when due.
+	// A read-only observation need not increment Revision.
 	Observe(context.Context, Request) (Result, error)
 	// Cancel terminates a queued or granted request, including cancellation before submission.
 	Cancel(context.Context, Request) (Result, error)
@@ -93,7 +94,7 @@ type Operation string
 const (
 	// Submit admits a request or returns its existing outcome without refreshing TTL.
 	Submit Operation = "submit"
-	// Observe reads and advances expiry and scheduling; polling order is not grant order.
+	// Observe reads outcomes and advances due maintenance; polling order is not grant order.
 	Observe Operation = "observe"
 	// Cancel terminates queued or granted requests, or creates a tombstone before Submit.
 	Cancel Operation = "cancel"
