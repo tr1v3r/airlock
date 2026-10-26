@@ -52,7 +52,7 @@ func (o Observation) Observe(now time.Time, request Request) (result Result, rea
 	if o.Resource != request.Resource || !reflect.DeepEqual(o.Config, request.Config) {
 		return Result{}, true, ErrConfigConflict
 	}
-	if o.Revision == 0 || o.Time.IsZero() || now.Truncate(time.Millisecond).Before(o.Time) {
+	if o.Revision == 0 || o.Revision == ^uint64(0) || o.Time.IsZero() || now.Truncate(time.Millisecond).Before(o.Time) {
 		return Result{}, true, ErrCorruptState
 	}
 	if !o.NextMaintenance.IsZero() && !now.Before(o.NextMaintenance) {

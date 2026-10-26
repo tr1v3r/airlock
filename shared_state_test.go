@@ -704,6 +704,7 @@ func TestObservationValidationAndFallback(t *testing.T) {
 		{"resource conflict", func(o *Observation, _ *Request) { o.Resource = "other" }, ErrConfigConflict, true},
 		{"config conflict", func(o *Observation, _ *Request) { o.Config.Admission.Capacity++ }, ErrConfigConflict, true},
 		{"zero revision", func(o *Observation, _ *Request) { o.Revision = 0 }, ErrCorruptState, true},
+		{"exhausted revision", func(o *Observation, _ *Request) { o.Revision = ^uint64(0) }, ErrCorruptState, true},
 		{"zero time", func(o *Observation, _ *Request) { o.Time = time.Time{} }, ErrCorruptState, true},
 		{"backward time", func(o *Observation, _ *Request) { o.Time = o.Time.Add(time.Second) }, ErrCorruptState, true},
 		{"missing record", func(o *Observation, _ *Request) { o.Record = nil }, nil, false},
