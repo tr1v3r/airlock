@@ -278,9 +278,10 @@ func TestMemorySharedBenchmarkSmoke(t *testing.T) {
 		{workers: 4, cycles: 64, capacity: 4, maxQueued: 0},
 		{workers: 4, cycles: 64, capacity: 2, maxQueued: 20},
 	} {
-		_, _, operationTimeout := memoryBenchWindows(p.workers, p.maxQueued > 0)
+		cfg := memoryBenchConfig(p.workers, p.capacity, p.maxQueued)
+		operationTimeout := memoryBenchTestWindows(&cfg, p.workers)
 		client, err := airlock.NewShared(New(), airlock.SharedOptions{Resource: "memory-smoke",
-			Config:           memoryBenchConfig(p.workers, p.capacity, p.maxQueued),
+			Config:           cfg,
 			OperationTimeout: operationTimeout, PollInterval: memoryBenchPollInterval})
 		if err != nil {
 			t.Fatal(err)
@@ -290,4 +291,22 @@ func TestMemorySharedBenchmarkSmoke(t *testing.T) {
 			t.Fatalf("completed %d of %d cycles", completed, p.cycles)
 		}
 	}
+}
+
+// memoryBenchTestWindows widens cfg's windows for test contexts and returns
+// the matching OperationTimeout. The race lane runs the smoke test under
+// -race, -cpu=1 and shuffled orders on shared CI VMs, where an instrumented
+// transition costs an order of magnitude more than the calibration behind the
+// 10ms SubmitWindow floor, and a Submit behind W-1 raced peers can miss it.
+// Benchmarks keep the tight representative windows; tests assert liveness, so
+// every window widens by 10x, still far inside the protocol caps (mirrors the
+// root harness's rule).
+func memoryBenchTestWindows(cfg *airlock.ResourceConfig, workers int) (operationTimeout time.Duration) {
+	_, _, operationTimeout = memoryBenchWindows(workers, cfg.Admission.MaxQueued > 0)
+	cfg.SubmitWindow *= 10
+	cfg.MaxWait *= 10
+	if operationTimeout *= 10; operationTimeout > time.Minute {
+		operationTimeout = time.Minute
+	}
+	return operationTimeout
 }

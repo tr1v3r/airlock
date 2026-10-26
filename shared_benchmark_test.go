@@ -372,6 +372,21 @@ func newSharedBenchEnv(tb testing.TB, p sharedBenchParams) *sharedBenchEnv {
 		tb.Skipf("W=%d/H=%d: derived MaxWait %s exceeds %s; steady-state drain is unmeasurable within protocol limits",
 			p.workers, p.terminals, maxWait, sharedBenchMaxWaitSkipThreshold)
 	}
+	if _, isTest := tb.(*testing.T); isTest {
+		// The race lane runs the smoke tests under -race, -cpu=1 and shuffled
+		// orders on shared CI VMs, where an instrumented transition costs an
+		// order of magnitude more than the calibration behind the 10ms
+		// SubmitWindow floor, and a Submit behind W-1 raced peers can miss it
+		// (observed as ErrSubmitExpired on the post-unification core).
+		// Benchmarks keep the tight representative windows; tests assert
+		// liveness, so they widen every window by 10x, still far inside the
+		// protocol caps.
+		submitWindow *= 10
+		maxWait *= 10
+		if operationTimeout *= 10; operationTimeout > time.Minute {
+			operationTimeout = time.Minute
+		}
+	}
 	cfg.MaxWait = maxWait
 	cfg.SubmitWindow = submitWindow
 	driver := newBenchDriver(benchSeedSnapshot(tb, p.resource, cfg, terminals))
