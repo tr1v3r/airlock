@@ -28,6 +28,7 @@ type observationIndex struct {
 // cannot expose a request from an uncommitted candidate.
 func index(state *airlock.SharedState) ([]byte, error) {
 	token := airlock.NewRequest(state.Time).Owner
+
 	meta, err := json.Marshal(observationHeader{
 		Observation: airlock.Observation{
 			Resource:        state.Resource,
@@ -41,20 +42,19 @@ func index(state *airlock.SharedState) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	i := observationIndex{
 		Meta:    string(meta),
 		Records: make(map[string]string, len(state.Records)),
 	}
 	for id, rec := range state.Records {
-		data, err := json.Marshal(observationRecord{
-			Token:  token,
-			Record: rec,
-		})
+		data, err := json.Marshal(observationRecord{Token: token, Record: rec})
 		if err != nil {
 			return nil, err
 		}
 		i.Records[id] = string(data)
 	}
+
 	return json.Marshal(i)
 }
 

@@ -105,30 +105,28 @@ func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState
 	if err != nil {
 		return err
 	}
-	query := fmt.Sprintf(`UPDATE %s
-SET rotations = $3,
-    protected = $4,
-    cursor = $5,
-    revision = $6,
-    observed_ms = $7,
-    next_maintenance_ms = $8
-WHERE namespace = $1
-    AND resource = $2`, d.table)
+
+	query := fmt.Sprintf(`
+		UPDATE %s
+		SET rotations = $3,
+			protected = $4,
+			cursor = $5,
+			revision = $6,
+			observed_ms = $7,
+			next_maintenance_ms = $8
+		WHERE namespace = $1
+			AND resource = $2
+	`, d.table)
 	result, err := tx.ExecContext(
-		ctx,
-		query,
-		d.namespace,
-		s.Resource,
-		string(rotations),
-		s.Protected,
-		s.Cursor,
-		strconv.FormatUint(s.Revision, 10),
-		millis(s.Time),
-		millis(s.NextMaintenance()),
+		ctx, query,
+		d.namespace, s.Resource,
+		string(rotations), s.Protected, s.Cursor,
+		strconv.FormatUint(s.Revision, 10), millis(s.Time), millis(s.NextMaintenance()),
 	)
 	if err = oneRow(result, err); err != nil {
 		return fmt.Errorf("airlock/postgres: persist resource: %w", err)
 	}
+
 	positions := make(map[string]sql.NullInt64)
 	for _, queue := range s.Queues {
 		previous := int64(-1)
