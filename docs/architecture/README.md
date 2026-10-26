@@ -46,7 +46,7 @@ Choose New or NewShared; identify who runs work.
 
 ![Runtime overview](previews/overview.png)
 
-Implementation: [airlock.go](../../airlock.go), [distributed.go](../../distributed.go), [driver.go](../../driver.go)
+Implementation: [airlock.go](../../airlock.go), [shared.go](../../shared.go), [driver.go](../../driver.go)
 
 Tests: [airlock_test.go](../../airlock_test.go), [shared_options_test.go](../../shared_options_test.go)
 
@@ -94,7 +94,7 @@ Separate local invalidity from backend release confirmation.
 
 ![Client lease lifecycle](previews/lease-states.png)
 
-Implementation: [distributed.go](../../distributed.go)
+Implementation: [shared.go](../../shared.go)
 
 Tests: [shared_concurrency_test.go](../../shared_concurrency_test.go), [shared_clock_test.go](../../shared_clock_test.go)
 
@@ -106,7 +106,7 @@ Follow submission, polling, commit and lease delivery.
 
 ![Shared request sequence](previews/shared-sequence.png)
 
-Implementation: [distributed.go](../../distributed.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/redis.go](../../driver/redis/redis.go)
+Implementation: [shared.go](../../shared.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/redis.go](../../driver/redis/redis.go)
 
 Tests: [shared_test.go](../../shared_test.go), [shared_concurrency_test.go](../../shared_concurrency_test.go)
 
