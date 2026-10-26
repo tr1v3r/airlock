@@ -59,10 +59,10 @@ func TestIntegrationStandalone(t *testing.T) { integrationSuite(t, false) }
 func TestIntegrationCluster(t *testing.T)    { integrationSuite(t, true) }
 func integrationSuite(t *testing.T, cluster bool) {
 	client := integrationClient(t, cluster)
-	prefix := "airlock-test-" + airlock.NewRequest(time.Now()).Owner
+	namespace := "airlock-test-" + airlock.NewRequest(time.Now()).Owner
 	factory := func(t *testing.T) airlock.Driver {
 		t.Helper()
-		d, err := New(client, prefix)
+		d, err := New(client, namespace)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -71,11 +71,11 @@ func integrationSuite(t *testing.T, cluster bool) {
 	driverconformance.Run(t, factory)
 	t.Run("shared_clients_and_permanent_state", func(t *testing.T) {
 		other := integrationClient(t, cluster)
-		first, err := New(client, prefix)
+		first, err := New(client, namespace)
 		if err != nil {
 			t.Fatal(err)
 		}
-		second, err := New(other, prefix)
+		second, err := New(other, namespace)
 		if err != nil {
 			t.Fatal(err)
 		}

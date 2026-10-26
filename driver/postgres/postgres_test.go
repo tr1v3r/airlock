@@ -79,9 +79,9 @@ func TestConfiguration(t *testing.T) {
 		t.Fatal("nil db accepted")
 	}
 	db := new(sql.DB)
-	for _, prefix := range []string{"\x00", "\xff", strings.Repeat("a", 257)} {
-		if _, err := New(db, prefix); err == nil {
-			t.Fatal("invalid prefix accepted")
+	for _, namespace := range []string{"\x00", "\xff", strings.Repeat("a", 257)} {
+		if _, err := New(db, namespace); err == nil {
+			t.Fatal("invalid namespace accepted")
 		}
 	}
 	for _, options := range [][]Option{{nil}, {WithOperationTimeout(0)}, {WithOperationTimeout(-time.Second)}} {

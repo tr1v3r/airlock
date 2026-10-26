@@ -37,7 +37,7 @@ if err != nil {
 
 | 层级 | 用途 | 设置位置 |
 | --- | --- | --- |
-| namespace | 在同一后端中隔离不同应用或环境的命名 | `postgres.New` 或 `redis.New` 的 `prefix` 参数 |
+| namespace | 在同一后端中隔离不同应用或环境的命名 | `postgres.New` 或 `redis.New` 的 `namespace` 参数 |
 | Resource | 独立容量池，拥有自己的配置、队列和租约状态 | `SharedOptions.Resource` |
 | Tenant | 同一 Resource 内的竞争者，用于租户 FIFO、轮转调度和租户排队上限 | `AcquireFor` 或 `AcquireNFor`；`Acquire` 使用默认租户 |
 
@@ -57,11 +57,11 @@ Tenant 用于共享容量内的公平分配，不代表独立容量池，也不�
 
 PostgreSQL 共用数据表：资源元数据的主键为 `(namespace, resource)`，请求表的主键为
 `(namespace, resource, id)`。命令用 `FOR UPDATE` 锁定对应资源行，并读取该资源的请求。
-Redis 把每个资源存放在 `airlock:{SHA256(prefix + "\0" + resource)}:state`，分别执行快照 CAS。
+Redis 把每个资源存放在 `airlock:{SHA256(namespace + "\0" + resource)}:state`，分别执行快照 CAS。
 不同资源仍共享后端物理资源和连接池；逻辑隔离不代表性能隔离。
 
 创建不同 Driver 对象本身不会隔离容量。使用同一 PostgreSQL 数据库/表/namespace/resource，
-或同一 Redis keyspace/prefix/resource 的客户端会共享容量，必须使用相同的、补齐默认值后的
+或同一 Redis keyspace/namespace/resource 的客户端会共享容量，必须使用相同的、补齐默认值后的
 `ResourceConfig`。独立容量池使用不同 Resource 即可；需要不同命名空间、连接或 PostgreSQL
 表时再创建不同 Driver。Memory 没有 namespace 参数，其共享范围是 driver 实例，实例内每个
 Resource 拥有独立状态。

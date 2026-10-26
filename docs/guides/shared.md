@@ -39,7 +39,7 @@ These names describe three different scopes:
 
 | Scope | Purpose | Where to set it |
 | --- | --- | --- |
-| namespace | Separate application/environment names within a backend | The `prefix` argument of `postgres.New` or `redis.New` |
+| namespace | Separate application/environment names within a backend | The `namespace` argument of `postgres.New` or `redis.New` |
 | Resource | An independent capacity pool with its own configuration, queues and leases | `SharedOptions.Resource` |
 | Tenant | A contender sharing one Resource, used for tenant FIFO, round-robin scheduling and per-tenant queue limits | `AcquireFor` or `AcquireNFor`; `Acquire` uses the default tenant |
 
@@ -62,12 +62,12 @@ customer independent capacity instead of enforcing a common total limit.
 PostgreSQL shares tables: resource metadata has primary key `(namespace, resource)`,
 and requests have primary key `(namespace, resource, id)`. Commands lock only the
 matching resource row with `FOR UPDATE` and read that resource's requests. Redis
-stores each resource at `airlock:{SHA256(prefix + "\0" + resource)}:state`, with
+stores each resource at `airlock:{SHA256(namespace + "\0" + resource)}:state`, with
 independent snapshot CAS. Resources still share the backend's physical resources
 and connection pool; logical isolation does not guarantee performance isolation.
 
 Separate Driver objects do not imply separate capacity. Clients using the same
-PostgreSQL database/table/namespace/resource, or the same Redis keyspace/prefix/resource,
+PostgreSQL database/table/namespace/resource, or the same Redis keyspace/namespace/resource,
 share capacity and must use the same resolved `ResourceConfig`. Use different
 Resources for independent pools; create separate drivers when different namespaces,
 connections or PostgreSQL tables are needed. Memory has no namespace argument:

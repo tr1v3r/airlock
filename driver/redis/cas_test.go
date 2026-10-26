@@ -202,7 +202,7 @@ func TestCASConflictRecomputesAgainstCommittedWinner(t *testing.T) {
 	server.SetTime(now)
 	otherClient := goredis.NewClient(&goredis.Options{Addr: server.Addr(), ContextTimeoutEnabled: true})
 	t.Cleanup(func() { _ = otherClient.Close() })
-	other, err := New(otherClient, d.prefix)
+	other, err := New(otherClient, d.namespace)
 	if err != nil {
 		t.Fatal(err)
 	}
