@@ -15,7 +15,7 @@
     ],
     "tests": [
       "airlock_contract_test.go",
-      "shared_options_test.go"
+      "shared_test.go"
     ],
     "preview": "previews/overview.png"
   },

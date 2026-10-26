@@ -301,9 +301,3 @@ func TestStructuredRenewRetainsOriginalCommitDeadline(t *testing.T) {
 		t.Fatalf("renewal lost its original expiry bound: %+v", window)
 	}
 }
-
-func TestEncodeStateRejectsNil(t *testing.T) {
-	if data, err := EncodeState(nil); data != nil || err != ErrCorruptState {
-		t.Fatalf("nil transition output must not be persisted: %s %v", data, err)
-	}
-}

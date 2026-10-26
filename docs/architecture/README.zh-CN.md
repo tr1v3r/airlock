@@ -44,7 +44,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 实现：[airlock.go](../../airlock.go), [shared.go](../../shared.go), [driver.go](../../driver.go)
 
-测试：[airlock_test.go](../../airlock_test.go), [shared_options_test.go](../../shared_options_test.go)
+测试：[airlock_test.go](../../airlock_test.go), [shared_test.go](../../shared_test.go)
 
 ### 02 · 本地准入：快速路径、排队与取消竞争
 
