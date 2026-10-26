@@ -22,7 +22,7 @@
 #     留 corrupt-state dump 行,汇总进 summary「环境事件」节);重试仍败则记录
 #     并继续其余 cell,脚本最终以非零退出码提示有失败。
 #   * 每 family 显式 -timeout:contended 族 >= 2x 最坏派生 MaxWait(root 最坏
-#     cell W=256×H=10000-clamped 派生 ~39min)统一 80m;go test 默认 10m 会在
+#     cell W=256×H=10000-clamped 派生 ~47min)统一 100m;go test 默认 10m 会在
 #     H>=5000 深 cell 中途 panic。
 #   * 续跑:raw 文件已含该 cell 计划 benchtime 下的结果行则跳过,中断后续跑。
 #   * AIRLOCK_BENCH_LARGE=1 只作用于 root large 段(默认矩阵先出)。
@@ -43,8 +43,8 @@
 #   REGEX=...          调试:每模块按该 -bench 正则各跑一次(替代矩阵,
 #                      benchtime 默认 100x),不产 CSV 行。
 #   TIMEOUT_CONTENDED / TIMEOUT_UNCONTENDED / TIMEOUT_MEMORY / TIMEOUT_RACE
-#                      各 family 的 go test -timeout(默认 80m/20m/20m/10m;
-#                      contended 下限 80m = 2x ~39min 派生 MaxWait)。
+#                      各 family 的 go test -timeout(默认 100m/20m/20m/10m;
+#                      contended 下限 100m = 2x ~47min 派生 MaxWait)。
 
 set -euo pipefail
 
@@ -80,7 +80,7 @@ done
 W_LIST="1 4 16 64 256"
 H_LIST="0 128 1000 5000"
 H_LARGE="10000"
-TIMEOUT_CONTENDED=${TIMEOUT_CONTENDED:-80m}
+TIMEOUT_CONTENDED=${TIMEOUT_CONTENDED:-100m}
 TIMEOUT_UNCONTENDED=${TIMEOUT_UNCONTENDED:-20m}
 TIMEOUT_MEMORY=${TIMEOUT_MEMORY:-20m}
 TIMEOUT_RACE=${TIMEOUT_RACE:-10m}
@@ -107,8 +107,8 @@ benchtime_for() {
 }
 
 # count_cap family W H — 特殊 cell 的 count 上限:
-#   全部 H=10000(LARGE 段,10-18 分钟/cell)与 W=256×H>=1000 contended
-#   (3/12/18 分钟/cell)用 count=1;其余为 COUNT。预算取舍:砍 count 保 N。
+#   全部 H=10000(LARGE 段,10-20 分钟/cell)与 W=256×H>=1000 contended
+#   (3/13/20 分钟/cell)用 count=1;其余为 COUNT。预算取舍:砍 count 保 N。
 count_cap() {
   if [ "$3" -ge 10000 ]; then echo 1
   elif [ "$1" = shared-contended ] && [ "$2" -ge 256 ] && [ "$3" -ge 1000 ]; then echo 1

@@ -47,16 +47,17 @@ const (
 
 	// memoryBenchMaxWaitSkipThreshold mirrors the root harness's guard: cells
 	// whose derived contended MaxWait would exceed it are skipped loudly. With
-	// H=0 the W matrix never reaches it (worst case, W=256, derives ~4 minutes).
+	// H=0 the W matrix never reaches it (worst case, W=256, derives ~4.6 minutes).
 	memoryBenchMaxWaitSkipThreshold = 55 * time.Minute
 )
 
 // memoryBenchTransitionEstimate mirrors the root harness's calibration
-// (BenchmarkTransitionScale, darwin/arm64 go1.27): one serialized transition
-// costs ~70us plus ~3.4us per retained record, rounded up so faster machines
-// stay inside the derived margins.
+// (BenchmarkTransitionScale, darwin/arm64 go1.27, codec included after the
+// SharedState unification): one serialized transition costs ~86us fixed plus
+// ~3.9us per retained record, rounded up so faster machines stay inside the
+// derived margins.
 func memoryBenchTransitionEstimate(records int) time.Duration {
-	return 100*time.Microsecond + 3500*time.Nanosecond*time.Duration(records)
+	return 100*time.Microsecond + 4200*time.Nanosecond*time.Duration(records)
 }
 
 // memoryBenchCeilMillis rounds d up to a whole millisecond: the protocol

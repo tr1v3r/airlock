@@ -16,9 +16,10 @@ import (
 
 // This file benchmarks the Shared client layer (distributed.go) on top of a
 // driver that mirrors driver/memory semantics: one serialization gate per
-// resource plus the last committed snapshot. Every driver operation is
-// O(records) inside Transition, so the matrix varies W (long-lived workers,
-// one tenant each) and H (retained seed records).
+// resource plus the last committed encoded snapshot, decoding and re-encoding
+// the structured state around every transition. Each driver operation is
+// O(records) inside Transition plus codec, so the matrix varies W (long-lived
+// workers, one tenant each) and H (retained seed records).
 //
 // Scope: every cycle is one single-token AcquireFor plus Release (weight 1),
 // so cycles_per_s and the latency percentiles describe single-token admission
@@ -28,7 +29,7 @@ import (
 // Seed survival (the H dimension must persist for the whole run):
 //   - Terminal seeds set SubmitUntil one hour out. Reclamation deletes a
 //     terminal only once BOTH Finished+Retention and SubmitUntil have passed
-//     (driver_state.go), so a far-future SubmitUntil keeps seeds alive through
+//     (shared_state.go), so a far-future SubmitUntil keeps seeds alive through
 //     every sweep even though the run itself uses the shortest Retention.
 //   - No seed queued records: dispatch would grant them during unrelated
 //     transitions and pollute the W dimension with phantom contenders.
@@ -49,13 +50,13 @@ import (
 // the shallow-queue transient and reports inflated throughput. Contended
 // cells whose derived MaxWait would exceed the protocol's 1h ceiling are
 // skipped with a reason instead of producing invalid data; no cell in the
-// current W x H matrix triggers that skip (worst case derives ~39 minutes).
+// current W x H matrix triggers that skip (worst case derives ~47 minutes).
 //
 // ErrCorruptState conclusion (audit B2, sporadic ~2-5% on darwin): the
 // mechanism is the protocol's fail-closed backward-clock check. Transition
 // compares each operation's backend time against the snapshot's last
 // committed time after truncating both to whole milliseconds
-// (driver_state.go: now.Before(s.Time)), a pure wall-clock comparison, so a
+// (shared_state.go: now.Before(s.Time)), a pure wall-clock comparison, so a
 // client clock that steps backward by >= 1ms fails closed with
 // ErrCorruptState; sub-millisecond steps are usually absorbed by truncation.
 // TestSharedBenchBackwardClockFailsClosed proves this deterministically via
@@ -69,12 +70,13 @@ import (
 
 // benchDriver mirrors driver/memory for one bench resource: a buffered
 // channel of one serializes context-aware transitions, and the committed
-// snapshot survives between operations. The initial snapshot is injectable so
-// fixtures can pin the retained-record count H.
+// encoded snapshot survives between operations, paying the same decode and
+// encode cost per transition as the reference driver. The initial snapshot is
+// injectable so fixtures can pin the retained-record count H.
 type benchDriver struct {
 	// gate serializes transitions for the resource with context-aware waiting.
 	gate chan struct{}
-	// snapshot is the last committed opaque state; gate protects access.
+	// snapshot is the last committed encoded state; gate protects access.
 	snapshot []byte
 	// nowFunc supplies the backend evaluation time. The default time.Now
 	// mirrors memory.Driver and keeps the harness representative of
@@ -105,9 +107,17 @@ func (d *benchDriver) execute(ctx context.Context, cmd Command) (Result, error) 
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	next, result, err := Transition(d.snapshot, d.nowFunc(), cmd)
+	state, err := DecodeState(d.snapshot)
+	if err != nil {
+		return Result{}, err
+	}
+	next, result, _, err := Transition(state, d.nowFunc(), cmd)
 	if next != nil {
-		d.snapshot = next
+		data, codecErr := EncodeState(next)
+		if codecErr != nil {
+			return Result{}, codecErr
+		}
+		d.snapshot = data
 	}
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
@@ -167,7 +177,7 @@ const (
 	// just under the 1h protocol cap) are skipped loudly instead of running
 	// with a deadline that cannot cover steady-state draining. No cell in the
 	// current matrix reaches it (the worst, W=256 at the largest clamped H,
-	// derives ~39 minutes).
+	// derives ~47 minutes).
 	sharedBenchMaxWaitSkipThreshold = 55 * time.Minute
 )
 
@@ -189,12 +199,13 @@ const (
 // sharedBenchWindows; see its rationale.
 
 // sharedBenchTransitionEstimate estimates one serialized transition at a given
-// retained-record count. Calibrated with BenchmarkTransitionScale on
-// darwin/arm64 go1.27: ~70us fixed plus ~3.4us per record (R=8: 78us, R=128:
-// 437us, R=1000: 3.4ms, R=10000: 34.4ms). The constants are rounded up so a
-// modestly faster machine stays inside the derived margins.
+// retained-record count, codec included. Calibrated with
+// BenchmarkTransitionScale on darwin/arm64 go1.27 after the SharedState
+// unification: ~86us fixed plus ~3.9us per record (R=128: 587us, R=1000:
+// 3.57ms, R=10000: 39.2ms). The constants are rounded up so a modestly faster
+// machine stays inside the derived margins.
 func sharedBenchTransitionEstimate(records int) time.Duration {
-	return 100*time.Microsecond + 3500*time.Nanosecond*time.Duration(records)
+	return 100*time.Microsecond + 4200*time.Nanosecond*time.Duration(records)
 }
 
 // benchCeilMillis rounds d up to a whole millisecond: the protocol rejects
@@ -217,7 +228,8 @@ func benchCeilMillis(d time.Duration) time.Duration {
 // minimum this harness needs (the protocol itself only requires a positive
 // whole-millisecond window; below ~10ms even W=16/H=5000 expires
 // submissions). The 35s ceiling keeps every derived value inside protocol
-// bounds while never binding for this matrix. SubmitWindow doubles as the retention horizon of runtime terminals:
+// bounds; it binds only at the W=256/H=10000 LARGE cell, where the cap still
+// leaves ~4x of one gate backlog. SubmitWindow doubles as the retention horizon of runtime terminals:
 // a bigger window retains more history, which the steady_records metric makes
 // visible rather than hiding.
 //
@@ -233,12 +245,12 @@ func benchCeilMillis(d time.Duration) time.Duration {
 // therefore takes max(30s, 2x SubmitWindow, 1.25 * W^2 * tc(records+3W));
 // the 1.25 factor sits mid-range of the 1.0-1.5 constant band and keeps a
 // ~5x margin over the plain W^2*tc/4 worst case (W^2*tc/8 mean). At the
-// matrix extremes this stays under 40 minutes, below both the protocol's 1h
+// matrix extremes this stays under 50 minutes, below both the protocol's 1h
 // cap and sharedBenchMaxWaitSkipThreshold, so no current cell skips.
 //
 // OperationTimeout bounds one driver call, so it covers one gate backlog
 // plus slack, capped at the one-minute protocol limit (W=256 at the largest
-// clamped H derives ~35s, still inside the cap).
+// clamped H derives ~40s, still inside the cap).
 func sharedBenchWindows(workers, records int, contended bool) (submitWindow, maxWait, operationTimeout time.Duration) {
 	gate := time.Duration(workers) * sharedBenchTransitionEstimate(records)
 	submitWindow = benchCeilMillis(max(sharedBenchSubmitWindowFloor, min(4*gate, sharedBenchSubmitWindowCeil)))
@@ -286,7 +298,7 @@ func benchSeedSnapshot(tb testing.TB, resource string, cfg ResourceConfig, termi
 	if err != nil {
 		tb.Fatal(err)
 	}
-	if next, _, err := Transition(data, now, Command{Kind: Observe, Request: probe}); err != nil || next == nil {
+	if next, _, err := transitionSnapshot(data, now, Command{Kind: Observe, Request: probe}); err != nil || next == nil {
 		tb.Fatalf("invalid seed fixture: %v", err)
 	}
 	return data
@@ -645,7 +657,7 @@ func TestSharedBenchWindows(t *testing.T) {
 	}
 	// Worst current matrix point: W=256 with H clamped to the MaxRecords
 	// headroom (10000 - 1024 - 6*256 = 7440 seeds) plus 3W live records
-	// derives ~39 minutes and must stay under the skip threshold.
+	// derives ~47 minutes and must stay under the skip threshold.
 	clamped := sharedBenchMaxRecords - (sharedBenchHeadroomBase + sharedBenchHeadroomPerWorker*256)
 	if _, maxWait, _ := sharedBenchWindows(256, clamped+3*256, true); maxWait > sharedBenchMaxWaitSkipThreshold {
 		t.Fatalf("worst matrix point derives MaxWait %s, exceeds skip threshold %s",
@@ -708,7 +720,7 @@ func (c *benchBackwardClock) now() time.Time {
 // sporadic ErrCorruptState seen on darwin is the driver contract's fail-closed
 // backward-clock check, not state corruption. Transition truncates each
 // operation's backend time to whole milliseconds and compares it against the
-// snapshot's last committed time (driver_state.go: now.Before(s.Time)), so a
+// snapshot's last committed time (shared_state.go: now.Before(s.Time)), so a
 // clock that steps backward by at least 1ms necessarily crosses a millisecond
 // boundary below the committed time and fails closed; a sub-millisecond
 // backward step can be absorbed by truncation (both times flooring into the
