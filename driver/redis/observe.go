@@ -24,18 +24,32 @@ type observationIndex struct {
 }
 
 // index builds the read projection once per transition. Every request is tagged
-// with the same random publication token as the header, so partial preparation cannot expose a
-// request from an uncommitted candidate.
+// with the same random publication token as the header, so partial preparation
+// cannot expose a request from an uncommitted candidate.
 func index(state *airlock.SharedState) ([]byte, error) {
 	token := airlock.NewRequest(state.Time).Owner
-	meta, err := json.Marshal(observationHeader{Observation: airlock.Observation{Resource: state.Resource, Config: state.Config, Time: state.Time,
-		Revision: state.Revision, NextMaintenance: state.NextMaintenance()}, Token: token})
+	meta, err := json.Marshal(observationHeader{
+		Observation: airlock.Observation{
+			Resource:        state.Resource,
+			Config:          state.Config,
+			Time:            state.Time,
+			Revision:        state.Revision,
+			NextMaintenance: state.NextMaintenance(),
+		},
+		Token: token,
+	})
 	if err != nil {
 		return nil, err
 	}
-	i := observationIndex{Meta: string(meta), Records: make(map[string]string, len(state.Records))}
+	i := observationIndex{
+		Meta:    string(meta),
+		Records: make(map[string]string, len(state.Records)),
+	}
 	for id, rec := range state.Records {
-		data, err := json.Marshal(observationRecord{Token: token, Record: rec})
+		data, err := json.Marshal(observationRecord{
+			Token:  token,
+			Record: rec,
+		})
 		if err != nil {
 			return nil, err
 		}
