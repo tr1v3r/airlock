@@ -4,13 +4,16 @@
 // waiting budgets. Shares count selections, not tokens or execution time; they
 // are not strict priority or preemption. A selected request
 // waits for its full weight without allowing smaller or higher-priority requests
-// to bypass it. Accepted, uncancelled requests make progress provided holders
+// to bypass it. Accepted requests not cancelled or rejected by Resize make progress provided holders
 // eventually release and scheduling progresses; there is no fixed latency bound.
 // TryAcquire methods never queue or wait for capacity, but still take the internal
 // mutex. They return ErrWouldBlock when capacity is insufficient or any request
 // is waiting, preserving the same no-bypass rule.
 // Use New for process-local admission. Its Permits have no lease or automatic
 // expiry; cancellation after a successful acquisition does not release capacity.
+// Resize changes local capacity without revoking existing permits; shrinking
+// rejects queued requests heavier than the new capacity. InUse may temporarily
+// exceed Capacity until holders release.
 // Callers own worker execution, completion and release.
 //
 // NewShared instead uses an injected Driver and returns expiring Leases. Callers
