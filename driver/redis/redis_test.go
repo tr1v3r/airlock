@@ -31,6 +31,7 @@ func fixture(t *testing.T) (*Driver, *goredis.Client, *miniredis.Miniredis) {
 	}
 	return d, client, server
 }
+
 func request() airlock.Request { return requestAt(time.Now()) }
 
 func requestAt(now time.Time) airlock.Request {
@@ -42,9 +43,11 @@ func requestAt(now time.Time) airlock.Request {
 	r.Config = airlock.ResourceConfig{Admission: airlock.Config{Capacity: 1, MaxQueued: 10, MaxQueuedPerTenant: 10}, LeaseTTL: time.Second, MaxWait: 10 * time.Second, SubmitWindow: 10 * time.Second, Retention: time.Second, MaxRecords: 64}
 	return r
 }
+
 func submit(r airlock.Request) airlock.Command {
 	return airlock.Command{Kind: airlock.Submit, Request: r}
 }
+
 func mustExecute(t *testing.T, d *Driver, c airlock.Command) airlock.Result {
 	t.Helper()
 	result, err := driverconformance.Invoke(context.Background(), d, c)
@@ -53,6 +56,7 @@ func mustExecute(t *testing.T, d *Driver, c airlock.Command) airlock.Result {
 	}
 	return result
 }
+
 func TestConformance(t *testing.T) {
 	driverconformance.Run(t, func(t *testing.T) airlock.Driver {
 		d, _, _ := fixture(t)
@@ -102,6 +106,7 @@ func TestConstructor(t *testing.T) {
 		}
 	}
 }
+
 func TestValidationAndCorrupt(t *testing.T) {
 	d, client, _ := fixture(t)
 	ctx := context.Background()
@@ -139,6 +144,7 @@ func TestValidationAndCorrupt(t *testing.T) {
 		t.Fatal(result, err)
 	}
 }
+
 func TestPersistenceAndReload(t *testing.T) {
 	d, client, server := fixture(t)
 	ctx := context.Background()
@@ -180,15 +186,19 @@ type hook struct {
 }
 
 func (h hook) DialHook(next goredis.DialHook) goredis.DialHook { return next }
+
 func (h hook) ProcessPipelineHook(next goredis.ProcessPipelineHook) goredis.ProcessPipelineHook {
 	return next
 }
+
 func (h hook) ProcessHook(next goredis.ProcessHook) goredis.ProcessHook {
 	return func(ctx context.Context, cmd goredis.Cmder) error { return h.process(ctx, cmd, next) }
 }
+
 func isCAS(cmd goredis.Cmder) bool {
 	return (cmd.Name() == "eval" || cmd.Name() == "evalsha") && len(cmd.Args()) >= 9
 }
+
 func TestLostWriteResponseNeverRetries(t *testing.T) {
 	for _, operation := range []airlock.Operation{airlock.Submit, airlock.Renew, airlock.Cancel, airlock.Release} {
 		t.Run(string(operation), func(t *testing.T) {
@@ -237,6 +247,7 @@ func TestLostWriteResponseNeverRetries(t *testing.T) {
 		})
 	}
 }
+
 func TestScriptFailureAndMalformedResponse(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -266,6 +277,7 @@ func TestScriptFailureAndMalformedResponse(t *testing.T) {
 		})
 	}
 }
+
 func TestCASConflictRetryAndDeadline(t *testing.T) {
 	for _, permanent := range []bool{false, true} {
 		t.Run(fmt.Sprint(permanent), func(t *testing.T) {
@@ -312,6 +324,7 @@ func TestCASConflictRetryAndDeadline(t *testing.T) {
 		})
 	}
 }
+
 func TestCancelledAfterCommit(t *testing.T) {
 	d, client, _ := fixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -328,6 +341,7 @@ func TestCancelledAfterCommit(t *testing.T) {
 		t.Fatal(got, err)
 	}
 }
+
 func TestDecodeAndMicro(t *testing.T) {
 	for _, raw := range []any{nil, []any{}, []any{int64(2), "", "1", "0"}, []any{int64(0), "x", "1", "0"}, []any{int64(0), "", "x", "0"}, []any{int64(0), "", "1", "1000000"}, []any{int64(0), "", "9007199254", "999999"}, []any{int64(1), "", "1", "0"}, []any{int64(1), "x", 1, "0"}} {
 		if _, _, _, err := decodeRead(raw); err == nil {

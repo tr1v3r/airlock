@@ -36,6 +36,7 @@ func mockDriver(t *testing.T, options ...Option) (*Driver, sqlmock.Sqlmock) {
 	}
 	return d, m
 }
+
 func request(now time.Time) airlock.Request {
 	now = now.UTC().Truncate(time.Millisecond)
 	r := airlock.NewRequest(now.Add(20 * time.Second))
@@ -44,6 +45,7 @@ func request(now time.Time) airlock.Request {
 	r.Config = airlock.ResourceConfig{Admission: airlock.Config{Capacity: 1, MaxQueued: 8, MaxQueuedPerTenant: 8}, LeaseTTL: time.Second, MaxWait: 30 * time.Second, SubmitWindow: 30 * time.Second, Retention: time.Second, MaxRecords: 64}
 	return r
 }
+
 func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
 	s := airlock.SharedState{Version: 1, Config: request(now).Config, Rotations: [][]string{}}
 	if len(snapshot) > 0 {
@@ -56,6 +58,7 @@ func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
 	}
 	return sqlmock.NewRows(strings.Split(strings.ReplaceAll(resourceColumns, " ", ""), ",")).AddRow(s.Version, config, rotations, s.Protected, s.Cursor, strconv.FormatUint(s.Revision, 10), millis(s.Time))
 }
+
 func requestRows(snapshot []byte) *sqlmock.Rows {
 	rows := sqlmock.NewRows(strings.Split(strings.ReplaceAll(requestColumns, " ", ""), ","))
 	var s airlock.SharedState
@@ -65,6 +68,7 @@ func requestRows(snapshot []byte) *sqlmock.Rows {
 	}
 	return rows
 }
+
 func beforeTransition(m sqlmock.Sqlmock, snapshot []byte, now time.Time) {
 	m.ExpectBegin()
 	m.ExpectExec("INSERT INTO").WillReturnResult(sqlmock.NewResult(0, 1))

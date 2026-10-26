@@ -25,6 +25,7 @@ func distributed(t *testing.T, d *Driver, resource string) *airlock.Shared {
 	}
 	return client
 }
+
 func TestDistributedLeaseLifecycle(t *testing.T) {
 	d, _, _ := fixture(t)
 	client := distributed(t, d, "lifecycle")
@@ -84,6 +85,7 @@ func TestDistributedLeaseLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestDistributedUnknownRenewInvalidates(t *testing.T) {
 	d, client, _ := fixture(t)
 	distributed := distributed(t, d, "unknown-renew")

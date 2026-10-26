@@ -99,7 +99,13 @@ func New(db *sql.DB, namespace string, options ...Option) (*Driver, error) {
 	if len(namespace) > 256 || !utf8.ValidString(namespace) || strings.ContainsRune(namespace, 0) {
 		return nil, errors.New("airlock/postgres: invalid namespace")
 	}
-	d := &Driver{db: db, namespace: namespace, resourceTable: `"public"."airlock_resources"`, requestTable: `"public"."airlock_requests"`, timeout: 5 * time.Second}
+	d := &Driver{
+		db:            db,
+		namespace:     namespace,
+		resourceTable: `"public"."airlock_resources"`,
+		requestTable:  `"public"."airlock_requests"`,
+		timeout:       5 * time.Second,
+	}
 	for _, option := range options {
 		if option == nil {
 			return nil, errors.New("airlock/postgres: nil option")

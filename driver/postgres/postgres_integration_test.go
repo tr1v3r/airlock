@@ -38,6 +38,7 @@ func integrationDB(t *testing.T) *sql.DB {
 	}
 	return db
 }
+
 func integrationDriver(t *testing.T, db *sql.DB, namespace string, options ...Option) *Driver {
 	t.Helper()
 	d, err := New(db, namespace, options...)
@@ -49,7 +50,9 @@ func integrationDriver(t *testing.T, db *sql.DB, namespace string, options ...Op
 	}
 	return d
 }
+
 func uniqueNamespace() string { return "test-" + airlock.NewRequest(time.Now()).Owner }
+
 func executeStatus(t *testing.T, d *Driver, kind airlock.Operation, r airlock.Request, lease string, status airlock.Status) airlock.Result {
 	t.Helper()
 	got, err := driverconformance.Invoke(context.Background(), d, airlock.Command{Kind: kind, Request: r, LeaseID: lease})
@@ -492,9 +495,11 @@ func (c *replyLossConn) BeginTx(ctx context.Context, options driver.TxOptions) (
 	}
 	return &replyLossTx{Tx: tx, armed: c.armed}, nil
 }
+
 func (c *replyLossConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	return c.Conn.(driver.ExecerContext).ExecContext(ctx, query, args)
 }
+
 func (c *replyLossConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	return c.Conn.(driver.QueryerContext).QueryContext(ctx, query, args)
 }
@@ -513,6 +518,7 @@ func (tx *replyLossTx) Commit() error {
 	}
 	return nil
 }
+
 func TestIntegrationCommittedResponseLoss(t *testing.T) {
 	normalDB := integrationDB(t)
 	base, err := stdlib.GetDefaultDriver().(driver.DriverContext).OpenConnector(os.Getenv("AIRLOCK_POSTGRES_DSN"))

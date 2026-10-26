@@ -13,6 +13,7 @@ import (
 func TestConformance(t *testing.T) {
 	driverconformance.Run(t, func(*testing.T) airlock.Driver { return New() })
 }
+
 func TestCancellation(t *testing.T) {
 	d := New()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -30,6 +31,7 @@ func TestCancellation(t *testing.T) {
 	}
 	<-r.gate
 }
+
 func TestInvalidRequestDoesNotPersist(t *testing.T) {
 	d := New()
 	if _, err := d.Submit(context.Background(), airlock.Request{}); err == nil {
@@ -63,6 +65,7 @@ func (c *stagedCancellation) Err() error {
 	}
 	return nil
 }
+
 func TestCancellationAtAtomicBoundary(t *testing.T) {
 	for _, at := range []int{2, 3} {
 		d := New()

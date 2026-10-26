@@ -56,8 +56,11 @@ func integrationClient(t *testing.T, cluster bool) goredis.UniversalClient {
 	}
 	return client
 }
+
 func TestIntegrationStandalone(t *testing.T) { integrationSuite(t, false) }
-func TestIntegrationCluster(t *testing.T)    { integrationSuite(t, true) }
+
+func TestIntegrationCluster(t *testing.T) { integrationSuite(t, true) }
+
 func integrationSuite(t *testing.T, cluster bool) {
 	client := integrationClient(t, cluster)
 	namespace := "airlock-test-" + airlock.NewRequest(time.Now()).Owner

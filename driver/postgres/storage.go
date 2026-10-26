@@ -22,6 +22,7 @@ type row struct {
 func millis(t time.Time) sql.NullInt64 {
 	return sql.NullInt64{Int64: t.UnixMilli(), Valid: !t.IsZero()}
 }
+
 func instant(n sql.NullInt64) time.Time {
 	if !n.Valid {
 		return time.Time{}

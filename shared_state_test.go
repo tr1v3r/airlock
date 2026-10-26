@@ -18,6 +18,7 @@ type stateHarness struct {
 func newStateHarness(t *testing.T) *stateHarness {
 	return &stateHarness{t: t, now: time.Unix(1000, 0).UTC()}
 }
+
 func (h *stateHarness) call(kind Operation, r Request, lease string, wantErr error) Result {
 	h.t.Helper()
 	data, res, err := transitionSnapshot(h.data, h.now, Command{Kind: kind, Request: r, LeaseID: lease})
@@ -29,6 +30,7 @@ func (h *stateHarness) call(kind Operation, r Request, lease string, wantErr err
 	}
 	return res
 }
+
 func (h *stateHarness) snapshot() durableSnapshot {
 	h.t.Helper()
 	var s durableSnapshot
@@ -37,6 +39,7 @@ func (h *stateHarness) snapshot() durableSnapshot {
 	}
 	return s
 }
+
 func expectState(t *testing.T, r Result, want Status) {
 	t.Helper()
 	if r.Status != want {
@@ -588,10 +591,12 @@ func transitionSnapshot(data []byte, now time.Time, cmd Command) ([]byte, Result
 	}
 	return encoded, result, err
 }
+
 func transitionStructured(state *SharedState, now time.Time, cmd Command) (*SharedState, Result, error) {
 	next, result, _, err := Transition(state, now, cmd)
 	return next, result, err
 }
+
 func transitionOptimistic(data []byte, now time.Time, cmd Command) ([]byte, Result, CommitWindow, error) {
 	state, err := DecodeState(data)
 	if err != nil {

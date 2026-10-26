@@ -18,9 +18,12 @@ type fakeLease struct {
 	release func(context.Context) error
 }
 
-func (l *fakeLease) Valid() bool                       { return !l.invalid }
-func (l *fakeLease) Done() <-chan struct{}             { return l.done }
-func (l *fakeLease) Renew(ctx context.Context) error   { return l.renew(ctx) }
+func (l *fakeLease) Valid() bool { return !l.invalid }
+
+func (l *fakeLease) Done() <-chan struct{} { return l.done }
+
+func (l *fakeLease) Renew(ctx context.Context) error { return l.renew(ctx) }
+
 func (l *fakeLease) Release(ctx context.Context) error { return l.release(ctx) }
 
 func testLease(t *testing.T) *fakeLease {
@@ -197,7 +200,8 @@ func TestJobWorkFinishedPreservesLateRenewalFailure(t *testing.T) {
 
 type testErrorGroup []error
 
-func (e testErrorGroup) Error() string   { return "test error group" }
+func (e testErrorGroup) Error() string { return "test error group" }
+
 func (e testErrorGroup) Unwrap() []error { return e }
 
 func TestOnlyContextError(t *testing.T) {

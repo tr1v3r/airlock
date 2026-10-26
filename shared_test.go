@@ -34,14 +34,17 @@ func (d *clientStateDriver) execute(ctx context.Context, cmd Command) (Result, e
 	}
 	return result, err
 }
+
 func (d *clientStateDriver) commands() []Command {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return append([]Command(nil), d.calls...)
 }
+
 func clientOptions() SharedOptions {
 	return SharedOptions{Resource: "test", Config: ResourceConfig{Admission: Config{Capacity: 2, MaxQueued: 16, MaxQueuedPerTenant: 16}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 100}, OperationTimeout: 500 * time.Millisecond, PollInterval: time.Millisecond}
 }
+
 func clientNew(t *testing.T, d Driver, options SharedOptions) *Shared {
 	t.Helper()
 	c, err := NewShared(d, options)
@@ -50,6 +53,7 @@ func clientNew(t *testing.T, d Driver, options SharedOptions) *Shared {
 	}
 	return c
 }
+
 func clientAcquire(t *testing.T, c *Shared) *Lease {
 	t.Helper()
 	l, err := c.Acquire(context.Background())
@@ -59,6 +63,7 @@ func clientAcquire(t *testing.T, c *Shared) *Lease {
 	t.Cleanup(func() { _ = l.Release(context.Background()) })
 	return l
 }
+
 func clientAwait(t *testing.T, ch <-chan struct{}) {
 	t.Helper()
 	select {
@@ -67,6 +72,7 @@ func clientAwait(t *testing.T, ch <-chan struct{}) {
 		t.Fatal("timed out waiting for event")
 	}
 }
+
 func clientClosed(t *testing.T, l *Lease) {
 	t.Helper()
 	if l.Valid() {

@@ -31,18 +31,23 @@ func (d *clockStateDriver) executeClock(ctx context.Context, cmd Command) (Resul
 	}
 	return result, err
 }
+
 func (d *clockStateDriver) Submit(ctx context.Context, r Request) (Result, error) {
 	return d.executeClock(ctx, Command{Kind: Submit, Request: r})
 }
+
 func (d *clockStateDriver) Observe(ctx context.Context, r Request) (Result, error) {
 	return d.executeClock(ctx, Command{Kind: Observe, Request: r})
 }
+
 func (d *clockStateDriver) Cancel(ctx context.Context, r Request) (Result, error) {
 	return d.executeClock(ctx, Command{Kind: Cancel, Request: r})
 }
+
 func (d *clockStateDriver) Renew(ctx context.Context, r LeaseRef) (Result, error) {
 	return d.executeClock(ctx, Command{Kind: Renew, Request: r.Request, LeaseID: r.ID})
 }
+
 func (d *clockStateDriver) Release(ctx context.Context, r LeaseRef) (Result, error) {
 	return d.executeClock(ctx, Command{Kind: Release, Request: r.Request, LeaseID: r.ID})
 }
@@ -209,6 +214,7 @@ type delayedDeadlineContext struct {
 }
 
 func (c delayedDeadlineContext) Deadline() (time.Time, bool) { return c.deadline, true }
+
 func (c delayedDeadlineContext) Err() error {
 	if errors.Is(context.Cause(c.Context), context.DeadlineExceeded) {
 		return context.DeadlineExceeded

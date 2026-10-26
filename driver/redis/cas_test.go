@@ -148,6 +148,7 @@ func TestExpiryBetweenReadAndCommit(t *testing.T) {
 		})
 	}
 }
+
 func TestLuaCASGuards(t *testing.T) {
 	d, client, server := fixture(t)
 	ctx := context.Background()
