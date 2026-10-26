@@ -21,7 +21,7 @@ claiming independent-module validation.
 
 | Lane | Scope and assertions | Trigger / budget |
 | --- | --- | --- |
-| Compatibility | Root + memory/PostgreSQL/Redis separately: shuffled tests and vet; root local examples | Every PR/push; Linux Go 1.25/oldstable/stable, macOS/Windows stable; no automatic toolchain upgrade |
+| Compatibility | Root + memory/PostgreSQL/Redis separately: shuffled tests and vet; root local examples | Every PR/push; Linux Go 1.26/oldstable/stable, macOS/Windows stable; no automatic toolchain upgrade |
 | Quality | Formatting all tracked Go; root module/dependency guard, root lint, workflow syntax; Python regression tests | Every PR/push; 15-minute job limit |
 | Race / coverage | Root uncached race, CPU 1/2/4 × ten repetitions, per-file and total 95% statements | Every PR/push; 15-minute job; excludes examples/comparison/conformance helper from coverage |
 | Independent drivers | `driver-check.sh`: tidy diff, verify, vet, race and per-file coverage per module; memory hello/lifecycle executable examples | Every PR/push; stable Linux; PostgreSQL ExampleNew is compile-only (no Output assertion) |
@@ -44,20 +44,25 @@ at a reachable upstream candidate before publication.
 其他必需任务不能跳过，失败与取消不能变绿。扩展任务只在每周/手动运行；对应 skip 条件由
 Python 回归测试覆盖。每周定时任务使用仓库默认分支的工作流。
 
-### Uniform Go 1.25 floor
+### Uniform Go 1.26 floor
 
-Every module requires Go 1.25. The PostgreSQL driver forced the floor first:
-pgx v5.9.2 and x/text v0.41.0 (the versions fixing GO-2026-5004 SQL injection
-and the x/text advisories) both declare `go 1.25.0`, and retaining the
-vulnerable versions to preserve Go 1.24 was not an acceptable compatibility
-workaround. Core, memory and Redis then adopted the same minimum deliberately:
+Every module requires Go 1.26. The PostgreSQL driver set the previous Go 1.25
+floor: pgx v5.9.2 and x/text v0.41.0 (the versions fixing GO-2026-5004 SQL
+injection and the x/text advisories) both declare `go 1.25.0`. The floor then
+moved to 1.26 with the dependency updates go-redis v9.23.0 and
+golang.org/x/sync v0.24.0, which both declare `go 1.26.0`; retaining the
+older versions to preserve Go 1.25 was not an acceptable compatibility
+workaround. Core, memory and Redis adopt the same minimum deliberately:
 one toolchain requirement, one CI matrix entry per supported line, and no
-module-specific skips. `GOTOOLCHAIN=local` in CI keeps the 1.25.x entry honest
+module-specific skips. `GOTOOLCHAIN=local` in CI keeps the 1.26.x entry honest
 as the minimum-version lane; older toolchains are no longer supported anywhere.
 
-全部模块统一要求 Go 1.25。PostgreSQL 因 pgx/x-text 安全修复（GO-2026-5004 等）
-率先触及该下限；core、memory、Redis 随后有意采用同一最低版本：单一工具链要求、
-单一 CI 矩阵、无任何模块跳过。CI 的 `GOTOOLCHAIN=local` 保证 1.25.x 条目
+全部模块统一要求 Go 1.26。Go 1.25 下限由 PostgreSQL 率先确立：修复
+GO-2026-5004 SQL 注入与 x/text 公告的 pgx v5.9.2、x/text v0.41.0 均声明
+`go 1.25.0`；go-redis v9.23.0 与 golang.org/x/sync v0.24.0（均声明
+`go 1.26.0`）将下限推至 1.26，为保留 Go 1.25 而停在旧版本不是可接受的
+兼容性方案。core、memory、Redis 有意采用同一最低版本：单一工具链要求、
+单一 CI 矩阵、无任何模块跳过。CI 的 `GOTOOLCHAIN=local` 保证 1.26.x 条目
 真实验证最低版本；更旧的工具链在全仓库不再受支持。
 
 ## Reproducible commands

@@ -55,7 +55,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        go: ['1.25.x', oldstable, stable]
+        go: ['1.26.x', oldstable, stable]
         include:
           - os: macos-latest
             go: stable
