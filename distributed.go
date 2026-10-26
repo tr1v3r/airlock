@@ -6,6 +6,35 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/tr1v3r/airlock/protocol"
+)
+
+// ResourceConfig fixes admission, expiry and recovery bounds for one shared
+// resource. The protocol package owns the definition; this alias keeps shared
+// admission configured through the application package.
+type ResourceConfig = protocol.ResourceConfig
+
+// Protocol error identities re-exported for shared-admission callers. Drivers
+// return them through the protocol.Driver contract; the aliases keep them
+// checkable against the root package.
+var (
+	// ErrInvalidRequest reports malformed identifiers, deadlines, or operations.
+	ErrInvalidRequest = protocol.ErrInvalidRequest
+	// ErrConfigConflict means the resource identity or immutable configuration differs from stored state.
+	ErrConfigConflict = protocol.ErrConfigConflict
+	// ErrRequestConflict means a retained request ID was reused with a different owner or parameters.
+	ErrRequestConflict = protocol.ErrRequestConflict
+	// ErrNotFound means no retained request exists for an operation that requires one.
+	ErrNotFound = protocol.ErrNotFound
+	// ErrLeaseLost means ownership is expired, mismatched, or no longer safe to use locally.
+	ErrLeaseLost = protocol.ErrLeaseLost
+	// ErrSubmitExpired rejects an unknown request whose first-submission deadline has passed.
+	ErrSubmitExpired = protocol.ErrSubmitExpired
+	// ErrHistoryFull means retained records fill MaxRecords; existing outcomes are not evicted.
+	ErrHistoryFull = protocol.ErrHistoryFull
+	// ErrCorruptState rejects malformed or inconsistent backend snapshots.
+	ErrCorruptState = protocol.ErrCorruptState
 )
 
 // SharedOptions specifies one backend resource and bounded network polling.
@@ -42,7 +71,7 @@ type SharedOptions struct {
 // lifetime. Backend failures never fall back to local admission.
 type Shared struct {
 	// driver is the caller-owned, concurrency-safe backend adapter.
-	driver Driver
+	driver protocol.Driver
 	// options is an immutable deep copy with protocol defaults resolved.
 	options SharedOptions
 }
@@ -50,12 +79,12 @@ type Shared struct {
 // NewShared creates shared admission through a driver and snapshots its options.
 // Construction performs no backend I/O and acquires no tokens. The caller owns
 // the driver and its connections; Acquire starts admission.
-func NewShared(d Driver, options SharedOptions) (*Shared, error) {
+func NewShared(d protocol.Driver, options SharedOptions) (*Shared, error) {
 	options = options.withDefaults()
-	if d == nil || options.Resource == "" || !validText(options.Resource) || len(options.Resource) > 256 || options.OperationTimeout <= 0 || options.OperationTimeout > time.Minute || options.PollInterval <= 0 || options.PollInterval > time.Minute {
+	if d == nil || options.Resource == "" || !protocol.ValidText(options.Resource) || len(options.Resource) > 256 || options.OperationTimeout <= 0 || options.OperationTimeout > time.Minute || options.PollInterval <= 0 || options.PollInterval > time.Minute {
 		return nil, ErrInvalidConfig
 	}
-	if err := validConfig(options.Config); err != nil {
+	if err := protocol.ValidateResourceConfig(options.Config); err != nil {
 		return nil, err
 	}
 	allowance := options.ClockSkewAllowance
@@ -106,12 +135,12 @@ func (d *Shared) AcquireNFor(ctx context.Context, tenant string, n int) (*Lease,
 }
 
 // execute bounds one driver call and records its start for conservative local lease timing.
-func (d *Shared) execute(ctx context.Context, operation func(context.Context) (Result, error)) (Result, time.Time, error) {
+func (d *Shared) execute(ctx context.Context, operation func(context.Context) (protocol.Result, error)) (protocol.Result, time.Time, error) {
 	op, cancel := context.WithTimeout(ctx, d.options.OperationTimeout)
 	defer cancel()
 	start := time.Now()
 	if err := op.Err(); err != nil {
-		return Result{}, start, err
+		return protocol.Result{}, start, err
 	}
 	result, err := operation(op)
 	// Even a driver that reports success after its I/O deadline cannot authorize work.
@@ -137,7 +166,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 	}
 	now := time.Now()
 	allowance := d.options.ClockSkewAllowance
-	r := NewRequest(now.Add(d.options.Config.SubmitWindow - allowance))
+	r := protocol.NewRequest(now.Add(d.options.Config.SubmitWindow - allowance))
 	r.Resource = d.options.Resource
 	r.Config = d.options.Config
 	r.Tenant = tenant
@@ -159,10 +188,10 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 			return nil, ErrLeaseLost
 		}
 	}
-	if err := validRequest(r); err != nil {
+	if err := protocol.ValidateCommand(protocol.Command{Kind: protocol.Submit, Request: r}); err != nil {
 		return nil, err
 	}
-	operation := func(ctx context.Context) (Result, error) { return d.driver.Submit(ctx, r) }
+	operation := func(ctx context.Context) (protocol.Result, error) { return d.driver.Submit(ctx, r) }
 	for {
 		result, start, err := d.execute(ctx, operation)
 		if err == nil {
@@ -170,7 +199,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 		}
 		if err == nil {
 			switch result.Status {
-			case Granted:
+			case protocol.Granted:
 				deadline := start.Add(result.Remaining)
 				if result.LeaseID == "" || result.Weight != n || result.Remaining <= 0 || result.Remaining > r.Config.LeaseTTL || !time.Now().Before(deadline) {
 					err = ErrLeaseLost
@@ -181,14 +210,14 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 					lease.mu.Unlock()
 					return lease, nil
 				}
-			case Queued:
+			case protocol.Queued:
 				timer := time.NewTimer(d.options.PollInterval)
 				select {
 				case <-ctx.Done():
 					timer.Stop()
 					err = ctx.Err()
 				case <-timer.C:
-					operation = func(ctx context.Context) (Result, error) { return d.driver.Observe(ctx, r) }
+					operation = func(ctx context.Context) (protocol.Result, error) { return d.driver.Observe(ctx, r) }
 					continue
 				}
 			default:
@@ -198,7 +227,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 				// side is noticed first; the terminal fact is preserved too. An
 				// unfolded window keeps ErrLeaseLost, and external cancellation
 				// never reaches this branch (it exits via ctx.Err above).
-				if folded && result.Status == Expired {
+				if folded && result.Status == protocol.Expired {
 					err = errors.Join(context.DeadlineExceeded, ErrLeaseLost)
 				} else {
 					err = ErrLeaseLost
@@ -206,7 +235,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 			}
 		}
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.options.OperationTimeout)
-		_, _, cleanupErr := d.execute(cleanup, func(ctx context.Context) (Result, error) { return d.driver.Cancel(ctx, r) })
+		_, _, cleanupErr := d.execute(cleanup, func(ctx context.Context) (protocol.Result, error) { return d.driver.Cancel(ctx, r) })
 		cancel()
 		// The caller deadline may become visible during cleanup after the backend
 		// already reported expiry. Preserve both cancellation and the terminal fact.
@@ -233,7 +262,7 @@ type Lease struct {
 	// client retains the backend and timeout policy used for this acquisition.
 	client *Shared
 	// request is the unchanged submission retained for renewal and recovery.
-	request Request
+	request protocol.Request
 	// id is the backend grant identity, not a downstream fencing token.
 	id string
 	// deadline subtracts the full backend round trip from reported remaining validity.
@@ -285,13 +314,13 @@ func (l *Lease) Renew(ctx context.Context) error {
 	if !l.Valid() {
 		return ErrLeaseLost
 	}
-	result, start, err := l.client.execute(ctx, func(ctx context.Context) (Result, error) {
-		return l.client.driver.Renew(ctx, LeaseRef{Request: l.request, ID: l.id})
+	result, start, err := l.client.execute(ctx, func(ctx context.Context) (protocol.Result, error) {
+		return l.client.driver.Renew(ctx, protocol.LeaseRef{Request: l.request, ID: l.id})
 	})
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	deadline := start.Add(result.Remaining)
-	if err == nil && (l.closed || !time.Now().Before(l.deadline) || result.Status != Granted || result.LeaseID != l.id || result.Weight != l.request.Weight || result.Remaining <= 0 || result.Remaining > l.request.Config.LeaseTTL || !time.Now().Before(deadline)) {
+	if err == nil && (l.closed || !time.Now().Before(l.deadline) || result.Status != protocol.Granted || result.LeaseID != l.id || result.Weight != l.request.Weight || result.Remaining <= 0 || result.Remaining > l.request.Config.LeaseTTL || !time.Now().Before(deadline)) {
 		err = ErrLeaseLost
 	}
 	if err != nil {
@@ -314,10 +343,10 @@ func (l *Lease) Release(ctx context.Context) error {
 	l.mu.Lock()
 	l.invalidateLocked()
 	l.mu.Unlock()
-	result, _, err := l.client.execute(ctx, func(ctx context.Context) (Result, error) {
-		return l.client.driver.Release(ctx, LeaseRef{Request: l.request, ID: l.id})
+	result, _, err := l.client.execute(ctx, func(ctx context.Context) (protocol.Result, error) {
+		return l.client.driver.Release(ctx, protocol.LeaseRef{Request: l.request, ID: l.id})
 	})
-	if err == nil && result.Status != Released && result.Status != Expired && result.Status != Cancelled {
+	if err == nil && result.Status != protocol.Released && result.Status != protocol.Expired && result.Status != protocol.Cancelled {
 		return ErrLeaseLost
 	}
 	return err

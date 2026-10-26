@@ -1,4 +1,4 @@
-package airlock
+package protocol
 
 import (
 	"encoding/json"
@@ -20,7 +20,7 @@ func newStateHarness(t *testing.T) *stateHarness {
 }
 func (h *stateHarness) call(kind Operation, r Request, lease string, wantErr error) Result {
 	h.t.Helper()
-	data, res, err := Transition(h.data, h.now, Command{Kind: kind, Request: r, LeaseID: lease})
+	data, res, err := ApplySnapshot(h.data, h.now, Command{Kind: kind, Request: r, LeaseID: lease})
 	if !errors.Is(err, wantErr) {
 		h.t.Fatalf("%s %s: got %v want %v", kind, r.Tenant, err, wantErr)
 	}
@@ -29,9 +29,9 @@ func (h *stateHarness) call(kind Operation, r Request, lease string, wantErr err
 	}
 	return res
 }
-func (h *stateHarness) snapshot() durableSnapshot {
+func (h *stateHarness) snapshot() State {
 	h.t.Helper()
-	var s durableSnapshot
+	var s State
 	if err := json.Unmarshal(h.data, &s); err != nil {
 		h.t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func expectState(t *testing.T, r Result, want Status) {
 	}
 }
 
-func TestTransitionLeaseLifecycle(t *testing.T) {
+func TestApplySnapshotLeaseLifecycle(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	r := stateTestRequest(h.now, cfg, "a", 3)
@@ -80,7 +80,7 @@ func TestTransitionLeaseLifecycle(t *testing.T) {
 	expectState(t, h.call(Submit, third, "", nil), Granted)
 }
 
-func TestTransitionCancelBeforeSubmitAndActive(t *testing.T) {
+func TestApplySnapshotCancelBeforeSubmitAndActive(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	r := stateTestRequest(h.now, cfg, "a", 3)
@@ -98,7 +98,7 @@ func TestTransitionCancelBeforeSubmitAndActive(t *testing.T) {
 	expectState(t, h.call(Cancel, queued, "", nil), Cancelled)
 }
 
-func TestTransitionRecoveryHistoryAndLateSubmission(t *testing.T) {
+func TestApplySnapshotRecoveryHistoryAndLateSubmission(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	cfg.LeaseTTL = time.Minute
@@ -138,7 +138,7 @@ func TestTransitionRecoveryHistoryAndLateSubmission(t *testing.T) {
 	h.call(Submit, changed, "", ErrInvalidRequest)
 }
 
-func TestTransitionExpirySweepsBeforeDispatch(t *testing.T) {
+func TestApplySnapshotExpirySweepsBeforeDispatch(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	holder := stateTestRequest(h.now, cfg, "hold", 3)
@@ -159,7 +159,7 @@ func TestTransitionExpirySweepsBeforeDispatch(t *testing.T) {
 	expectState(t, h.call(Submit, r, "", nil), Expired)
 }
 
-func TestTransitionErrorIdentityAndMaintenance(t *testing.T) {
+func TestApplySnapshotErrorIdentityAndMaintenance(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	r := stateTestRequest(h.now, cfg, "a", 1)
@@ -190,7 +190,7 @@ func TestTransitionErrorIdentityAndMaintenance(t *testing.T) {
 	h.call(Operation("invalid"), r, "", ErrInvalidRequest)
 }
 
-func TestTransitionStableAdmissionRejections(t *testing.T) {
+func TestApplySnapshotStableAdmissionRejections(t *testing.T) {
 	cases := []struct {
 		name   string
 		modify func(*ResourceConfig)
@@ -223,7 +223,7 @@ func TestTransitionStableAdmissionRejections(t *testing.T) {
 	}
 }
 
-func TestTransitionTenantRoundRobinAcrossSnapshots(t *testing.T) {
+func TestApplySnapshotTenantRoundRobinAcrossSnapshots(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	cfg.Admission.Capacity = 1
@@ -258,7 +258,7 @@ func TestTransitionTenantRoundRobinAcrossSnapshots(t *testing.T) {
 	}
 }
 
-func TestTransitionPriorityFullCycles(t *testing.T) {
+func TestApplySnapshotPriorityFullCycles(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	cfg.Admission.Capacity = 1
@@ -291,7 +291,7 @@ func TestTransitionPriorityFullCycles(t *testing.T) {
 	}
 }
 
-func TestTransitionProtectedHeadSurvivesRestartAndCancellation(t *testing.T) {
+func TestApplySnapshotProtectedHeadSurvivesRestartAndCancellation(t *testing.T) {
 	for _, cancel := range []bool{false, true} {
 		t.Run(fmt.Sprint(cancel), func(t *testing.T) {
 			h := newStateHarness(t)
@@ -329,7 +329,7 @@ func TestTransitionProtectedHeadSurvivesRestartAndCancellation(t *testing.T) {
 	}
 }
 
-func TestTransitionCorruptSnapshots(t *testing.T) {
+func TestApplySnapshotCorruptSnapshots(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	holder := stateTestRequest(h.now, cfg, "holder", 3)
@@ -339,34 +339,34 @@ func TestTransitionCorruptSnapshots(t *testing.T) {
 	h.call(Submit, a, "", nil)
 	h.call(Submit, b, "", nil)
 	baseline := append([]byte(nil), h.data...)
-	mutations := map[string]func(*durableSnapshot){
-		"version":                func(s *durableSnapshot) { s.Version = 2 },
-		"records nil":            func(s *durableSnapshot) { s.Records = nil },
-		"revision overflow":      func(s *durableSnapshot) { s.Revision = ^uint64(0) },
-		"backward time":          func(s *durableSnapshot) { s.Time = h.now.Add(time.Millisecond) },
-		"negative cursor":        func(s *durableSnapshot) { s.Cursor = -1 },
-		"large cursor":           func(s *durableSnapshot) { s.Cursor = 1 },
-		"rotation count":         func(s *durableSnapshot) { s.Rotations = append(s.Rotations, []string{}) },
-		"nil record":             func(s *durableSnapshot) { s.Records[b.ID] = nil },
-		"id mismatch":            func(s *durableSnapshot) { s.Records[b.ID].Request.ID = a.ID },
-		"resource mismatch":      func(s *durableSnapshot) { s.Records[b.ID].Request.Resource = "other" },
-		"invalid request":        func(s *durableSnapshot) { s.Records[b.ID].Request.Weight = 0 },
-		"unknown status":         func(s *durableSnapshot) { s.Records[b.ID].Status = "invalid" },
-		"capacity excess":        func(s *durableSnapshot) { s.Records[b.ID].Request.Config = cfg; grant(s.Records[b.ID], h.now) },
-		"duplicate tenant":       func(s *durableSnapshot) { s.Rotations[0] = append(s.Rotations[0], "a") },
-		"empty tenant queue":     func(s *durableSnapshot) { s.Queues["a"] = nil },
-		"missing queue record":   func(s *durableSnapshot) { s.Queues["a"][0] = "missing" },
-		"grant in queue":         func(s *durableSnapshot) { s.Queues["a"][0] = holder.ID },
-		"wrong tenant":           func(s *durableSnapshot) { s.Records[b.ID].Request.Tenant = "b" },
-		"duplicate queue record": func(s *durableSnapshot) { s.Queues["a"][1] = a.ID },
-		"orphan queued":          func(s *durableSnapshot) { s.Queues["a"] = s.Queues["a"][:1] },
-		"extra queue":            func(s *durableSnapshot) { s.Queues["extra"] = []string{} },
-		"missing protected":      func(s *durableSnapshot) { s.Protected = "missing" },
-		"nonhead protected":      func(s *durableSnapshot) { s.Protected = b.ID },
+	mutations := map[string]func(*State){
+		"version":                func(s *State) { s.Version = 2 },
+		"records nil":            func(s *State) { s.Records = nil },
+		"revision overflow":      func(s *State) { s.Revision = ^uint64(0) },
+		"backward time":          func(s *State) { s.Time = h.now.Add(time.Millisecond) },
+		"negative cursor":        func(s *State) { s.Cursor = -1 },
+		"large cursor":           func(s *State) { s.Cursor = 1 },
+		"rotation count":         func(s *State) { s.Rotations = append(s.Rotations, []string{}) },
+		"nil record":             func(s *State) { s.Records[b.ID] = nil },
+		"id mismatch":            func(s *State) { s.Records[b.ID].Request.ID = a.ID },
+		"resource mismatch":      func(s *State) { s.Records[b.ID].Request.Resource = "other" },
+		"invalid request":        func(s *State) { s.Records[b.ID].Request.Weight = 0 },
+		"unknown status":         func(s *State) { s.Records[b.ID].Status = "invalid" },
+		"capacity excess":        func(s *State) { s.Records[b.ID].Request.Config = cfg; grant(s.Records[b.ID], h.now) },
+		"duplicate tenant":       func(s *State) { s.Rotations[0] = append(s.Rotations[0], "a") },
+		"empty tenant queue":     func(s *State) { s.Queues["a"] = nil },
+		"missing queue record":   func(s *State) { s.Queues["a"][0] = "missing" },
+		"grant in queue":         func(s *State) { s.Queues["a"][0] = holder.ID },
+		"wrong tenant":           func(s *State) { s.Records[b.ID].Request.Tenant = "b" },
+		"duplicate queue record": func(s *State) { s.Queues["a"][1] = a.ID },
+		"orphan queued":          func(s *State) { s.Queues["a"] = s.Queues["a"][:1] },
+		"extra queue":            func(s *State) { s.Queues["extra"] = []string{} },
+		"missing protected":      func(s *State) { s.Protected = "missing" },
+		"nonhead protected":      func(s *State) { s.Protected = b.ID },
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
-			var s durableSnapshot
+			var s State
 			if err := json.Unmarshal(baseline, &s); err != nil {
 				t.Fatal(err)
 			}
@@ -375,14 +375,14 @@ func TestTransitionCorruptSnapshots(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, _, err := Transition(data, h.now, Command{Kind: Observe, Request: holder})
+			out, _, err := ApplySnapshot(data, h.now, Command{Kind: Observe, Request: holder})
 			if !errors.Is(err, ErrCorruptState) || out != nil {
 				t.Fatalf("got data=%t err=%v", out != nil, err)
 			}
 		})
 	}
 	for _, data := range [][]byte{[]byte("{"), []byte("null")} {
-		if _, _, err := Transition(data, h.now, Command{Kind: Observe, Request: holder}); !errors.Is(err, ErrCorruptState) {
+		if _, _, err := ApplySnapshot(data, h.now, Command{Kind: Observe, Request: holder}); !errors.Is(err, ErrCorruptState) {
 			t.Fatal(err)
 		}
 	}
@@ -398,10 +398,10 @@ func TestDurableRestoreRejectsInvalidLimits(t *testing.T) {
 	h.call(Submit, a, "", nil)
 	h.call(Submit, b, "", nil)
 	baseline := h.snapshot()
-	for name, mutate := range map[string]func(*durableSnapshot){
-		"invalid admission": func(s *durableSnapshot) { s.Config.Admission.Capacity = 0 },
-		"records limit":     func(s *durableSnapshot) { s.Config.MaxRecords = 1 },
-		"queue limit": func(s *durableSnapshot) {
+	for name, mutate := range map[string]func(*State){
+		"invalid admission": func(s *State) { s.Config.Admission.Capacity = 0 },
+		"records limit":     func(s *State) { s.Config.MaxRecords = 1 },
+		"queue limit": func(s *State) {
 			s.Config.Admission.MaxQueuedPerTenant = 1
 			for _, rec := range s.Records {
 				rec.Request.Config = s.Config
@@ -410,7 +410,7 @@ func TestDurableRestoreRejectsInvalidLimits(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			data, _ := json.Marshal(baseline)
-			var s durableSnapshot
+			var s State
 			if err := json.Unmarshal(data, &s); err != nil {
 				t.Fatal(err)
 			}
@@ -422,7 +422,7 @@ func TestDurableRestoreRejectsInvalidLimits(t *testing.T) {
 	}
 }
 
-func TestTransitionSnapshotsAreDeterministic(t *testing.T) {
+func TestApplySnapshotSnapshotsAreDeterministic(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	holder := stateTestRequest(h.now, cfg, "hold", 3)
@@ -433,28 +433,28 @@ func TestTransitionSnapshotsAreDeterministic(t *testing.T) {
 	}
 	original := append([]byte(nil), h.data...)
 	h.now = h.now.Add(time.Second)
-	data, result, err := Transition(original, h.now, Command{Kind: Observe, Request: holder})
+	data, result, err := ApplySnapshot(original, h.now, Command{Kind: Observe, Request: holder})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 20; i++ {
-		got, res, e := Transition(original, h.now, Command{Kind: Observe, Request: holder})
+		got, res, e := ApplySnapshot(original, h.now, Command{Kind: Observe, Request: holder})
 		if e != nil || !reflect.DeepEqual(got, data) || res != result {
 			t.Fatal("map iteration changed scheduler output")
 		}
 	}
 }
 
-func TestTransitionUnrepresentableBackendTime(t *testing.T) {
+func TestApplySnapshotUnrepresentableBackendTime(t *testing.T) {
 	h := newStateHarness(t)
 	r := stateTestRequest(h.now, stateTestConfig(), "a", 1)
-	out, _, err := Transition(nil, time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), Command{Kind: Submit, Request: r})
+	out, _, err := ApplySnapshot(nil, time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), Command{Kind: Submit, Request: r})
 	if !errors.Is(err, ErrCorruptState) || out != nil {
 		t.Fatalf("unserializable time committed: %v", err)
 	}
 }
 
-func TestTransitionRejectsCorruptLifecycleFields(t *testing.T) {
+func TestApplySnapshotRejectsCorruptLifecycleFields(t *testing.T) {
 	h := newStateHarness(t)
 	cfg := stateTestConfig()
 	cfg.Admission.MaxQueued = 2
@@ -476,34 +476,34 @@ func TestTransitionRejectsCorruptLifecycleFields(t *testing.T) {
 	rejected := stateTestRequest(h.now, cfg, "rejected", 1)
 	h.call(Submit, rejected, "", ErrQueueFull)
 	baseline := append([]byte(nil), h.data...)
-	mutations := map[string]func(*durableSnapshot){
-		"zero revision":          func(s *durableSnapshot) { s.Revision = 0 },
-		"zero snapshot time":     func(s *durableSnapshot) { s.Time = time.Time{} },
-		"grant missing identity": func(s *durableSnapshot) { s.Records[active.ID].LeaseID = "" },
-		"grant forged identity":  func(s *durableSnapshot) { s.Records[active.ID].LeaseID = leaseIdentity(queued) },
-		"grant finished":         func(s *durableSnapshot) { s.Records[active.ID].Finished = h.now },
-		"grant failure":          func(s *durableSnapshot) { s.Records[active.ID].Failure = ErrQueueFull.Error() },
-		"grant at expiry":        func(s *durableSnapshot) { s.Records[active.ID].Until = h.now },
-		"grant exceeds ttl":      func(s *durableSnapshot) { s.Records[active.ID].Until = h.now.Add(cfg.LeaseTTL + time.Millisecond) },
-		"queue identity":         func(s *durableSnapshot) { s.Records[queued.ID].LeaseID = leaseIdentity(queued) },
-		"queue finished":         func(s *durableSnapshot) { s.Records[queued.ID].Finished = h.now },
-		"queue failure":          func(s *durableSnapshot) { s.Records[queued.ID].Failure = ErrQueueFull.Error() },
-		"queue changed deadline": func(s *durableSnapshot) { s.Records[queued.ID].Until = queued.WaitUntil.Add(time.Millisecond) },
-		"queue expired at snapshot": func(s *durableSnapshot) {
+	mutations := map[string]func(*State){
+		"zero revision":          func(s *State) { s.Revision = 0 },
+		"zero snapshot time":     func(s *State) { s.Time = time.Time{} },
+		"grant missing identity": func(s *State) { s.Records[active.ID].LeaseID = "" },
+		"grant forged identity":  func(s *State) { s.Records[active.ID].LeaseID = leaseIdentity(queued) },
+		"grant finished":         func(s *State) { s.Records[active.ID].Finished = h.now },
+		"grant failure":          func(s *State) { s.Records[active.ID].Failure = ErrQueueFull.Error() },
+		"grant at expiry":        func(s *State) { s.Records[active.ID].Until = h.now },
+		"grant exceeds ttl":      func(s *State) { s.Records[active.ID].Until = h.now.Add(cfg.LeaseTTL + time.Millisecond) },
+		"queue identity":         func(s *State) { s.Records[queued.ID].LeaseID = leaseIdentity(queued) },
+		"queue finished":         func(s *State) { s.Records[queued.ID].Finished = h.now },
+		"queue failure":          func(s *State) { s.Records[queued.ID].Failure = ErrQueueFull.Error() },
+		"queue changed deadline": func(s *State) { s.Records[queued.ID].Until = queued.WaitUntil.Add(time.Millisecond) },
+		"queue expired at snapshot": func(s *State) {
 			s.Records[queued.ID].Request.WaitUntil = h.now
 			s.Records[queued.ID].Until = h.now
 		},
-		"release missing identity": func(s *durableSnapshot) { s.Records[released.ID].LeaseID = "" },
-		"release forged identity":  func(s *durableSnapshot) { s.Records[released.ID].LeaseID = leaseIdentity(queued) },
-		"release zero finished":    func(s *durableSnapshot) { s.Records[released.ID].Finished = time.Time{} },
-		"cancel future finished":   func(s *durableSnapshot) { s.Records[cancelled.ID].Finished = h.now.Add(time.Millisecond) },
-		"expire failure":           func(s *durableSnapshot) { s.Records[expired.ID].Failure = ErrQueueFull.Error() },
-		"reject empty failure":     func(s *durableSnapshot) { s.Records[rejected.ID].Failure = "" },
-		"reject unknown failure":   func(s *durableSnapshot) { s.Records[rejected.ID].Failure = "not an admission error" },
+		"release missing identity": func(s *State) { s.Records[released.ID].LeaseID = "" },
+		"release forged identity":  func(s *State) { s.Records[released.ID].LeaseID = leaseIdentity(queued) },
+		"release zero finished":    func(s *State) { s.Records[released.ID].Finished = time.Time{} },
+		"cancel future finished":   func(s *State) { s.Records[cancelled.ID].Finished = h.now.Add(time.Millisecond) },
+		"expire failure":           func(s *State) { s.Records[expired.ID].Failure = ErrQueueFull.Error() },
+		"reject empty failure":     func(s *State) { s.Records[rejected.ID].Failure = "" },
+		"reject unknown failure":   func(s *State) { s.Records[rejected.ID].Failure = "not an admission error" },
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
-			var s durableSnapshot
+			var s State
 			if err := json.Unmarshal(baseline, &s); err != nil {
 				t.Fatal(err)
 			}
@@ -512,7 +512,7 @@ func TestTransitionRejectsCorruptLifecycleFields(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, _, err := Transition(data, h.now, Command{Kind: Observe, Request: active})
+			out, _, err := ApplySnapshot(data, h.now, Command{Kind: Observe, Request: active})
 			if !errors.Is(err, ErrCorruptState) || out != nil {
 				t.Fatalf("corrupt lifecycle accepted: output=%t error=%v", out != nil, err)
 			}
@@ -520,17 +520,17 @@ func TestTransitionRejectsCorruptLifecycleFields(t *testing.T) {
 	}
 }
 
-func TestTransitionRemainingIncludesFractionalBackendTime(t *testing.T) {
+func TestApplySnapshotRemainingIncludesFractionalBackendTime(t *testing.T) {
 	now := time.Unix(1000, 900000)
 	r := stateTestRequest(now.Truncate(time.Millisecond), stateTestConfig(), "", 1)
-	data, result, err := Transition(nil, now, Command{Kind: Submit, Request: r})
+	data, result, err := ApplySnapshot(nil, now, Command{Kind: Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Remaining != r.Config.LeaseTTL-900*time.Microsecond {
 		t.Fatalf("optimistic TTL: %s", result.Remaining)
 	}
-	_, result, err = Transition(data, now.Add(100*time.Millisecond), Command{Kind: Observe, Request: r})
+	_, result, err = ApplySnapshot(data, now.Add(100*time.Millisecond), Command{Kind: Observe, Request: r})
 	if err != nil || result.Remaining != r.Config.LeaseTTL-100*time.Millisecond-900*time.Microsecond {
 		t.Fatalf("observation TTL: %s %v", result.Remaining, err)
 	}

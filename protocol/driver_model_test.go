@@ -1,4 +1,4 @@
-package airlock
+package protocol
 
 import (
 	"encoding/json"
@@ -139,7 +139,7 @@ func (m *protocolModel) apply(now time.Time, cmd Command) (Status, error, bool) 
 
 func (m *protocolModel) check(t testing.TB, data []byte) {
 	t.Helper()
-	var s durableSnapshot
+	var s State
 	if err := json.Unmarshal(data, &s); err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func runProtocolTrace(t testing.TB, trace []byte, priority bool) {
 			cmd.Request.Owner = "00000000000000000000000000000000"
 		}
 		wantStatus, wantErr, commit := m.apply(now, cmd)
-		next, result, err := Transition(data, now, cmd)
+		next, result, err := ApplySnapshot(data, now, cmd)
 		if !errors.Is(err, wantErr) || result.Status != wantStatus || (next != nil) != commit {
 			t.Fatalf("step %d instruction=%d kind=%s: status=%s err=%v committed=%t; want %s/%v/%t", step, instruction, kind, result.Status, err, next != nil, wantStatus, wantErr, commit)
 		}
@@ -222,7 +222,7 @@ func runProtocolTrace(t testing.TB, trace []byte, priority bool) {
 	}
 }
 
-func TestTransitionModelTraces(t *testing.T) {
+func TestApplySnapshotModelTraces(t *testing.T) {
 	seeds, steps := 8, 128
 	if os.Getenv("AIRLOCK_STRESS") == "1" {
 		// Budget 64*250 = 16,000 transitions versus 8*128 = 1,024 normally

@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/protocol"
 )
 
 // Run verifies the durable admission contract against factory. The factory is
 // called independently for each subtest, owns connection cleanup through t, and
 // must return a driver connected to an available backend. These tests deliberately
 // use only public protocol operations, never backend-specific state inspection.
-func Run(t *testing.T, factory func(*testing.T) airlock.Driver) {
+func Run(t *testing.T, factory func(*testing.T) protocol.Driver) {
 	t.Helper()
 	tests := []struct {
 		name string
@@ -47,12 +47,12 @@ func Run(t *testing.T, factory func(*testing.T) airlock.Driver) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cfg := airlock.ResourceConfig{
-				Admission: airlock.Config{Capacity: 3, MaxQueued: 64, MaxQueuedPerTenant: 64},
+			cfg := protocol.ResourceConfig{
+				Admission: protocol.Config{Capacity: 3, MaxQueued: 64, MaxQueuedPerTenant: 64},
 				LeaseTTL:  30 * time.Second, MaxWait: 30 * time.Second,
 				SubmitWindow: 30 * time.Second, Retention: 100 * time.Millisecond, MaxRecords: 256,
 			}
-			identity := airlock.NewRequest(time.Now().Add(time.Minute))
+			identity := protocol.NewRequest(time.Now().Add(time.Minute))
 			test.run(&harness{t: t, driver: factory(t), resource: "conformance-" + identity.ID, cfg: cfg})
 		})
 	}
@@ -63,24 +63,24 @@ type harness struct {
 	// t owns assertions and backend cleanup for this isolated subtest.
 	t *testing.T
 	// driver is the backend under conformance testing.
-	driver airlock.Driver
+	driver protocol.Driver
 	// resource uniquely isolates this subtest from other backend users.
 	resource string
 	// cfg supplies the immutable policy used for requests in this subtest.
-	cfg airlock.ResourceConfig
+	cfg protocol.ResourceConfig
 }
 
 // request creates a fresh identity with deadlines inside the configured backend windows.
-func (h *harness) request(tenant string, weight int) airlock.Request {
+func (h *harness) request(tenant string, weight int) protocol.Request {
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	r := airlock.NewRequest(now.Add(h.cfg.SubmitWindow - time.Millisecond))
+	r := protocol.NewRequest(now.Add(h.cfg.SubmitWindow - time.Millisecond))
 	r.Resource, r.Tenant, r.Weight, r.Config = h.resource, tenant, weight, h.cfg
 	r.WaitUntil = now.Add(h.cfg.MaxWait - time.Millisecond)
 	return r
 }
 
 // execute invokes one bounded backend operation, allowing a larger bound in stress mode.
-func (h *harness) execute(kind airlock.Operation, request airlock.Request, lease string) (airlock.Result, error) {
+func (h *harness) execute(kind protocol.Operation, request protocol.Request, lease string) (protocol.Result, error) {
 	timeout := 5 * time.Second
 	if os.Getenv("AIRLOCK_STRESS") == "1" {
 		// Race instrumentation and CPU=1 amplify snapshot/CAS contention.
@@ -89,11 +89,11 @@ func (h *harness) execute(kind airlock.Operation, request airlock.Request, lease
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return Invoke(ctx, h.driver, airlock.Command{Kind: kind, Request: request, LeaseID: lease})
+	return Invoke(ctx, h.driver, protocol.Command{Kind: kind, Request: request, LeaseID: lease})
 }
 
 // must requires the expected successful status and validates grant accounting.
-func (h *harness) must(kind airlock.Operation, request airlock.Request, lease string, status airlock.Status) airlock.Result {
+func (h *harness) must(kind protocol.Operation, request protocol.Request, lease string, status protocol.Status) protocol.Result {
 	h.t.Helper()
 	result, err := h.execute(kind, request, lease)
 	if err != nil || result.Status != status {
@@ -102,14 +102,14 @@ func (h *harness) must(kind airlock.Operation, request airlock.Request, lease st
 	if result.Weight != request.Weight || result.Revision == 0 {
 		h.t.Fatalf("%s invalid result accounting: %+v", kind, result)
 	}
-	if status == airlock.Granted && (result.LeaseID == "" || result.Remaining <= 0 || result.Remaining > request.Config.LeaseTTL) {
+	if status == protocol.Granted && (result.LeaseID == "" || result.Remaining <= 0 || result.Remaining > request.Config.LeaseTTL) {
 		h.t.Fatalf("invalid grant: %+v", result)
 	}
 	return result
 }
 
 // wantError requires a specific error identity while preserving the returned protocol result.
-func (h *harness) wantError(kind airlock.Operation, request airlock.Request, lease string, want error) airlock.Result {
+func (h *harness) wantError(kind protocol.Operation, request protocol.Request, lease string, want error) protocol.Result {
 	h.t.Helper()
 	result, err := h.execute(kind, request, lease)
 	if !errors.Is(err, want) {
@@ -121,81 +121,81 @@ func (h *harness) wantError(kind airlock.Operation, request airlock.Request, lea
 // idempotency verifies stable grants, immutable request identity and at-most-once release accounting.
 func idempotency(h *harness) {
 	r := h.request("a", 2)
-	first := h.must(airlock.Submit, r, "", airlock.Granted)
-	retry := h.must(airlock.Submit, r, "", airlock.Granted)
+	first := h.must(protocol.Submit, r, "", protocol.Granted)
+	retry := h.must(protocol.Submit, r, "", protocol.Granted)
 	if first.LeaseID != retry.LeaseID || retry.Remaining > first.Remaining || retry.Revision <= first.Revision {
 		h.t.Fatalf("retry changed grant identity/TTL/revision: first=%+v retry=%+v", first, retry)
 	}
-	for _, change := range []func(*airlock.Request){
-		func(r *airlock.Request) { r.Owner = airlock.NewRequest(time.Now()).Owner },
-		func(r *airlock.Request) { r.Weight = 1 },
-		func(r *airlock.Request) { r.Tenant = "other" },
-		func(r *airlock.Request) { r.WaitUntil = r.WaitUntil.Add(-time.Millisecond) },
+	for _, change := range []func(*protocol.Request){
+		func(r *protocol.Request) { r.Owner = protocol.NewRequest(time.Now()).Owner },
+		func(r *protocol.Request) { r.Weight = 1 },
+		func(r *protocol.Request) { r.Tenant = "other" },
+		func(r *protocol.Request) { r.WaitUntil = r.WaitUntil.Add(-time.Millisecond) },
 	} {
 		conflict := r
 		change(&conflict)
-		h.wantError(airlock.Submit, conflict, "", airlock.ErrRequestConflict)
+		h.wantError(protocol.Submit, conflict, "", protocol.ErrRequestConflict)
 	}
 	conflict := r
 	conflict.Config.Admission.Capacity++
-	h.wantError(airlock.Submit, conflict, "", airlock.ErrConfigConflict)
-	h.wantError(airlock.Renew, r, "incorrect-lease", airlock.ErrLeaseLost)
-	h.wantError(airlock.Release, r, "incorrect-lease", airlock.ErrLeaseLost)
-	h.must(airlock.Observe, r, "", airlock.Granted)
+	h.wantError(protocol.Submit, conflict, "", protocol.ErrConfigConflict)
+	h.wantError(protocol.Renew, r, "incorrect-lease", protocol.ErrLeaseLost)
+	h.wantError(protocol.Release, r, "incorrect-lease", protocol.ErrLeaseLost)
+	h.must(protocol.Observe, r, "", protocol.Granted)
 	other := h.request("b", 2)
-	h.must(airlock.Submit, other, "", airlock.Queued)
-	h.must(airlock.Release, r, first.LeaseID, airlock.Released)
-	h.must(airlock.Release, r, first.LeaseID, airlock.Released)
-	h.must(airlock.Submit, r, "", airlock.Released)
-	h.wantError(airlock.Renew, r, first.LeaseID, airlock.ErrLeaseLost)
-	granted := h.must(airlock.Observe, other, "", airlock.Granted)
+	h.must(protocol.Submit, other, "", protocol.Queued)
+	h.must(protocol.Release, r, first.LeaseID, protocol.Released)
+	h.must(protocol.Release, r, first.LeaseID, protocol.Released)
+	h.must(protocol.Submit, r, "", protocol.Released)
+	h.wantError(protocol.Renew, r, first.LeaseID, protocol.ErrLeaseLost)
+	granted := h.must(protocol.Observe, other, "", protocol.Granted)
 	third := h.request("c", 2)
-	h.must(airlock.Submit, third, "", airlock.Queued)
-	h.must(airlock.Release, other, granted.LeaseID, airlock.Released)
-	h.must(airlock.Observe, third, "", airlock.Granted)
+	h.must(protocol.Submit, third, "", protocol.Queued)
+	h.must(protocol.Release, other, granted.LeaseID, protocol.Released)
+	h.must(protocol.Observe, third, "", protocol.Granted)
 }
 
 // cancelBeforeSubmit verifies tombstones prevent late submissions from acquiring capacity.
 func cancelBeforeSubmit(h *harness) {
 	r := h.request("a", 3)
-	h.must(airlock.Cancel, r, "", airlock.Cancelled)
-	h.must(airlock.Submit, r, "", airlock.Cancelled)
-	h.must(airlock.Cancel, r, "", airlock.Cancelled)
-	h.must(airlock.Observe, r, "", airlock.Cancelled)
+	h.must(protocol.Cancel, r, "", protocol.Cancelled)
+	h.must(protocol.Submit, r, "", protocol.Cancelled)
+	h.must(protocol.Cancel, r, "", protocol.Cancelled)
+	h.must(protocol.Observe, r, "", protocol.Cancelled)
 	fresh := h.request("b", 3)
-	h.must(airlock.Submit, fresh, "", airlock.Granted)
-	h.must(airlock.Cancel, fresh, "", airlock.Cancelled)
-	h.must(airlock.Submit, fresh, "", airlock.Cancelled)
-	h.must(airlock.Submit, h.request("c", 3), "", airlock.Granted)
+	h.must(protocol.Submit, fresh, "", protocol.Granted)
+	h.must(protocol.Cancel, fresh, "", protocol.Cancelled)
+	h.must(protocol.Submit, fresh, "", protocol.Cancelled)
+	h.must(protocol.Submit, h.request("c", 3), "", protocol.Granted)
 }
 
 // weightValidation checks invalid weights leave full capacity available.
 func weightValidation(h *harness) {
 	for _, weight := range []int{-1, 0, 4} {
-		want := airlock.ErrInvalidWeight
+		want := protocol.ErrInvalidWeight
 		if weight > h.cfg.Admission.Capacity {
-			want = airlock.ErrWeightExceedsCapacity
+			want = protocol.ErrWeightExceedsCapacity
 		}
-		h.wantError(airlock.Submit, h.request("a", weight), "", want)
+		h.wantError(protocol.Submit, h.request("a", weight), "", want)
 	}
-	h.must(airlock.Submit, h.request("b", h.cfg.Admission.Capacity), "", airlock.Granted)
+	h.must(protocol.Submit, h.request("b", h.cfg.Admission.Capacity), "", protocol.Granted)
 }
 
 // protectedHead verifies small requests cannot bypass a selected whole-weight request.
 func protectedHead(h *harness) {
 	holder := h.request("holder", 2)
-	grant := h.must(airlock.Submit, holder, "", airlock.Granted)
+	grant := h.must(protocol.Submit, holder, "", protocol.Granted)
 	large, small := h.request("large", 3), h.request("small", 1)
-	h.must(airlock.Submit, large, "", airlock.Queued)
-	h.must(airlock.Submit, small, "", airlock.Queued)
+	h.must(protocol.Submit, large, "", protocol.Queued)
+	h.must(protocol.Submit, small, "", protocol.Queued)
 	for i := 0; i < 3; i++ {
-		h.must(airlock.Observe, small, "", airlock.Queued)
+		h.must(protocol.Observe, small, "", protocol.Queued)
 	}
-	h.must(airlock.Release, holder, grant.LeaseID, airlock.Released)
-	h.must(airlock.Observe, small, "", airlock.Queued)
-	grant = h.must(airlock.Observe, large, "", airlock.Granted)
-	h.must(airlock.Release, large, grant.LeaseID, airlock.Released)
-	h.must(airlock.Observe, small, "", airlock.Granted)
+	h.must(protocol.Release, holder, grant.LeaseID, protocol.Released)
+	h.must(protocol.Observe, small, "", protocol.Queued)
+	grant = h.must(protocol.Observe, large, "", protocol.Granted)
+	h.must(protocol.Release, large, grant.LeaseID, protocol.Released)
+	h.must(protocol.Observe, small, "", protocol.Granted)
 }
 
 // queueBounds checks global/tenant limits and retained rejection outcomes.
@@ -203,49 +203,49 @@ func queueBounds(h *harness) {
 	h.cfg.Admission.MaxQueued = 2
 	h.cfg.Admission.MaxQueuedPerTenant = 1
 	holder := h.request("holder", 3)
-	h.must(airlock.Submit, holder, "", airlock.Granted)
+	h.must(protocol.Submit, holder, "", protocol.Granted)
 	a := h.request("a", 1)
-	h.must(airlock.Submit, a, "", airlock.Queued)
-	h.wantError(airlock.Submit, h.request("a", 1), "", airlock.ErrTenantQueueFull)
-	h.must(airlock.Submit, h.request("b", 1), "", airlock.Queued)
+	h.must(protocol.Submit, a, "", protocol.Queued)
+	h.wantError(protocol.Submit, h.request("a", 1), "", protocol.ErrTenantQueueFull)
+	h.must(protocol.Submit, h.request("b", 1), "", protocol.Queued)
 	rejected := h.request("c", 1)
-	if got := h.wantError(airlock.Submit, rejected, "", airlock.ErrQueueFull); got.Status != airlock.Rejected {
+	if got := h.wantError(protocol.Submit, rejected, "", protocol.ErrQueueFull); got.Status != protocol.Rejected {
 		h.t.Fatalf("queue rejection status=%s", got.Status)
 	}
-	h.must(airlock.Cancel, a, "", airlock.Cancelled)
-	h.wantError(airlock.Submit, rejected, "", airlock.ErrQueueFull)
-	h.must(airlock.Submit, h.request("c", 1), "", airlock.Queued)
+	h.must(protocol.Cancel, a, "", protocol.Cancelled)
+	h.wantError(protocol.Submit, rejected, "", protocol.ErrQueueFull)
+	h.must(protocol.Submit, h.request("c", 1), "", protocol.Queued)
 }
 
 // groupBounds verifies reserved group waiting budgets and per-tenant bounds.
 func groupBounds(h *harness) {
 	h.cfg.Admission.MaxQueued = 4
 	h.cfg.Admission.MaxQueuedPerTenant = 1
-	h.cfg.Admission.Priority = &airlock.PriorityPolicy{
-		Groups:       []airlock.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 2}, {Name: "low", Turns: 1, MaxQueued: 2}},
+	h.cfg.Admission.Priority = &protocol.PriorityPolicy{
+		Groups:       []protocol.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 2}, {Name: "low", Turns: 1, MaxQueued: 2}},
 		DefaultGroup: "low", TenantGroups: map[string]string{"h1": "high", "h2": "high", "h3": "high"},
 	}
-	h.must(airlock.Submit, h.request("holder", 3), "", airlock.Granted)
+	h.must(protocol.Submit, h.request("holder", 3), "", protocol.Granted)
 	a := h.request("h1", 1)
-	h.must(airlock.Submit, a, "", airlock.Queued)
-	h.wantError(airlock.Submit, h.request("h1", 1), "", airlock.ErrTenantQueueFull)
-	h.must(airlock.Submit, h.request("h2", 1), "", airlock.Queued)
-	h.wantError(airlock.Submit, h.request("h3", 1), "", airlock.ErrGroupQueueFull)
-	h.must(airlock.Submit, h.request("l1", 1), "", airlock.Queued)
-	h.must(airlock.Cancel, a, "", airlock.Cancelled)
-	h.must(airlock.Submit, h.request("h3", 1), "", airlock.Queued)
+	h.must(protocol.Submit, a, "", protocol.Queued)
+	h.wantError(protocol.Submit, h.request("h1", 1), "", protocol.ErrTenantQueueFull)
+	h.must(protocol.Submit, h.request("h2", 1), "", protocol.Queued)
+	h.wantError(protocol.Submit, h.request("h3", 1), "", protocol.ErrGroupQueueFull)
+	h.must(protocol.Submit, h.request("l1", 1), "", protocol.Queued)
+	h.must(protocol.Cancel, a, "", protocol.Cancelled)
+	h.must(protocol.Submit, h.request("h3", 1), "", protocol.Queued)
 }
 
 // priorityRotation verifies weighted group turns are independent of observation frequency.
 func priorityRotation(h *harness) {
 	h.cfg.Admission.Capacity = 1
-	h.cfg.Admission.Priority = &airlock.PriorityPolicy{
-		Groups:       []airlock.PriorityGroup{{Name: "high", Turns: 8, MaxQueued: 24}, {Name: "normal", Turns: 3, MaxQueued: 12}, {Name: "low", Turns: 1, MaxQueued: 8}},
+	h.cfg.Admission.Priority = &protocol.PriorityPolicy{
+		Groups:       []protocol.PriorityGroup{{Name: "high", Turns: 8, MaxQueued: 24}, {Name: "normal", Turns: 3, MaxQueued: 12}, {Name: "low", Turns: 1, MaxQueued: 8}},
 		DefaultGroup: "low", TenantGroups: map[string]string{"h1": "high", "h2": "high", "m": "normal"},
 	}
 	holder := h.request("holder", 1)
-	grant := h.must(airlock.Submit, holder, "", airlock.Granted)
-	queues := map[string][]airlock.Request{}
+	grant := h.must(protocol.Submit, holder, "", protocol.Granted)
+	queues := map[string][]protocol.Request{}
 	for _, spec := range []struct {
 		tenant string
 		count  int
@@ -253,21 +253,21 @@ func priorityRotation(h *harness) {
 		for i := 0; i < spec.count; i++ {
 			r := h.request(spec.tenant, 1)
 			queues[spec.tenant] = append(queues[spec.tenant], r)
-			h.must(airlock.Submit, r, "", airlock.Queued)
+			h.must(protocol.Submit, r, "", protocol.Queued)
 		}
 	}
-	h.must(airlock.Release, holder, grant.LeaseID, airlock.Released)
+	h.must(protocol.Release, holder, grant.LeaseID, protocol.Released)
 	for cycle := 0; cycle < 2; cycle++ {
 		for _, tenant := range []string{"h1", "h2", "h1", "h2", "h1", "h2", "h1", "h2", "m", "m", "m", "l"} {
 			r := queues[tenant][0]
 			// Poll all other tenants first. Observation frequency cannot change turns.
 			for _, other := range []string{"l", "m", "h2", "h1"} {
 				if other != tenant && len(queues[other]) > 0 {
-					h.must(airlock.Observe, queues[other][0], "", airlock.Queued)
+					h.must(protocol.Observe, queues[other][0], "", protocol.Queued)
 				}
 			}
-			g := h.must(airlock.Observe, r, "", airlock.Granted)
-			h.must(airlock.Release, r, g.LeaseID, airlock.Released)
+			g := h.must(protocol.Observe, r, "", protocol.Granted)
+			h.must(protocol.Release, r, g.LeaseID, protocol.Released)
 			queues[tenant] = queues[tenant][1:]
 		}
 	}
@@ -277,38 +277,38 @@ func priorityRotation(h *harness) {
 func tenantRotation(h *harness) {
 	h.cfg.Admission.Capacity = 1
 	holder := h.request("holder", 1)
-	g := h.must(airlock.Submit, holder, "", airlock.Granted)
+	g := h.must(protocol.Submit, holder, "", protocol.Granted)
 	a1, a2, b, c := h.request("a", 1), h.request("a", 1), h.request("b", 1), h.request("c", 1)
-	for _, r := range []airlock.Request{a1, a2, b, c} {
-		h.must(airlock.Submit, r, "", airlock.Queued)
+	for _, r := range []protocol.Request{a1, a2, b, c} {
+		h.must(protocol.Submit, r, "", protocol.Queued)
 	}
-	h.must(airlock.Cancel, b, "", airlock.Cancelled)
+	h.must(protocol.Cancel, b, "", protocol.Cancelled)
 	b2 := h.request("b", 1)
-	h.must(airlock.Submit, b2, "", airlock.Queued)
-	h.must(airlock.Release, holder, g.LeaseID, airlock.Released)
-	for _, r := range []airlock.Request{a1, c, b2, a2} {
-		g = h.must(airlock.Observe, r, "", airlock.Granted)
-		h.must(airlock.Release, r, g.LeaseID, airlock.Released)
+	h.must(protocol.Submit, b2, "", protocol.Queued)
+	h.must(protocol.Release, holder, g.LeaseID, protocol.Released)
+	for _, r := range []protocol.Request{a1, c, b2, a2} {
+		g = h.must(protocol.Observe, r, "", protocol.Granted)
+		h.must(protocol.Release, r, g.LeaseID, protocol.Released)
 	}
 }
 
 // selectedCancel verifies cancellation does not refund a consumed group selection turn.
 func selectedCancel(h *harness) {
-	h.cfg.Admission.Priority = &airlock.PriorityPolicy{
-		Groups:       []airlock.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 8}, {Name: "low", Turns: 1, MaxQueued: 8}},
+	h.cfg.Admission.Priority = &protocol.PriorityPolicy{
+		Groups:       []protocol.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 8}, {Name: "low", Turns: 1, MaxQueued: 8}},
 		DefaultGroup: "low", TenantGroups: map[string]string{"h": "high"},
 	}
 	holder := h.request("holder", 2)
-	g := h.must(airlock.Submit, holder, "", airlock.Granted)
+	g := h.must(protocol.Submit, holder, "", protocol.Granted)
 	h1, h2, h3, low := h.request("h", 3), h.request("h", 3), h.request("h", 3), h.request("low", 3)
-	for _, r := range []airlock.Request{h1, h2, h3, low} {
-		h.must(airlock.Submit, r, "", airlock.Queued)
+	for _, r := range []protocol.Request{h1, h2, h3, low} {
+		h.must(protocol.Submit, r, "", protocol.Queued)
 	}
-	h.must(airlock.Cancel, h1, "", airlock.Cancelled)
-	h.must(airlock.Release, holder, g.LeaseID, airlock.Released)
-	for _, r := range []airlock.Request{h2, low, h3} {
-		g = h.must(airlock.Observe, r, "", airlock.Granted)
-		h.must(airlock.Release, r, g.LeaseID, airlock.Released)
+	h.must(protocol.Cancel, h1, "", protocol.Cancelled)
+	h.must(protocol.Release, holder, g.LeaseID, protocol.Released)
+	for _, r := range []protocol.Request{h2, low, h3} {
+		g = h.must(protocol.Observe, r, "", protocol.Granted)
+		h.must(protocol.Release, r, g.LeaseID, protocol.Released)
 	}
 }
 
@@ -318,33 +318,33 @@ func queueExpiry(h *harness) {
 	h.cfg.Admission.MaxQueued = 1
 	h.cfg.Admission.MaxQueuedPerTenant = 1
 	holder := h.request("holder", 3)
-	h.must(airlock.Submit, holder, "", airlock.Granted)
+	h.must(protocol.Submit, holder, "", protocol.Granted)
 	queued := h.request("a", 3)
-	h.must(airlock.Submit, queued, "", airlock.Queued)
+	h.must(protocol.Submit, queued, "", protocol.Queued)
 	sleepUntil(queued.WaitUntil.Add(30 * time.Millisecond))
-	h.must(airlock.Observe, queued, "", airlock.Expired)
-	h.must(airlock.Submit, queued, "", airlock.Expired)
-	h.must(airlock.Submit, h.request("b", 3), "", airlock.Queued)
+	h.must(protocol.Observe, queued, "", protocol.Expired)
+	h.must(protocol.Submit, queued, "", protocol.Expired)
+	h.must(protocol.Submit, h.request("b", 3), "", protocol.Queued)
 }
 
 // leaseExpiry verifies renewal identity, capacity reclamation and terminal release behavior.
 func leaseExpiry(h *harness) {
 	h.cfg.LeaseTTL = 300 * time.Millisecond
 	r := h.request("a", 3)
-	g := h.must(airlock.Submit, r, "", airlock.Granted)
-	renewed := h.must(airlock.Renew, r, g.LeaseID, airlock.Granted)
+	g := h.must(protocol.Submit, r, "", protocol.Granted)
+	renewed := h.must(protocol.Renew, r, g.LeaseID, protocol.Granted)
 	start := time.Now()
 	if renewed.LeaseID != g.LeaseID {
 		h.t.Fatal("renew changed lease ID")
 	}
 	waiting := h.request("b", 3)
-	h.must(airlock.Submit, waiting, "", airlock.Queued)
+	h.must(protocol.Submit, waiting, "", protocol.Queued)
 	sleepUntil(start.Add(h.cfg.LeaseTTL + 100*time.Millisecond))
-	h.must(airlock.Observe, waiting, "", airlock.Granted)
-	h.must(airlock.Observe, r, "", airlock.Expired)
-	h.wantError(airlock.Renew, r, g.LeaseID, airlock.ErrLeaseLost)
-	h.must(airlock.Release, r, g.LeaseID, airlock.Expired)
-	h.must(airlock.Observe, waiting, "", airlock.Granted)
+	h.must(protocol.Observe, waiting, "", protocol.Granted)
+	h.must(protocol.Observe, r, "", protocol.Expired)
+	h.wantError(protocol.Renew, r, g.LeaseID, protocol.ErrLeaseLost)
+	h.must(protocol.Release, r, g.LeaseID, protocol.Expired)
+	h.must(protocol.Observe, waiting, "", protocol.Granted)
 }
 
 // historyGC verifies live records survive GC and terminal retention prevents premature ID reuse.
@@ -352,17 +352,17 @@ func historyGC(h *harness) {
 	h.cfg.MaxRecords = 1
 	h.cfg.SubmitWindow = 300 * time.Millisecond
 	r := h.request("a", 3)
-	g := h.must(airlock.Submit, r, "", airlock.Granted)
+	g := h.must(protocol.Submit, r, "", protocol.Granted)
 	sleepUntil(r.SubmitUntil.Add(30 * time.Millisecond))
 	// Submission cutoff and the recovery window never collect a live lease.
-	h.must(airlock.Renew, r, g.LeaseID, airlock.Granted)
-	h.must(airlock.Submit, r, "", airlock.Granted)
-	h.wantError(airlock.Submit, h.request("b", 1), "", airlock.ErrHistoryFull)
-	h.must(airlock.Release, r, g.LeaseID, airlock.Released)
-	h.wantError(airlock.Submit, h.request("b", 1), "", airlock.ErrHistoryFull)
+	h.must(protocol.Renew, r, g.LeaseID, protocol.Granted)
+	h.must(protocol.Submit, r, "", protocol.Granted)
+	h.wantError(protocol.Submit, h.request("b", 1), "", protocol.ErrHistoryFull)
+	h.must(protocol.Release, r, g.LeaseID, protocol.Released)
+	h.wantError(protocol.Submit, h.request("b", 1), "", protocol.ErrHistoryFull)
 	time.Sleep(h.cfg.Retention + 30*time.Millisecond)
-	h.must(airlock.Submit, h.request("b", 3), "", airlock.Granted)
-	h.wantError(airlock.Submit, r, "", airlock.ErrSubmitExpired)
+	h.must(protocol.Submit, h.request("b", 3), "", protocol.Granted)
+	h.wantError(protocol.Submit, r, "", protocol.ErrSubmitExpired)
 }
 
 // sleepUntil waits only when a conformance deadline is still in the future.
@@ -376,7 +376,7 @@ func sleepUntil(deadline time.Time) {
 func concurrentAdmission(h *harness) {
 	h.cfg.Admission.Capacity = 7
 	const clients = 24
-	requests := make([]airlock.Request, clients)
+	requests := make([]protocol.Request, clients)
 	for i := range requests {
 		requests[i] = h.request(fmt.Sprintf("tenant-%d", i%4), 1+i%3)
 	}
@@ -389,11 +389,11 @@ func concurrentAdmission(h *harness) {
 	submitted.Add(clients)
 	for _, request := range requests {
 		workers.Add(1)
-		go func(r airlock.Request) {
+		go func(r protocol.Request) {
 			defer workers.Done()
 			<-start
-			result, err := h.execute(airlock.Submit, r, "")
-			if err == nil && result.Status == airlock.Granted {
+			result, err := h.execute(protocol.Submit, r, "")
+			if err == nil && result.Status == protocol.Granted {
 				if used := inUse.Add(int64(r.Weight)); used > int64(h.cfg.Admission.Capacity) {
 					h.t.Errorf("concurrent initial grants own %d > %d", used, h.cfg.Admission.Capacity)
 				}
@@ -405,31 +405,31 @@ func concurrentAdmission(h *harness) {
 				return
 			}
 			deadline := time.Now().Add(20 * time.Second)
-			for result.Status == airlock.Queued && time.Now().Before(deadline) {
+			for result.Status == protocol.Queued && time.Now().Before(deadline) {
 				// Observe may atomically rewrite a bounded resource snapshot.
 				// Avoid a 24-client polling storm under race/coverage instruments;
 				// this tests capacity and completion, not an operation-latency SLA.
 				time.Sleep(50 * time.Millisecond)
-				result, err = h.execute(airlock.Observe, r, "")
+				result, err = h.execute(protocol.Observe, r, "")
 				if err != nil {
 					h.t.Errorf("concurrent observe: %v", err)
 					return
 				}
-				if result.Status == airlock.Granted {
+				if result.Status == protocol.Granted {
 					if used := inUse.Add(int64(r.Weight)); used > int64(h.cfg.Admission.Capacity) {
 						h.t.Errorf("concurrent grants own %d > %d", used, h.cfg.Admission.Capacity)
 					}
 				}
 			}
-			if result.Status != airlock.Granted || result.Weight != r.Weight || result.LeaseID == "" {
+			if result.Status != protocol.Granted || result.Weight != r.Weight || result.LeaseID == "" {
 				h.t.Errorf("concurrent grant invalid: %+v", result)
 				return
 			}
 			// Stop simulated work before release can grant the next request.
 			inUse.Add(-int64(r.Weight))
 			for i := 0; i < 2; i++ {
-				released, releaseErr := h.execute(airlock.Release, r, result.LeaseID)
-				if releaseErr != nil || released.Status != airlock.Released {
+				released, releaseErr := h.execute(protocol.Release, r, result.LeaseID)
+				if releaseErr != nil || released.Status != protocol.Released {
 					h.t.Errorf("concurrent release %d: %+v %v", i, released, releaseErr)
 					return
 				}

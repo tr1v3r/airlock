@@ -28,16 +28,14 @@ func (g *Airlock) TryAcquireN(n int) (*Permit, error) {
 	if n <= 0 {
 		return nil, ErrInvalidWeight
 	}
-	if n > g.cfg.Capacity {
+	if n > g.sched.Capacity() {
 		return nil, ErrWeightExceedsCapacity
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.queued != 0 || n > g.cfg.Capacity-g.used {
+	if !g.sched.TryAcquire(n) {
 		return nil, ErrWouldBlock
 	}
-	g.used += n
-	g.active++
 	return &Permit{owner: g, weight: n}, nil
 }
 

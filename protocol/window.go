@@ -1,4 +1,4 @@
-package airlock
+package protocol
 
 import (
 	"encoding/json"
@@ -20,14 +20,14 @@ func (w CommitWindow) Allows(now time.Time) bool {
 	return !now.Before(w.NotBefore) && (w.Before.IsZero() || now.Before(w.Before))
 }
 
-// TransitionOptimistic evaluates the same state machine as Transition and
+// ApplyOptimistic evaluates the same state machine as ApplySnapshot and
 // supplies the time guard needed by an optimistic compare-and-swap backend.
 // The window is meaningful only for nonnil next. Only a confirmed comparison or
 // time-window miss may be retried internally; a lost write response remains
 // ambiguous, especially for Renew which has no independent operation identity.
 // Drivers must not inspect or modify the opaque snapshot themselves.
-func TransitionOptimistic(snapshot []byte, now time.Time, cmd Command) (next []byte, result Result, window CommitWindow, err error) {
-	next, result, err = Transition(snapshot, now, cmd)
+func ApplyOptimistic(snapshot []byte, now time.Time, cmd Command) (next []byte, result Result, window CommitWindow, err error) {
+	next, result, err = ApplySnapshot(snapshot, now, cmd)
 	if next == nil {
 		return
 	}
@@ -47,8 +47,8 @@ func TransitionOptimistic(snapshot []byte, now time.Time, cmd Command) (next []b
 	boundary(r.SubmitUntil.Add(-r.Config.SubmitWindow))
 	boundary(r.WaitUntil.Add(-r.Config.MaxWait))
 	for _, data := range [][]byte{snapshot, next} {
-		var s durableSnapshot
-		// Transition has already validated input and generated valid JSON output.
+		var s State
+		// ApplySnapshot has already validated input and generated valid JSON output.
 		_ = json.Unmarshal(data, &s)
 		for _, rec := range s.Records {
 			if rec.Status == Queued || rec.Status == Granted {

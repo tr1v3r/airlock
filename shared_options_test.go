@@ -3,6 +3,7 @@ package airlock
 import (
 	"context"
 	"errors"
+	"github.com/tr1v3r/airlock/protocol"
 	"reflect"
 	"testing"
 	"time"
@@ -10,7 +11,7 @@ import (
 
 func TestSharedDefaultsInteroperateWithExplicitConfig(t *testing.T) {
 	d := &clientStateDriver{}
-	options := SharedOptions{Resource: "jobs", Config: ResourceConfig{Admission: Config{Capacity: 2}}}
+	options := SharedOptions{Resource: "jobs", Config: protocol.ResourceConfig{Admission: Config{Capacity: 2}}}
 	implicit := clientNew(t, d, options)
 	// Defaults must not mutate the caller's value or perform backend I/O.
 	if options.Config.LeaseTTL != 0 || options.OperationTimeout != 0 || len(d.commands()) != 0 {
@@ -18,7 +19,7 @@ func TestSharedDefaultsInteroperateWithExplicitConfig(t *testing.T) {
 	}
 	explicitOptions := SharedOptions{
 		Resource: "jobs",
-		Config: ResourceConfig{
+		Config: protocol.ResourceConfig{
 			Admission: Config{Capacity: 2}, LeaseTTL: 30 * time.Second,
 			MaxWait: 30 * time.Second, SubmitWindow: 5 * time.Second,
 			Retention: time.Minute, MaxRecords: 10000,
@@ -57,7 +58,7 @@ func TestSharedProtocolOverridesAndValidation(t *testing.T) {
 		"record bound":        func(o *SharedOptions) { o.Config.MaxRecords = 10001 },
 	} {
 		t.Run(name, func(t *testing.T) {
-			invalid := SharedOptions{Resource: "jobs", Config: ResourceConfig{Admission: Config{Capacity: 2}}}
+			invalid := SharedOptions{Resource: "jobs", Config: protocol.ResourceConfig{Admission: Config{Capacity: 2}}}
 			mutate(&invalid)
 			if _, err := NewShared(&clientStateDriver{}, invalid); !errors.Is(err, ErrInvalidConfig) {
 				t.Fatalf("invalid override accepted: %v", err)
@@ -87,7 +88,7 @@ func TestSharedClockAllowanceValidation(t *testing.T) {
 		{"zero smallest windows", 0, time.Millisecond, time.Millisecond, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			o := SharedOptions{Resource: "validation", Config: ResourceConfig{Admission: Config{Capacity: 1}, SubmitWindow: tc.submit, MaxWait: tc.wait}, ClockSkewAllowance: tc.allowance}
+			o := SharedOptions{Resource: "validation", Config: protocol.ResourceConfig{Admission: Config{Capacity: 1}, SubmitWindow: tc.submit, MaxWait: tc.wait}, ClockSkewAllowance: tc.allowance}
 			d := &clientStateDriver{}
 			c, err := NewShared(d, o)
 			if tc.valid {
@@ -111,7 +112,7 @@ func TestSharedDefaultsDoNotMigrateExistingResource(t *testing.T) {
 	lease := clientAcquire(t, previous)
 	changed := clientNew(t, d, SharedOptions{
 		Resource: original.Resource,
-		Config:   ResourceConfig{Admission: original.Config.Admission},
+		Config:   protocol.ResourceConfig{Admission: original.Config.Admission},
 	})
 	if _, err := changed.Acquire(context.Background()); !errors.Is(err, ErrConfigConflict) {
 		t.Fatalf("default policy silently replaced stored config: %v", err)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/tr1v3r/airlock/protocol"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -67,7 +68,7 @@ func sharedAssertDrained(t *testing.T, d *clientStateDriver, want int) {
 	t.Helper()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	var s durableSnapshot
+	var s protocol.State
 	if err := json.Unmarshal(d.state, &s); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func sharedAssertDrained(t *testing.T, d *clientStateDriver, want int) {
 		t.Fatalf("retained %d requests, want %d", len(s.Records), want)
 	}
 	for id, rec := range s.Records {
-		if rec.Status != Released && rec.Status != Cancelled {
+		if rec.Status != protocol.Released && rec.Status != protocol.Cancelled {
 			t.Errorf("request %s did not converge to released/cancelled: %s", id, rec.Status)
 		}
 	}
@@ -101,13 +102,13 @@ func TestSharedConcurrentWeightedLifecycle(t *testing.T) {
 			var used, completed atomic.Int64
 			started := time.Now()
 			defer func() {
-				counts := make(map[Operation]int)
+				counts := make(map[protocol.Operation]int)
 				for _, cmd := range d.commands() {
 					counts[cmd.Kind]++
 				}
 				t.Logf("clients=%d budget=%s elapsed=%s completed=%d used=%d submit=%d observe=%d renew=%d release=%d cancel=%d",
 					clients, o.Config.MaxWait, time.Since(started), completed.Load(), used.Load(),
-					counts[Submit], counts[Observe], counts[Renew], counts[Release], counts[Cancel])
+					counts[protocol.Submit], counts[protocol.Observe], counts[protocol.Renew], counts[protocol.Release], counts[protocol.Cancel])
 			}()
 			for i := 0; i < clients; i++ {
 				workers.Add(1)
@@ -165,8 +166,8 @@ func TestSharedConcurrentQueuedCancellation(t *testing.T) {
 		clients = 96
 	}
 	queued := make(chan struct{}, clients)
-	d := &clientStateDriver{after: func(_ context.Context, cmd Command, r Result, err error) (Result, error) {
-		if cmd.Kind == Submit && r.Status == Queued {
+	d := &clientStateDriver{after: func(_ context.Context, cmd protocol.Command, r protocol.Result, err error) (protocol.Result, error) {
+		if cmd.Kind == protocol.Submit && r.Status == protocol.Queued {
 			queued <- struct{}{}
 		}
 		return r, err
@@ -243,9 +244,9 @@ func TestSharedConcurrentRenewReleaseUnknownOutcome(t *testing.T) {
 	lostRenew := errors.New("renew response lost after commit")
 	lostRelease := errors.New("release response lost after commit")
 	var releaseCalls atomic.Int32
-	d := &clientStateDriver{after: func(ctx context.Context, cmd Command, r Result, err error) (Result, error) {
+	d := &clientStateDriver{after: func(ctx context.Context, cmd protocol.Command, r protocol.Result, err error) (protocol.Result, error) {
 		switch cmd.Kind {
-		case Renew:
+		case protocol.Renew:
 			close(entered)
 			select {
 			case <-respond:
@@ -253,7 +254,7 @@ func TestSharedConcurrentRenewReleaseUnknownOutcome(t *testing.T) {
 			case <-ctx.Done():
 				return r, ctx.Err()
 			}
-		case Release:
+		case protocol.Release:
 			if releaseCalls.Add(1) == 1 {
 				return r, lostRelease
 			}
@@ -304,7 +305,7 @@ func TestSharedConcurrentRenewReleaseUnknownOutcome(t *testing.T) {
 	}
 	sharedAssertDrained(t, d, 1)
 	for _, cmd := range d.commands() {
-		if cmd.Request.ID != lease.request.ID || ((cmd.Kind == Renew || cmd.Kind == Release) && cmd.LeaseID != lease.id) {
+		if cmd.Request.ID != lease.request.ID || ((cmd.Kind == protocol.Renew || cmd.Kind == protocol.Release) && cmd.LeaseID != lease.id) {
 			t.Fatal("concurrent recovery changed request or lease identity")
 		}
 	}
@@ -312,8 +313,8 @@ func TestSharedConcurrentRenewReleaseUnknownOutcome(t *testing.T) {
 
 func TestSharedConcurrentExpiryRejectsLateRenewal(t *testing.T) {
 	entered, respond := make(chan struct{}), make(chan struct{})
-	d := &clientStateDriver{after: func(ctx context.Context, cmd Command, r Result, err error) (Result, error) {
-		if cmd.Kind == Renew {
+	d := &clientStateDriver{after: func(ctx context.Context, cmd protocol.Command, r protocol.Result, err error) (protocol.Result, error) {
+		if cmd.Kind == protocol.Renew {
 			close(entered)
 			select {
 			case <-respond:
@@ -383,11 +384,11 @@ func TestSharedConcurrentExpiryRejectsLateRenewal(t *testing.T) {
 func TestSharedAcquireUnknownCleanupRemainsBounded(t *testing.T) {
 	lostSubmit := errors.New("submit response lost")
 	lostCleanup := errors.New("cancel response lost")
-	d := &clientStateDriver{after: func(_ context.Context, cmd Command, r Result, err error) (Result, error) {
-		if cmd.Kind == Submit {
+	d := &clientStateDriver{after: func(_ context.Context, cmd protocol.Command, r protocol.Result, err error) (protocol.Result, error) {
+		if cmd.Kind == protocol.Submit {
 			return r, lostSubmit
 		}
-		if cmd.Kind == Cancel {
+		if cmd.Kind == protocol.Cancel {
 			return r, lostCleanup
 		}
 		return r, err
@@ -398,12 +399,12 @@ func TestSharedAcquireUnknownCleanupRemainsBounded(t *testing.T) {
 		t.Fatalf("unknown acquisition authorized work or lost errors: %v %v", lease, err)
 	}
 	calls := d.commands()
-	if len(calls) != 2 || calls[0].Kind != Submit || calls[1].Kind != Cancel {
+	if len(calls) != 2 || calls[0].Kind != protocol.Submit || calls[1].Kind != protocol.Cancel {
 		t.Fatal("ambiguous acquisition automatically retried admission or cleanup")
 	}
 	sharedAssertDrained(t, d, 1)
 	result, err := d.Submit(context.Background(), calls[0].Request)
-	if !errors.Is(err, lostSubmit) || result.Status != Cancelled {
+	if !errors.Is(err, lostSubmit) || result.Status != protocol.Cancelled {
 		t.Fatalf("retry of original identity revived ambiguous grant: %+v %v", result, err)
 	}
 }

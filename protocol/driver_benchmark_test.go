@@ -1,4 +1,4 @@
-package airlock
+package protocol
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 // AIRLOCK_BENCH_LARGE=1 and select individual R/M/Q subbenchmarks as needed.
 // Fixtures and their validation are excluded from timing; each operation uses
 // the identical snapshot/backend time, so history cannot grow with b.N.
-func benchmarkTransitionScale(b *testing.B, optimistic bool) {
+func benchmarkApplySnapshotScale(b *testing.B, optimistic bool) {
 	recordCounts, mappingCounts := []int{8, 128}, []int{0, 64}
 	if os.Getenv("AIRLOCK_BENCH_LARGE") == "1" {
 		recordCounts = append(recordCounts, 1000, 10000)
@@ -28,9 +28,9 @@ func benchmarkTransitionScale(b *testing.B, optimistic bool) {
 						var result Result
 						var err error
 						if optimistic {
-							next, result, _, err = TransitionOptimistic(data, now, cmd)
+							next, result, _, err = ApplyOptimistic(data, now, cmd)
 						} else {
-							next, result, err = Transition(data, now, cmd)
+							next, result, err = ApplySnapshot(data, now, cmd)
 						}
 						if err != nil || len(next) == 0 || result.Revision != 2 {
 							b.Fatalf("invalid transition: %+v %v", result, err)
@@ -44,10 +44,10 @@ func benchmarkTransitionScale(b *testing.B, optimistic bool) {
 	}
 }
 
-func BenchmarkTransitionScale(b *testing.B) {
-	benchmarkTransitionScale(b, false)
+func BenchmarkApplySnapshotScale(b *testing.B) {
+	benchmarkApplySnapshotScale(b, false)
 }
 
-func BenchmarkTransitionOptimisticScale(b *testing.B) {
-	benchmarkTransitionScale(b, true)
+func BenchmarkApplyOptimisticScale(b *testing.B) {
+	benchmarkApplySnapshotScale(b, true)
 }

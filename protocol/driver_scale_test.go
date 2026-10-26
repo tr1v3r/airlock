@@ -1,4 +1,4 @@
-package airlock
+package protocol
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 // scaleSnapshot constructs a valid snapshot in O(records+mappings), rather than
 // warming it with records sequential transitions (which would hide setup cost).
 // Records includes one holder when queued > 0; the remainder are terminal.
-func scaleSnapshot(tb testing.TB, records, mappings, queued int) (durableSnapshot, Command) {
+func scaleSnapshot(tb testing.TB, records, mappings, queued int) (State, Command) {
 	tb.Helper()
 	if records < 1 || queued < 0 || queued >= records {
 		tb.Fatal("invalid scale fixture dimensions")
@@ -25,11 +25,11 @@ func scaleSnapshot(tb testing.TB, records, mappings, queued int) (durableSnapsho
 		}
 		cfg.Admission.Priority = p
 	}
-	s := durableSnapshot{Version: 1, Resource: "scale", Config: cfg, Records: make(map[string]*durableRecord, records), Queues: make(map[string][]string), Revision: 1, Time: now, Rotations: [][]string{{}}}
+	s := State{Version: 1, Resource: "scale", Config: cfg, Records: make(map[string]*Record, records), Queues: make(map[string][]string), Revision: 1, Time: now, Rotations: [][]string{{}}}
 	var cmd Command
 	for i := 0; i < records; i++ {
 		r := Request{Resource: s.Resource, ID: fmt.Sprintf("%d-%032x", now.Add(time.Hour).UnixMilli(), i+1), Owner: fmt.Sprintf("%032x", i+1), SubmitUntil: now.Add(time.Hour), WaitUntil: now.Add(time.Hour), Weight: 1, Config: cfg}
-		rec := &durableRecord{Request: r, Status: Cancelled, Finished: now}
+		rec := &Record{Request: r, Status: Cancelled, Finished: now}
 		if queued > 0 && i == 0 {
 			rec.Status, rec.Finished, rec.Until = Granted, time.Time{}, now.Add(cfg.LeaseTTL)
 			rec.LeaseID = leaseIdentity(r)
@@ -59,7 +59,7 @@ func scaleBytes(tb testing.TB, records, mappings, queued int) ([]byte, time.Time
 	if err != nil {
 		tb.Fatal(err)
 	}
-	if next, _, err := Transition(data, s.Time, cmd); err != nil || next == nil {
+	if next, _, err := ApplySnapshot(data, s.Time, cmd); err != nil || next == nil {
 		tb.Fatalf("invalid scale fixture: %v", err)
 	}
 	return data, s.Time, cmd
@@ -89,12 +89,12 @@ func TestRestorePriorityAllocationScaling(t *testing.T) {
 	}
 }
 
-func TestTransitionScaleFixtures(t *testing.T) {
+func TestApplySnapshotScaleFixtures(t *testing.T) {
 	for _, records := range []int{1, 8, 128} {
 		for _, mappings := range []int{0, 64} {
 			for _, queued := range []int{0, records - 1} {
 				data, now, cmd := scaleBytes(t, records, mappings, queued)
-				next, result, err := Transition(data, now, cmd)
+				next, result, err := ApplySnapshot(data, now, cmd)
 				if err != nil || next == nil || result.Revision != 2 {
 					t.Fatalf("R=%d M=%d Q=%d: %+v %v", records, mappings, queued, result, err)
 				}

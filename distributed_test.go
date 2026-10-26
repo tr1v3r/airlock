@@ -3,6 +3,7 @@ package airlock
 import (
 	"context"
 	"errors"
+	"github.com/tr1v3r/airlock/protocol"
 	"runtime"
 	"strings"
 	"sync"
@@ -16,13 +17,13 @@ import (
 type clientStateDriver struct {
 	mu    sync.Mutex
 	state []byte
-	calls []Command
-	after func(context.Context, Command, Result, error) (Result, error)
+	calls []protocol.Command
+	after func(context.Context, protocol.Command, protocol.Result, error) (protocol.Result, error)
 }
 
-func (d *clientStateDriver) execute(ctx context.Context, cmd Command) (Result, error) {
+func (d *clientStateDriver) execute(ctx context.Context, cmd protocol.Command) (protocol.Result, error) {
 	d.mu.Lock()
-	data, result, err := Transition(d.state, time.Now(), cmd)
+	data, result, err := protocol.ApplySnapshot(d.state, time.Now(), cmd)
 	if data != nil {
 		d.state = data
 	}
@@ -33,15 +34,15 @@ func (d *clientStateDriver) execute(ctx context.Context, cmd Command) (Result, e
 	}
 	return result, err
 }
-func (d *clientStateDriver) commands() []Command {
+func (d *clientStateDriver) commands() []protocol.Command {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return append([]Command(nil), d.calls...)
+	return append([]protocol.Command(nil), d.calls...)
 }
 func clientOptions() SharedOptions {
-	return SharedOptions{Resource: "test", Config: ResourceConfig{Admission: Config{Capacity: 2, MaxQueued: 16, MaxQueuedPerTenant: 16}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 100}, OperationTimeout: 500 * time.Millisecond, PollInterval: time.Millisecond}
+	return SharedOptions{Resource: "test", Config: protocol.ResourceConfig{Admission: Config{Capacity: 2, MaxQueued: 16, MaxQueuedPerTenant: 16}, LeaseTTL: time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 100}, OperationTimeout: 500 * time.Millisecond, PollInterval: time.Millisecond}
 }
-func clientNew(t *testing.T, d Driver, options SharedOptions) *Shared {
+func clientNew(t *testing.T, d protocol.Driver, options SharedOptions) *Shared {
 	t.Helper()
 	c, err := NewShared(d, options)
 	if err != nil {
@@ -194,8 +195,8 @@ func TestSharedLeaseLifecycle(t *testing.T) {
 func TestSharedQueuePollAndGrant(t *testing.T) {
 	submitted := make(chan struct{})
 	var once sync.Once
-	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
-		if c.Kind == Submit && r.Status == Queued {
+	d := &clientStateDriver{after: func(_ context.Context, c protocol.Command, r protocol.Result, e error) (protocol.Result, error) {
+		if c.Kind == protocol.Submit && r.Status == protocol.Queued {
 			once.Do(func() { close(submitted) })
 		}
 		return r, e
@@ -221,7 +222,7 @@ func TestSharedQueuePollAndGrant(t *testing.T) {
 	}
 	seen := false
 	for _, cmd := range d.commands() {
-		if cmd.Kind == Observe {
+		if cmd.Kind == protocol.Observe {
 			seen = true
 		}
 	}
@@ -234,11 +235,11 @@ func TestSharedQueuedCancellationCleanupIndependentContext(t *testing.T) {
 	queued := make(chan struct{})
 	var once sync.Once
 	var cleanupLive atomic.Bool
-	d := &clientStateDriver{after: func(ctx context.Context, c Command, r Result, e error) (Result, error) {
-		if c.Kind == Submit && r.Status == Queued {
+	d := &clientStateDriver{after: func(ctx context.Context, c protocol.Command, r protocol.Result, e error) (protocol.Result, error) {
+		if c.Kind == protocol.Submit && r.Status == protocol.Queued {
 			once.Do(func() { close(queued) })
 		}
-		if c.Kind == Cancel {
+		if c.Kind == protocol.Cancel {
 			cleanupLive.Store(ctx.Err() == nil)
 		}
 		return r, e
@@ -261,13 +262,13 @@ func TestSharedQueuedCancellationCleanupIndependentContext(t *testing.T) {
 	}
 	calls := d.commands()
 	last := calls[len(calls)-1]
-	if last.Kind != Cancel {
+	if last.Kind != protocol.Cancel {
 		t.Fatalf("last command %s", last.Kind)
 	}
 	d.mu.Lock()
-	_, r, e := Transition(d.state, time.Now(), Command{Kind: Observe, Request: last.Request})
+	_, r, e := protocol.ApplySnapshot(d.state, time.Now(), protocol.Command{Kind: protocol.Observe, Request: last.Request})
 	d.mu.Unlock()
-	if e != nil || r.Status != Cancelled {
+	if e != nil || r.Status != protocol.Cancelled {
 		t.Fatalf("cancel did not terminate request: %v %v", r, e)
 	}
 }
@@ -299,7 +300,7 @@ func TestSharedDeadlinePropagatedAndNoAutomaticRenewal(t *testing.T) {
 
 // clientExhaustRemaining waits for an observable clock tick so coarse clocks
 // cannot return a result before the injected one-nanosecond lifetime has elapsed.
-func clientExhaustRemaining(r Result) Result {
+func clientExhaustRemaining(r protocol.Result) protocol.Result {
 	r.Remaining = time.Nanosecond
 	deadline := time.Now().Add(r.Remaining)
 	for time.Now().Before(deadline) {
@@ -311,19 +312,19 @@ func clientExhaustRemaining(r Result) Result {
 func TestSharedAcquireRejectsInvalidOrLateResults(t *testing.T) {
 	tests := []struct {
 		name   string
-		change func(Result) Result
+		change func(protocol.Result) protocol.Result
 	}{
-		{"missing lease", func(r Result) Result { r.LeaseID = ""; return r }},
-		{"wrong weight", func(r Result) Result { r.Weight++; return r }},
-		{"zero duration", func(r Result) Result { r.Remaining = 0; return r }},
-		{"too long", func(r Result) Result { r.Remaining = time.Hour; return r }},
-		{"terminal", func(r Result) Result { r.Status = Released; return r }},
+		{"missing lease", func(r protocol.Result) protocol.Result { r.LeaseID = ""; return r }},
+		{"wrong weight", func(r protocol.Result) protocol.Result { r.Weight++; return r }},
+		{"zero duration", func(r protocol.Result) protocol.Result { r.Remaining = 0; return r }},
+		{"too long", func(r protocol.Result) protocol.Result { r.Remaining = time.Hour; return r }},
+		{"terminal", func(r protocol.Result) protocol.Result { r.Status = protocol.Released; return r }},
 		{"roundtrip exhausted", clientExhaustRemaining},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
-				if c.Kind == Submit {
+			d := &clientStateDriver{after: func(_ context.Context, c protocol.Command, r protocol.Result, e error) (protocol.Result, error) {
+				if c.Kind == protocol.Submit {
 					r = tt.change(r)
 				}
 				return r, e
@@ -333,7 +334,7 @@ func TestSharedAcquireRejectsInvalidOrLateResults(t *testing.T) {
 				t.Fatalf("lease %v error %v", l, err)
 			}
 			calls := d.commands()
-			if calls[len(calls)-1].Kind != Cancel {
+			if calls[len(calls)-1].Kind != protocol.Cancel {
 				t.Fatal("missing cleanup")
 			}
 		})
@@ -343,11 +344,11 @@ func TestSharedAcquireRejectsInvalidOrLateResults(t *testing.T) {
 func TestSharedAmbiguousSubmitAndCleanupErrors(t *testing.T) {
 	lost := errors.New("lost submit response")
 	cleanup := errors.New("lost cleanup response")
-	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
-		if c.Kind == Submit {
+	d := &clientStateDriver{after: func(_ context.Context, c protocol.Command, r protocol.Result, e error) (protocol.Result, error) {
+		if c.Kind == protocol.Submit {
 			return r, lost
 		}
-		if c.Kind == Cancel {
+		if c.Kind == protocol.Cancel {
 			return r, cleanup
 		}
 		return r, e
@@ -358,20 +359,20 @@ func TestSharedAmbiguousSubmitAndCleanupErrors(t *testing.T) {
 		t.Fatalf("lease %v error %v", l, err)
 	}
 	calls := d.commands()
-	if len(calls) != 2 || calls[1].Kind != Cancel || calls[0].Request.ID != calls[1].Request.ID {
+	if len(calls) != 2 || calls[1].Kind != protocol.Cancel || calls[0].Request.ID != calls[1].Request.ID {
 		t.Fatal("cleanup changed identity or retried admission")
 	}
 	d.mu.Lock()
-	_, r, e := Transition(d.state, time.Now(), Command{Kind: Observe, Request: calls[0].Request})
+	_, r, e := protocol.ApplySnapshot(d.state, time.Now(), protocol.Command{Kind: protocol.Observe, Request: calls[0].Request})
 	d.mu.Unlock()
-	if e != nil || r.Status != Cancelled {
+	if e != nil || r.Status != protocol.Cancelled {
 		t.Fatal("ambiguous committed grant not cancelled")
 	}
 }
 
 func TestSharedAcquireLateSuccessFailsClosed(t *testing.T) {
-	d := &clientStateDriver{after: func(ctx context.Context, c Command, r Result, e error) (Result, error) {
-		if c.Kind == Submit {
+	d := &clientStateDriver{after: func(ctx context.Context, c protocol.Command, r protocol.Result, e error) (protocol.Result, error) {
+		if c.Kind == protocol.Submit {
 			<-ctx.Done()
 		}
 		return r, e
@@ -387,8 +388,8 @@ func TestSharedAcquireLateSuccessFailsClosed(t *testing.T) {
 func TestSharedAcquisitionCancellationDuringGrant(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
-		if c.Kind == Submit {
+	d := &clientStateDriver{after: func(_ context.Context, c protocol.Command, r protocol.Result, e error) (protocol.Result, error) {
+		if c.Kind == protocol.Submit {
 			cancel()
 		}
 		return r, e
@@ -401,8 +402,8 @@ func TestSharedAcquisitionCancellationDuringGrant(t *testing.T) {
 
 func TestSharedConservativeRoundTripDeadline(t *testing.T) {
 	var completed time.Time
-	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
-		if c.Kind == Submit || c.Kind == Renew {
+	d := &clientStateDriver{after: func(_ context.Context, c protocol.Command, r protocol.Result, e error) (protocol.Result, error) {
+		if c.Kind == protocol.Submit || c.Kind == protocol.Renew {
 			time.Sleep(30 * time.Millisecond)
 			completed = time.Now()
 		}
@@ -427,22 +428,33 @@ func TestSharedRenewErrorsPermanentlyInvalidate(t *testing.T) {
 	lost := errors.New("renew response lost")
 	tests := []struct {
 		name   string
-		change func(context.Context, Result) (Result, error)
+		change func(context.Context, protocol.Result) (protocol.Result, error)
 	}{
-		{"transport", func(_ context.Context, r Result) (Result, error) { return r, lost }},
-		{"wrong status", func(_ context.Context, r Result) (Result, error) { r.Status = Released; return r, nil }},
-		{"wrong identity", func(_ context.Context, r Result) (Result, error) { r.LeaseID = "other"; return r, nil }},
-		{"wrong weight", func(_ context.Context, r Result) (Result, error) { r.Weight++; return r, nil }},
-		{"zero ttl", func(_ context.Context, r Result) (Result, error) { r.Remaining = 0; return r, nil }},
-		{"excess ttl", func(_ context.Context, r Result) (Result, error) { r.Remaining = time.Hour; return r, nil }},
-		{"elapsed ttl", func(_ context.Context, r Result) (Result, error) { return clientExhaustRemaining(r), nil }},
-		{"timeout", func(ctx context.Context, r Result) (Result, error) { <-ctx.Done(); return r, nil }},
+		{"transport", func(_ context.Context, r protocol.Result) (protocol.Result, error) { return r, lost }},
+		{"wrong status", func(_ context.Context, r protocol.Result) (protocol.Result, error) {
+			r.Status = protocol.Released
+			return r, nil
+		}},
+		{"wrong identity", func(_ context.Context, r protocol.Result) (protocol.Result, error) {
+			r.LeaseID = "other"
+			return r, nil
+		}},
+		{"wrong weight", func(_ context.Context, r protocol.Result) (protocol.Result, error) { r.Weight++; return r, nil }},
+		{"zero ttl", func(_ context.Context, r protocol.Result) (protocol.Result, error) { r.Remaining = 0; return r, nil }},
+		{"excess ttl", func(_ context.Context, r protocol.Result) (protocol.Result, error) {
+			r.Remaining = time.Hour
+			return r, nil
+		}},
+		{"elapsed ttl", func(_ context.Context, r protocol.Result) (protocol.Result, error) {
+			return clientExhaustRemaining(r), nil
+		}},
+		{"timeout", func(ctx context.Context, r protocol.Result) (protocol.Result, error) { <-ctx.Done(); return r, nil }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var renews atomic.Int32
-			d := &clientStateDriver{after: func(ctx context.Context, c Command, r Result, e error) (Result, error) {
-				if c.Kind == Renew {
+			d := &clientStateDriver{after: func(ctx context.Context, c protocol.Command, r protocol.Result, e error) (protocol.Result, error) {
+				if c.Kind == protocol.Renew {
 					renews.Add(1)
 					return tt.change(ctx, r)
 				}
@@ -469,8 +481,8 @@ func TestSharedRenewErrorsPermanentlyInvalidate(t *testing.T) {
 func TestSharedRenewCannotResurrectExpiredLease(t *testing.T) {
 	entered := make(chan struct{})
 	respond := make(chan struct{})
-	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
-		if c.Kind == Renew {
+	d := &clientStateDriver{after: func(_ context.Context, c protocol.Command, r protocol.Result, e error) (protocol.Result, error) {
+		if c.Kind == protocol.Renew {
 			close(entered)
 			<-respond
 		}
@@ -498,8 +510,8 @@ func TestSharedReleaseInvalidatesBeforeIOAndRetries(t *testing.T) {
 	respond := make(chan struct{})
 	lost := errors.New("release response lost")
 	var attempts atomic.Int32
-	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
-		if c.Kind == Release && attempts.Add(1) == 1 {
+	d := &clientStateDriver{after: func(_ context.Context, c protocol.Command, r protocol.Result, e error) (protocol.Result, error) {
+		if c.Kind == protocol.Release && attempts.Add(1) == 1 {
 			close(entered)
 			<-respond
 			return r, lost
@@ -525,9 +537,9 @@ func TestSharedReleaseInvalidatesBeforeIOAndRetries(t *testing.T) {
 }
 
 func TestSharedReleaseRejectsWrongStatus(t *testing.T) {
-	d := &clientStateDriver{after: func(_ context.Context, c Command, r Result, e error) (Result, error) {
-		if c.Kind == Release {
-			r.Status = Granted
+	d := &clientStateDriver{after: func(_ context.Context, c protocol.Command, r protocol.Result, e error) (protocol.Result, error) {
+		if c.Kind == protocol.Release {
+			r.Status = protocol.Granted
 		}
 		return r, e
 	}}
@@ -591,27 +603,27 @@ func TestSharedConcurrentLeaseOperations(t *testing.T) {
 	clientClosed(t, l)
 }
 
-// Submit atomically submits the whole request without refreshing an existing lease.
-func (d *clientStateDriver) Submit(ctx context.Context, request Request) (Result, error) {
-	return d.execute(ctx, Command{Kind: Submit, Request: request})
+// protocol.Submit atomically submits the whole request without refreshing an existing lease.
+func (d *clientStateDriver) Submit(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Submit, Request: request})
 }
 
-// Observe returns the request outcome after advancing expiry and scheduling.
-func (d *clientStateDriver) Observe(ctx context.Context, request Request) (Result, error) {
-	return d.execute(ctx, Command{Kind: Observe, Request: request})
+// protocol.Observe returns the request outcome after advancing expiry and scheduling.
+func (d *clientStateDriver) Observe(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Observe, Request: request})
 }
 
-// Cancel cancels the request, including a grant or a cancellation before submission.
-func (d *clientStateDriver) Cancel(ctx context.Context, request Request) (Result, error) {
-	return d.execute(ctx, Command{Kind: Cancel, Request: request})
+// protocol.Cancel cancels the request, including a grant or a cancellation before submission.
+func (d *clientStateDriver) Cancel(ctx context.Context, request protocol.Request) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Cancel, Request: request})
 }
 
-// Renew extends a live lease matching the original request and lease ID.
-func (d *clientStateDriver) Renew(ctx context.Context, lease LeaseRef) (Result, error) {
-	return d.execute(ctx, Command{Kind: Renew, Request: lease.Request, LeaseID: lease.ID})
+// protocol.Renew extends a live lease matching the original request and lease ID.
+func (d *clientStateDriver) Renew(ctx context.Context, lease protocol.LeaseRef) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Renew, Request: lease.Request, LeaseID: lease.ID})
 }
 
-// Release ends a matching lease and returns its whole weight at most once.
-func (d *clientStateDriver) Release(ctx context.Context, lease LeaseRef) (Result, error) {
-	return d.execute(ctx, Command{Kind: Release, Request: lease.Request, LeaseID: lease.ID})
+// protocol.Release ends a matching lease and returns its whole weight at most once.
+func (d *clientStateDriver) Release(ctx context.Context, lease protocol.LeaseRef) (protocol.Result, error) {
+	return d.execute(ctx, protocol.Command{Kind: protocol.Release, Request: lease.Request, LeaseID: lease.ID})
 }

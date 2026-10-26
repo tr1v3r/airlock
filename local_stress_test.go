@@ -29,8 +29,8 @@ func localWaitQueued(ctx context.Context, t *testing.T, a *Airlock, want int) {
 
 func localCheckConcurrentAccounting(t *testing.T, a *Airlock, active *atomic.Int64, weight int) {
 	t.Helper()
-	if held := active.Add(int64(weight)); held > int64(a.cfg.Capacity) {
-		t.Errorf("business tokens=%d exceed capacity=%d", held, a.cfg.Capacity)
+	if held := active.Add(int64(weight)); held > int64(a.sched.Capacity()) {
+		t.Errorf("business tokens=%d exceed capacity=%d", held, a.sched.Capacity())
 	}
 	s := a.Stats() // A mutex-protected, internally consistent implementation view.
 	if s.InUse < weight || s.InUse > s.Capacity || s.ActivePermits < 1 || s.ActivePermits > s.InUse || s.Queued < 0 || s.WaitingTenants > s.Queued {
@@ -117,7 +117,7 @@ func localConcurrentWave(t *testing.T, a *Airlock, workers int) {
 			defer wg.Done()
 			defer requestCancel()
 			<-start
-			weight := i%a.cfg.Capacity + 1
+			weight := i%a.sched.Capacity() + 1
 			tenant := fmt.Sprint(i % 24)
 			var p *Permit
 			var acquireErr error
@@ -214,12 +214,12 @@ func localConcurrentWave(t *testing.T, a *Airlock, workers int) {
 	if got := active.Load(); got != 0 {
 		t.Errorf("business token leak: %d", got)
 	}
-	if got := a.Stats(); got != (Stats{Capacity: a.cfg.Capacity}) {
+	if got := a.Stats(); got != (Stats{Capacity: a.sched.Capacity()}) {
 		t.Fatalf("post-storm queue/permit leak: %+v", got)
 	}
 	// Reuse every token after each wave, rather than only constructing a fresh
 	// limiter; catches accounting that would strand subsequent requests.
-	p, err := a.TryAcquireN(a.cfg.Capacity)
+	p, err := a.TryAcquireN(a.sched.Capacity())
 	if err != nil || p == nil {
 		t.Fatalf("cannot reuse full capacity after storm: permit=%v err=%v", p != nil, err)
 	}

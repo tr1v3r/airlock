@@ -1,4 +1,17 @@
-package airlock
+// Package protocol defines Airlock's shared admission protocol: the Driver
+// contract, request and lease identities, lifecycle statuses and protocol
+// errors, together with an optional reference state machine that backend
+// adapters may use to evaluate commands against structured or snapshot state.
+//
+// The protocol is transport-agnostic: a Driver serializes operations, uses
+// backend time after obtaining exclusive access (or enforces the optimistic
+// publication window with atomic CAS), atomically persists lifecycle and
+// scheduling changes even on business rejection, and honors contexts. Storage
+// layout and use of the reference state machine are optional. The package
+// never imports the root airlock package: local admission (airlock.New) and
+// shared admission (airlock.NewShared) are application entry points built on
+// this protocol and the internal scheduling core.
+package protocol
 
 import (
 	"context"
@@ -9,11 +22,26 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/tr1v3r/airlock/internal/scheduler"
 )
+
+// Config is the admission configuration of a resource: fixed weighted
+// capacity and request queue limits, with optional priority groups. It is the
+// same configuration the root airlock package uses for local admission.
+type Config = scheduler.Config
+
+// PriorityPolicy maps trusted tenant IDs to fixed priority groups; the root
+// airlock package exposes the identical policy type.
+type PriorityPolicy = scheduler.PriorityPolicy
+
+// PriorityGroup reserves waiting space and selection opportunities for a
+// group of tenants; the root airlock package exposes the identical type.
+type PriorityGroup = scheduler.PriorityGroup
 
 // Driver provides atomic admission operations for a resource. Implementations must
 // serialize all operations, use backend time after obtaining exclusive access
-// (or enforce the TransitionOptimistic publication window with atomic CAS),
+// (or enforce the optimistic publication window with atomic CAS),
 // atomically persist lifecycle/scheduling changes even on business rejection,
 // and honor ctx. Storage layout and use of the reference helpers are optional. Transport errors are ambiguous and never authorize work.
 // Drivers do not own injected connections, execute work, or fall back locally.
@@ -103,7 +131,7 @@ const (
 	Release Operation = "release"
 )
 
-// Command is the input to the shared Transition implementation. Driver callers
+// Command is the input to the reference state machine. Driver callers
 // use the named methods with Request or LeaseRef instead of constructing commands.
 type Command struct {
 	// Kind selects Submit, Observe, Cancel, Renew or Release.
@@ -149,6 +177,8 @@ type Result struct {
 }
 
 // Protocol errors are stable identities; transport errors are preserved separately.
+// The admission errors share identities with the root airlock package and the
+// scheduling core; their strings are persisted rejection sentinels.
 var (
 	// ErrInvalidRequest reports malformed identifiers, deadlines, or operations.
 	ErrInvalidRequest = errors.New("airlock: invalid driver request")
@@ -166,6 +196,18 @@ var (
 	ErrHistoryFull = errors.New("airlock: recovery history full")
 	// ErrCorruptState rejects malformed or inconsistent snapshots, including a backward backend clock.
 	ErrCorruptState = errors.New("airlock: invalid backend snapshot")
+	// ErrInvalidConfig reports invalid admission limits or priority policy.
+	ErrInvalidConfig = scheduler.ErrInvalidConfig
+	// ErrInvalidWeight reports a nonpositive requested token count.
+	ErrInvalidWeight = errors.New("airlock: invalid weight")
+	// ErrWeightExceedsCapacity reports a request larger than the fixed capacity.
+	ErrWeightExceedsCapacity = errors.New("airlock: weight exceeds capacity")
+	// ErrQueueFull reports that the global waiting queue is full.
+	ErrQueueFull = scheduler.ErrQueueFull
+	// ErrGroupQueueFull reports that the tenant's priority group waiting queue is full.
+	ErrGroupQueueFull = scheduler.ErrGroupQueueFull
+	// ErrTenantQueueFull reports that the tenant's waiting queue is full.
+	ErrTenantQueueFull = scheduler.ErrTenantQueueFull
 )
 
 // NewRequest creates a cryptographically random identity bound to until. It does
@@ -186,8 +228,12 @@ func validSecret(s string) bool {
 	return e == nil && len(b) == 16 && strings.ToLower(s) == s
 }
 
-// validConfig checks protocol bounds and the local scheduler policy without backend I/O.
-func validConfig(c ResourceConfig) error {
+// ValidText accepts shared-protocol strings that can be stored in PostgreSQL
+// text and JSON: valid UTF-8 without NUL.
+func ValidText(s string) bool { return utf8.ValidString(s) && !strings.ContainsRune(s, 0) }
+
+// validResourceConfig checks protocol bounds and the admission policy without backend I/O.
+func validResourceConfig(c ResourceConfig) error {
 	if c.Admission.Capacity > 10000 || c.Admission.MaxQueued > 10000 || c.MaxRecords < 1 || c.MaxRecords > 10000 {
 		return ErrInvalidConfig
 	}
@@ -204,23 +250,28 @@ func validConfig(c ResourceConfig) error {
 			return ErrInvalidConfig
 		}
 		for tenant, group := range p.TenantGroups {
-			if len(tenant) > 256 || len(group) > 256 || !validText(tenant) || !validText(group) {
+			if len(tenant) > 256 || len(group) > 256 || !ValidText(tenant) || !ValidText(group) {
 				return ErrInvalidConfig
 			}
 		}
 		for _, group := range p.Groups {
-			if len(group.Name) > 256 || !validText(group.Name) {
+			if len(group.Name) > 256 || !ValidText(group.Name) {
 				return ErrInvalidConfig
 			}
 		}
 	}
-	_, err := New(c.Admission)
+	_, err := scheduler.New(c.Admission)
 	return err
 }
 
+// ValidateResourceConfig checks an immutable resource configuration without
+// reading backend state. Shared clients validate their options before any
+// operation; drivers may reuse it before allocating a resource.
+func ValidateResourceConfig(c ResourceConfig) error { return validResourceConfig(c) }
+
 // validRequest validates a complete immutable submission and its resource configuration.
 func validRequest(r Request) error {
-	if err := validConfig(r.Config); err != nil {
+	if err := validResourceConfig(r.Config); err != nil {
 		return err
 	}
 	return validRequestFields(r)
@@ -231,7 +282,7 @@ func validRequest(r Request) error {
 // multiply restoration cost by the number of configured tenant mappings.
 func validRequestFields(r Request) error {
 	prefix := strconv.FormatInt(r.SubmitUntil.UnixMilli(), 10) + "-"
-	if r.Resource == "" || !validText(r.Resource) || !validText(r.Tenant) || len(r.Resource) > 256 || len(r.Tenant) > 256 || !validSecret(r.Owner) || !strings.HasPrefix(r.ID, prefix) || !validSecret(strings.TrimPrefix(r.ID, prefix)) || r.SubmitUntil.UnixMilli() <= 0 || !r.SubmitUntil.Equal(r.SubmitUntil.Truncate(time.Millisecond)) || !r.WaitUntil.Equal(r.WaitUntil.Truncate(time.Millisecond)) || r.WaitUntil.After(r.SubmitUntil.Add(r.Config.MaxWait)) {
+	if r.Resource == "" || !ValidText(r.Resource) || !ValidText(r.Tenant) || len(r.Resource) > 256 || len(r.Tenant) > 256 || !validSecret(r.Owner) || !strings.HasPrefix(r.ID, prefix) || !validSecret(strings.TrimPrefix(r.ID, prefix)) || r.SubmitUntil.UnixMilli() <= 0 || !r.SubmitUntil.Equal(r.SubmitUntil.Truncate(time.Millisecond)) || !r.WaitUntil.Equal(r.WaitUntil.Truncate(time.Millisecond)) || r.WaitUntil.After(r.SubmitUntil.Add(r.Config.MaxWait)) {
 		return ErrInvalidRequest
 	}
 	if r.Weight <= 0 {
@@ -245,7 +296,8 @@ func validRequestFields(r Request) error {
 
 // ValidateCommand checks immutable protocol input without reading backend state.
 // Drivers should call it before allocating a resource or opening a transaction.
-// LeaseID matching and backend-relative deadline checks occur in Transition, not here.
+// LeaseID matching and backend-relative deadline checks occur in ApplyCommand,
+// not here.
 func ValidateCommand(cmd Command) error {
 	if err := validRequest(cmd.Request); err != nil {
 		return err
@@ -257,6 +309,3 @@ func ValidateCommand(cmd Command) error {
 		return ErrInvalidRequest
 	}
 }
-
-// validText accepts shared-protocol strings that can be stored in PostgreSQL text and JSON.
-func validText(s string) bool { return utf8.ValidString(s) && !strings.ContainsRune(s, 0) }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/tr1v3r/airlock/protocol"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,9 +19,9 @@ type clockStateDriver struct {
 	offset time.Duration
 }
 
-func (d *clockStateDriver) executeClock(ctx context.Context, cmd Command) (Result, error) {
+func (d *clockStateDriver) executeClock(ctx context.Context, cmd protocol.Command) (protocol.Result, error) {
 	d.mu.Lock()
-	next, result, err := Transition(d.state, time.Now().Add(d.offset), cmd)
+	next, result, err := protocol.ApplySnapshot(d.state, time.Now().Add(d.offset), cmd)
 	if next != nil {
 		d.state = next
 	}
@@ -31,20 +32,20 @@ func (d *clockStateDriver) executeClock(ctx context.Context, cmd Command) (Resul
 	}
 	return result, err
 }
-func (d *clockStateDriver) Submit(ctx context.Context, r Request) (Result, error) {
-	return d.executeClock(ctx, Command{Kind: Submit, Request: r})
+func (d *clockStateDriver) Submit(ctx context.Context, r protocol.Request) (protocol.Result, error) {
+	return d.executeClock(ctx, protocol.Command{Kind: protocol.Submit, Request: r})
 }
-func (d *clockStateDriver) Observe(ctx context.Context, r Request) (Result, error) {
-	return d.executeClock(ctx, Command{Kind: Observe, Request: r})
+func (d *clockStateDriver) Observe(ctx context.Context, r protocol.Request) (protocol.Result, error) {
+	return d.executeClock(ctx, protocol.Command{Kind: protocol.Observe, Request: r})
 }
-func (d *clockStateDriver) Cancel(ctx context.Context, r Request) (Result, error) {
-	return d.executeClock(ctx, Command{Kind: Cancel, Request: r})
+func (d *clockStateDriver) Cancel(ctx context.Context, r protocol.Request) (protocol.Result, error) {
+	return d.executeClock(ctx, protocol.Command{Kind: protocol.Cancel, Request: r})
 }
-func (d *clockStateDriver) Renew(ctx context.Context, r LeaseRef) (Result, error) {
-	return d.executeClock(ctx, Command{Kind: Renew, Request: r.Request, LeaseID: r.ID})
+func (d *clockStateDriver) Renew(ctx context.Context, r protocol.LeaseRef) (protocol.Result, error) {
+	return d.executeClock(ctx, protocol.Command{Kind: protocol.Renew, Request: r.Request, LeaseID: r.ID})
 }
-func (d *clockStateDriver) Release(ctx context.Context, r LeaseRef) (Result, error) {
-	return d.executeClock(ctx, Command{Kind: Release, Request: r.Request, LeaseID: r.ID})
+func (d *clockStateDriver) Release(ctx context.Context, r protocol.LeaseRef) (protocol.Result, error) {
+	return d.executeClock(ctx, protocol.Command{Kind: protocol.Release, Request: r.Request, LeaseID: r.ID})
 }
 
 func clockOptions() SharedOptions {
@@ -221,11 +222,11 @@ type deadlineOutcomeDriver struct {
 	expire     func()
 	observeErr error
 	cleanupErr error
-	observed   Result
+	observed   protocol.Result
 }
 
-func (d *deadlineOutcomeDriver) Observe(ctx context.Context, r Request) (Result, error) {
-	// Advance backend time to the immutable queue deadline. The real Transition
+func (d *deadlineOutcomeDriver) Observe(ctx context.Context, r protocol.Request) (protocol.Result, error) {
+	// Advance backend time to the immutable queue deadline. The real protocol.ApplySnapshot
 	// must expire the queued request before the caller's timer is signalled.
 	d.offset = time.Until(r.WaitUntil)
 	result, err := d.clockStateDriver.Observe(ctx, r)
@@ -233,7 +234,7 @@ func (d *deadlineOutcomeDriver) Observe(ctx context.Context, r Request) (Result,
 	return result, errors.Join(err, d.observeErr)
 }
 
-func (d *deadlineOutcomeDriver) Cancel(ctx context.Context, r Request) (Result, error) {
+func (d *deadlineOutcomeDriver) Cancel(ctx context.Context, r protocol.Request) (protocol.Result, error) {
 	result, err := d.clockStateDriver.Cancel(ctx, r)
 	if d.expire != nil {
 		d.expire()
@@ -270,7 +271,7 @@ func TestSharedExpiredResultPreservesCallerDeadline(t *testing.T) {
 			holder := clientAcquire(t, c)
 			defer func() { _ = holder.Release(context.Background()) }()
 			lease, err := c.Acquire(ctx)
-			if d.observed.Status != Expired {
+			if d.observed.Status != protocol.Expired {
 				t.Fatalf("fixture did not observe backend expiry: %+v", d.observed)
 			}
 			wantLeaseLost := tc.observeErr == nil
@@ -282,7 +283,7 @@ func TestSharedExpiredResultPreservesCallerDeadline(t *testing.T) {
 				t.Fatalf("original operation/cleanup error lost: %v", err)
 			}
 			calls := d.commands()
-			if len(calls) != 4 || calls[1].Kind != Submit || calls[2].Kind != Observe || calls[3].Kind != Cancel {
+			if len(calls) != 4 || calls[1].Kind != protocol.Submit || calls[2].Kind != protocol.Observe || calls[3].Kind != protocol.Cancel {
 				t.Fatalf("unexpected cleanup sequence: %+v", calls)
 			}
 			if !calls[1].Request.WaitUntil.Equal(deadline) || calls[3].Request.ID != calls[1].Request.ID {
@@ -319,7 +320,7 @@ func TestSharedFoldedDeadlineExpiryReportsCallerDeadline(t *testing.T) {
 			holder := clientAcquire(t, c)
 			defer func() { _ = holder.Release(context.Background()) }()
 			lease, err := c.Acquire(ctx)
-			if d.observed.Status != Expired {
+			if d.observed.Status != protocol.Expired {
 				t.Fatalf("fixture did not observe backend expiry: %+v", d.observed)
 			}
 			wantDeadline := tc.withDeadline
@@ -347,8 +348,8 @@ func TestSharedClockAllowanceCancelledGrantCannotRevive(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	d := &clockStateDriver{offset: -time.Second}
-	d.after = func(_ context.Context, cmd Command, result Result, err error) (Result, error) {
-		if cmd.Kind == Submit {
+	d.after = func(_ context.Context, cmd protocol.Command, result protocol.Result, err error) (protocol.Result, error) {
+		if cmd.Kind == protocol.Submit {
 			cancel() // The backend granted, but the caller no longer accepts it.
 		}
 		return result, err
@@ -361,11 +362,11 @@ func TestSharedClockAllowanceCancelledGrantCannotRevive(t *testing.T) {
 		t.Fatalf("cancelled grant: %v %v", lease, err)
 	}
 	calls := d.commands()
-	if len(calls) != 2 || calls[1].Kind != Cancel || calls[0].Request.ID != calls[1].Request.ID {
+	if len(calls) != 2 || calls[1].Kind != protocol.Cancel || calls[0].Request.ID != calls[1].Request.ID {
 		t.Fatal("cleanup changed the submission identity")
 	}
 	result, err := d.Submit(context.Background(), calls[0].Request)
-	if err != nil || result.Status != Cancelled {
+	if err != nil || result.Status != protocol.Cancelled {
 		t.Fatalf("late submission revived cancelled work: %+v %v", result, err)
 	}
 }

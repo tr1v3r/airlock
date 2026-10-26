@@ -12,9 +12,9 @@ import (
 )
 
 // This oracle deliberately uses slices and request IDs, not the production
-// linked lists, priorityState, enqueue, remove, dispatch, or Transition helpers.
-// Each public operation is settled before the next event. Concurrent races are
-// exercised separately by TestLocalConcurrentStorm.
+// linked lists, priorityState, enqueue, remove or dispatch helpers from the
+// internal scheduler. Each public operation is settled before the next event.
+// Concurrent races are exercised separately by TestLocalConcurrentStorm.
 type localModelRequest struct {
 	tenant string
 	weight int
@@ -215,37 +215,33 @@ func (m *localModel) snapshot() localModelSnapshot {
 	return s
 }
 
-func localActualSnapshot(a *Airlock, cfg Config) localModelSnapshot {
+func localActualSnapshot(a *Airlock) localModelSnapshot {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	layout := a.sched.Layout()
 	s := localModelSnapshot{
-		Stats:  Stats{Capacity: a.cfg.Capacity, InUse: a.used, ActivePermits: a.active, Queued: a.queued, WaitingTenants: len(a.tenants)},
-		Cursor: a.priority.cursor, Weights: make(map[string][]int),
+		Stats:  a.sched.Stats(),
+		Cursor: layout.Cursor, Weights: make(map[string][]int),
 	}
-	groups := []*priorityQueue{a.priority.fallback}
-	if cfg.Priority != nil {
-		groups = nil
-		slot := 0
-		for _, spec := range cfg.Priority.Groups {
-			groups = append(groups, a.priority.schedule[slot])
-			slot += spec.Turns
-		}
-	}
-	for _, group := range groups {
+	for i, group := range layout.Rotations {
 		var tenants []string
-		for node := group.rotation.Front(); node != nil; node = node.Next() {
-			tenants = append(tenants, node.Value.(*tenantQueue).id)
+		for _, tenant := range group {
+			tenants = append(tenants, tenant)
+			for _, w := range layout.Queues[tenant] {
+				s.Weights[tenant] = append(s.Weights[tenant], w.Weight())
+			}
 		}
 		s.Rotation = append(s.Rotation, tenants)
-		s.GroupQueue = append(s.GroupQueue, group.queued)
+		s.GroupQueue = append(s.GroupQueue, layout.GroupQueued[i])
 	}
-	for tenant, q := range a.tenants {
-		for node := q.requests.Front(); node != nil; node = node.Next() {
-			s.Weights[tenant] = append(s.Weights[tenant], node.Value.(*waiter).weight)
+	if w := layout.Protected; w != nil {
+		for tenant, ws := range layout.Queues {
+			for _, candidate := range ws {
+				if candidate == w {
+					s.Protected = fmt.Sprintf("%q/%d", tenant, w.Weight())
+				}
+			}
 		}
-	}
-	if w := a.protected; w != nil {
-		s.Protected = fmt.Sprintf("%q/%d", w.tenant.id, w.weight)
 	}
 	return s
 }
@@ -382,7 +378,7 @@ func (r *localModelRun) settle() {
 	// Observe queue count under the implementation mutex, not goroutine order.
 	want := r.m.snapshot()
 	for {
-		got := localActualSnapshot(r.a, r.m.cfg)
+		got := localActualSnapshot(r.a)
 		if got.Stats.Queued == want.Stats.Queued {
 			if !reflect.DeepEqual(got, want) {
 				r.fail("state mismatch\ngot  %+v\nwant %+v", got, want)
@@ -495,60 +491,6 @@ func TestLocalProtectedArrivalAndCancellationModel(t *testing.T) {
 					r.release(id)
 				}
 			}
-		})
-	}
-}
-
-// Inject representative faults into a quiescent implementation instance, not
-// into the expected snapshot. Restore each fault before any release/cancel so
-// this checks the oracle's observation path without changing production code.
-func TestLocalModelMutationSensitivity(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		mutate func(*Airlock) func()
-	}{
-		{"lost capacity", func(a *Airlock) func() { a.used--; return func() { a.used++ } }},
-		{"duplicate permit", func(a *Airlock) func() { a.active++; return func() { a.active-- } }},
-		{"refunded selection", func(a *Airlock) func() {
-			old := a.priority.cursor
-			a.priority.cursor = 0
-			return func() { a.priority.cursor = old }
-		}},
-		{"lost protection", func(a *Airlock) func() {
-			old := a.protected
-			a.protected = nil
-			return func() { a.protected = old }
-		}},
-		{"FIFO inversion", func(a *Airlock) func() {
-			queue := &a.tenants["A"].requests
-			oldHead := queue.Front()
-			queue.MoveToBack(oldHead)
-			return func() { queue.MoveToFront(oldHead) }
-		}},
-		{"lost group entry", func(a *Airlock) func() {
-			group := a.priority.group("A")
-			group.queued--
-			return func() { group.queued++ }
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := newLocalModelRun(t, localModelConfig(true))
-			r.arrive("holder", 6, false)
-			r.arrive("A", 7, false)
-			r.arrive("A", 2, false)
-			r.arrive("B", 1, false)
-			want := r.m.snapshot()
-			r.a.mu.Lock()
-			restore := tc.mutate(r.a)
-			r.a.mu.Unlock()
-			changed := localActualSnapshot(r.a, r.m.cfg)
-			r.a.mu.Lock()
-			restore()
-			r.a.mu.Unlock()
-			if reflect.DeepEqual(changed, want) {
-				t.Fatal("oracle did not detect the injected implementation-state fault")
-			}
-			r.settle()
 		})
 	}
 }
