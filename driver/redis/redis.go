@@ -26,8 +26,8 @@ import (
 type Driver struct {
 	// client is the caller-owned primary-routed Redis transport.
 	client goredis.UniversalClient
-	// prefix namespaces resource hashes without exposing logical names in keys.
-	prefix string
+	// namespace isolates resource hashes without exposing logical names in keys.
+	namespace string
 	// timeout bounds reads, CAS retries and contention backoff for one operation.
 	timeout time.Duration
 }
@@ -53,10 +53,10 @@ func WithOperationTimeout(timeout time.Duration) Option {
 // enabled. Replica routing is rejected. Raw ReadTimeout/WriteTimeout=-1 is
 // accepted (context deadlines remain active); -2 and other disabling values are
 // rejected after go-redis normalization.
-// Prefix must be UTF-8, contain no NUL, and be at most 256 bytes. The caller owns
+// Namespace must be UTF-8, contain no NUL, and be at most 256 bytes. The caller owns
 // the client and must not change options or install hooks retrying ambiguous
 // writes. Network retries are disabled per command, preserving client options.
-func New(client goredis.UniversalClient, prefix string, options ...Option) (*Driver, error) {
+func New(client goredis.UniversalClient, namespace string, options ...Option) (*Driver, error) {
 	switch c := client.(type) {
 	case *goredis.Client:
 		if c == nil || !c.Options().ContextTimeoutEnabled {
@@ -83,10 +83,10 @@ func New(client goredis.UniversalClient, prefix string, options ...Option) (*Dri
 	default:
 		return nil, errors.New("airlock/redis: unsupported or nil client")
 	}
-	if len(prefix) > 256 || !utf8.ValidString(prefix) || strings.ContainsRune(prefix, 0) {
-		return nil, errors.New("airlock/redis: invalid prefix")
+	if len(namespace) > 256 || !utf8.ValidString(namespace) || strings.ContainsRune(namespace, 0) {
+		return nil, errors.New("airlock/redis: invalid namespace")
 	}
-	d := &Driver{client: client, prefix: prefix, timeout: 5 * time.Second}
+	d := &Driver{client: client, namespace: namespace, timeout: 5 * time.Second}
 	for _, option := range options {
 		if option == nil {
 			return nil, errors.New("airlock/redis: nil option")
@@ -100,7 +100,7 @@ func New(client goredis.UniversalClient, prefix string, options ...Option) (*Dri
 
 // key hashes namespace and resource into one persistent Redis Cluster key.
 func (d *Driver) key(resource string) string {
-	return fmt.Sprintf("airlock:{%x}:state", sha256.Sum256([]byte(d.prefix+"\x00"+resource)))
+	return fmt.Sprintf("airlock:{%x}:state", sha256.Sum256([]byte(d.namespace+"\x00"+resource)))
 }
 
 // noRetryCmd prevents transport replay of a possibly committed protocol operation.

@@ -118,6 +118,8 @@ Start with the [Shared guide](docs/guides/shared.md) for backend setup, a runnab
 hello example, a complete cancellation/renewal/cleanup example, and advanced
 settings. You do not need to learn the Driver protocol to use Shared.
 
+One driver can serve multiple independent Resources. See the [namespace, Resource and Tenant guide](docs/guides/shared.md#namespace-resource-and-tenant) for sharing boundaries and a multi-resource example.
+
 ## Immediate acquisition
 
 Use `TryAcquire` to decide per call whether to wait on the **same** Airlock:

@@ -38,9 +38,9 @@ func integrationDB(t *testing.T) *sql.DB {
 	}
 	return db
 }
-func integrationDriver(t *testing.T, db *sql.DB, prefix string, options ...Option) *Driver {
+func integrationDriver(t *testing.T, db *sql.DB, namespace string, options ...Option) *Driver {
 	t.Helper()
-	d, err := New(db, prefix, options...)
+	d, err := New(db, namespace, options...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func integrationDriver(t *testing.T, db *sql.DB, prefix string, options ...Optio
 	}
 	return d
 }
-func uniquePrefix() string { return "test-" + airlock.NewRequest(time.Now()).Owner }
+func uniqueNamespace() string { return "test-" + airlock.NewRequest(time.Now()).Owner }
 func executeStatus(t *testing.T, d *Driver, kind airlock.Operation, r airlock.Request, lease string, status airlock.Status) airlock.Result {
 	t.Helper()
 	got, err := driverconformance.Invoke(context.Background(), d, airlock.Command{Kind: kind, Request: r, LeaseID: lease})
@@ -61,14 +61,14 @@ func executeStatus(t *testing.T, d *Driver, kind airlock.Operation, r airlock.Re
 
 func TestIntegrationConformance(t *testing.T) {
 	db := integrationDB(t)
-	prefix := uniquePrefix()
-	driverconformance.Run(t, func(t *testing.T) airlock.Driver { return integrationDriver(t, db, prefix) })
+	namespace := uniqueNamespace()
+	driverconformance.Run(t, func(t *testing.T) airlock.Driver { return integrationDriver(t, db, namespace) })
 }
 
 func TestIntegrationFirstCreationAndIsolation(t *testing.T) {
 	db1, db2 := integrationDB(t), integrationDB(t)
-	prefix := uniquePrefix()
-	d1, d2 := integrationDriver(t, db1, prefix), integrationDriver(t, db2, prefix)
+	namespace := uniqueNamespace()
+	d1, d2 := integrationDriver(t, db1, namespace), integrationDriver(t, db2, namespace)
 	r := request(time.Now())
 	r.Config.Admission.Capacity = 3
 	var wg sync.WaitGroup
@@ -107,11 +107,11 @@ func TestIntegrationFirstCreationAndIsolation(t *testing.T) {
 	if grants != 3 {
 		t.Fatalf("grants=%d want3", grants)
 	}
-	// Independent namespace columns prevent ambiguous prefix/resource concatenation.
+	// Independent namespace columns prevent ambiguous namespace/resource concatenation.
 	x := request(time.Now())
 	x.Resource = "bc"
-	a := integrationDriver(t, db1, prefix+"a")
-	b := integrationDriver(t, db2, prefix+"ab")
+	a := integrationDriver(t, db1, namespace+"a")
+	b := integrationDriver(t, db2, namespace+"ab")
 	executeStatus(t, a, airlock.Submit, x, "", airlock.Granted)
 	x.Resource = "c"
 	executeStatus(t, b, airlock.Submit, x, "", airlock.Granted)
@@ -125,8 +125,8 @@ func TestIntegrationFirstCreationAndIsolation(t *testing.T) {
 
 func TestIntegrationPersistentPriorityCursor(t *testing.T) {
 	db1, db2 := integrationDB(t), integrationDB(t)
-	prefix := uniquePrefix()
-	d := integrationDriver(t, db1, prefix)
+	namespace := uniqueNamespace()
+	d := integrationDriver(t, db1, namespace)
 	holder := request(time.Now())
 	holder.Config.Admission.Priority = &airlock.PriorityPolicy{Groups: []airlock.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 4}, {Name: "low", Turns: 1, MaxQueued: 4}}, DefaultGroup: "low", TenantGroups: map[string]string{"h": "high"}}
 	held := executeStatus(t, d, airlock.Submit, holder, "", airlock.Granted)
@@ -140,7 +140,7 @@ func TestIntegrationPersistentPriorityCursor(t *testing.T) {
 	h1, h2, h3, l1, l2 := makeQueued("h"), makeQueued("h"), makeQueued("h"), makeQueued("l"), makeQueued("l")
 	current, lease := holder, held.LeaseID
 	for i, next := range []airlock.Request{h1, h2, l1, h3, l2} {
-		rebuilt, err := New(db2, prefix)
+		rebuilt, err := New(db2, namespace)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -157,7 +157,7 @@ func TestIntegrationPersistentPriorityCursor(t *testing.T) {
 
 func TestIntegrationLockWaitDoesNotReviveLease(t *testing.T) {
 	db, observer := integrationDB(t), integrationDB(t)
-	d := integrationDriver(t, db, uniquePrefix())
+	d := integrationDriver(t, db, uniqueNamespace())
 	r := request(time.Now())
 	r.Config.LeaseTTL = 300 * time.Millisecond
 	grant := executeStatus(t, d, airlock.Submit, r, "", airlock.Granted)
@@ -167,7 +167,7 @@ func TestIntegrationLockWaitDoesNotReviveLease(t *testing.T) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var revision string
-	if err := tx.QueryRow(`SELECT revision FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.prefix, r.Resource).Scan(&revision); err != nil {
+	if err := tx.QueryRow(`SELECT revision FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.namespace, r.Resource).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
 	var blocker int
@@ -210,7 +210,7 @@ func TestIntegrationLockWaitDoesNotReviveLease(t *testing.T) {
 
 func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 	db := integrationDB(t)
-	d := integrationDriver(t, db, uniquePrefix())
+	d := integrationDriver(t, db, uniqueNamespace())
 	r := request(time.Now())
 	executeStatus(t, d, airlock.Submit, r, "", airlock.Granted)
 	tx, err := db.BeginTx(context.Background(), nil)
@@ -218,7 +218,7 @@ func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`SELECT 1 FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.prefix, r.Resource); err != nil {
+	if _, err := tx.Exec(`SELECT 1 FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.namespace, r.Resource); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
@@ -241,8 +241,8 @@ func TestIntegrationCancellationAndConnectionFailure(t *testing.T) {
 
 func TestIntegrationAbandonedClientsReclaimed(t *testing.T) {
 	db1, db2 := integrationDB(t), integrationDB(t)
-	prefix := uniquePrefix()
-	d1, d2 := integrationDriver(t, db1, prefix), integrationDriver(t, db2, prefix)
+	namespace := uniqueNamespace()
+	d1, d2 := integrationDriver(t, db1, namespace), integrationDriver(t, db2, namespace)
 	holder := request(time.Now())
 	holder.Config.LeaseTTL = 100 * time.Millisecond
 	executeStatus(t, d1, airlock.Submit, holder, "", airlock.Granted)
@@ -267,7 +267,7 @@ func TestIntegrationAbandonedClientsReclaimed(t *testing.T) {
 
 func TestIntegrationTerminatedConnectionFailsClosed(t *testing.T) {
 	db, admin := integrationDB(t), integrationDB(t)
-	d := integrationDriver(t, db, uniquePrefix())
+	d := integrationDriver(t, db, uniqueNamespace())
 	r := request(time.Now())
 	r.Config.LeaseTTL = 10 * time.Second
 	held := executeStatus(t, d, airlock.Submit, r, "", airlock.Granted)
@@ -276,7 +276,7 @@ func TestIntegrationTerminatedConnectionFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`SELECT 1 FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.prefix, r.Resource); err != nil {
+	if _, err := tx.Exec(`SELECT 1 FROM public.airlock_resources WHERE namespace=$1 AND resource=$2 FOR UPDATE`, d.namespace, r.Resource); err != nil {
 		t.Fatal(err)
 	}
 	var blocker int
@@ -325,7 +325,7 @@ func TestIntegrationTerminatedConnectionFailsClosed(t *testing.T) {
 }
 
 func TestIntegrationShared(t *testing.T) {
-	d := integrationDriver(t, integrationDB(t), uniquePrefix())
+	d := integrationDriver(t, integrationDB(t), uniqueNamespace())
 	client, err := airlock.NewShared(d, airlock.SharedOptions{Resource: "client-lifecycle", Config: airlock.ResourceConfig{Admission: airlock.Config{Capacity: 2, MaxQueued: 4, MaxQueuedPerTenant: 4}, LeaseTTL: 5 * time.Second, MaxWait: time.Second, SubmitWindow: time.Second, Retention: time.Second, MaxRecords: 30}, OperationTimeout: time.Second, PollInterval: 10 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
@@ -368,7 +368,7 @@ func TestIntegrationShared(t *testing.T) {
 
 func TestIntegrationRelationalDeltaWrites(t *testing.T) {
 	db := integrationDB(t)
-	d := integrationDriver(t, db, uniquePrefix())
+	d := integrationDriver(t, db, uniqueNamespace())
 	first := request(time.Now())
 	first.Config.Admission.Capacity = 2
 	first.Config.LeaseTTL = 30 * time.Second
@@ -379,7 +379,7 @@ func TestIntegrationRelationalDeltaWrites(t *testing.T) {
 	b := executeStatus(t, d, airlock.Submit, second, "", airlock.Granted)
 	readVersion := func(r airlock.Request) string {
 		var version string
-		if err := db.QueryRow(`SELECT xmin::text FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.prefix, r.Resource, r.ID).Scan(&version); err != nil {
+		if err := db.QueryRow(`SELECT xmin::text FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, r.Resource, r.ID).Scan(&version); err != nil {
 			t.Fatal(err)
 		}
 		return version
@@ -402,7 +402,7 @@ func TestIntegrationRelationalDeltaWrites(t *testing.T) {
 	}
 	var tenant, status string
 	var weight int
-	if err := db.QueryRow(`SELECT tenant,weight,status FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.prefix, first.Resource, first.ID).Scan(&tenant, &weight, &status); err != nil {
+	if err := db.QueryRow(`SELECT tenant,weight,status FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, first.Resource, first.ID).Scan(&tenant, &weight, &status); err != nil {
 		t.Fatal(err)
 	}
 	if tenant != first.Tenant || weight != first.Weight || status != "released" {
@@ -431,7 +431,7 @@ func TestIntegrationMissingColumnsRejected(t *testing.T) {
 
 func TestIntegrationDequeuePreservesFollowerRows(t *testing.T) {
 	db := integrationDB(t)
-	d := integrationDriver(t, db, uniquePrefix())
+	d := integrationDriver(t, db, uniqueNamespace())
 	holder := request(time.Now())
 	holder.Config.LeaseTTL = 30 * time.Second
 	held := executeStatus(t, d, airlock.Submit, holder, "", airlock.Granted)
@@ -445,13 +445,13 @@ func TestIntegrationDequeuePreservesFollowerRows(t *testing.T) {
 	}
 	var version string
 	tail := queued[2]
-	if err := db.QueryRow(`SELECT xmin::text FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.prefix, tail.Resource, tail.ID).Scan(&version); err != nil {
+	if err := db.QueryRow(`SELECT xmin::text FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, tail.Resource, tail.ID).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
 	executeStatus(t, d, airlock.Release, holder, held.LeaseID, airlock.Released)
 	var after string
 	var position int64
-	if err := db.QueryRow(`SELECT xmin::text,queue_position FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.prefix, tail.Resource, tail.ID).Scan(&after, &position); err != nil {
+	if err := db.QueryRow(`SELECT xmin::text,queue_position FROM public.airlock_resources_requests WHERE namespace=$1 AND resource=$2 AND id=$3`, d.namespace, tail.Resource, tail.ID).Scan(&after, &position); err != nil {
 		t.Fatal(err)
 	}
 	if after != version || position != 2 {
@@ -522,9 +522,9 @@ func TestIntegrationCommittedResponseLoss(t *testing.T) {
 	connector := &replyLossConnector{Connector: base}
 	faultyDB := sql.OpenDB(connector)
 	t.Cleanup(func() { _ = faultyDB.Close() })
-	prefix := uniquePrefix()
-	faulty := integrationDriver(t, faultyDB, prefix)
-	observer := integrationDriver(t, normalDB, prefix)
+	namespace := uniqueNamespace()
+	faulty := integrationDriver(t, faultyDB, namespace)
+	observer := integrationDriver(t, normalDB, namespace)
 	r := request(time.Now())
 	r.Config.LeaseTTL = 5 * time.Second
 	r.Config.Admission.Capacity = 2

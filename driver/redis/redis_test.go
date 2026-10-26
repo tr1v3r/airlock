@@ -81,9 +81,9 @@ func TestConstructor(t *testing.T) {
 			t.Fatal("accepted invalid client")
 		}
 	}
-	for _, prefix := range []string{strings.Repeat("x", 257), "bad\x00", string([]byte{255})} {
-		if _, err := New(client, prefix); err == nil {
-			t.Fatal("accepted prefix")
+	for _, namespace := range []string{strings.Repeat("x", 257), "bad\x00", string([]byte{255})} {
+		if _, err := New(client, namespace); err == nil {
+			t.Fatal("accepted namespace")
 		}
 	}
 	for _, opt := range []Option{nil, WithOperationTimeout(0), WithOperationTimeout(-time.Second)} {
@@ -153,7 +153,7 @@ func TestPersistenceAndReload(t *testing.T) {
 	}
 	another := goredis.NewClient(&goredis.Options{Addr: server.Addr(), ContextTimeoutEnabled: true})
 	defer func() { _ = another.Close() }()
-	d2, err := New(another, d.prefix)
+	d2, err := New(another, d.namespace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestPriorityCursorSurvivesClientReplacement(t *testing.T) {
 	d, _, server := fixture(t)
 	other := goredis.NewClient(&goredis.Options{Addr: server.Addr(), ContextTimeoutEnabled: true})
 	defer func() { _ = other.Close() }()
-	nextDriver, err := New(other, d.prefix)
+	nextDriver, err := New(other, d.namespace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +371,7 @@ func TestPriorityCursorSurvivesClientReplacement(t *testing.T) {
 	for _, r := range []airlock.Request{high1, high2, low, high3} {
 		// Reconstruct the adapter between selection and observation. Neither local
 		// state nor client connection identity may reset the persisted turn cursor.
-		fresh, err := New(other, d.prefix)
+		fresh, err := New(other, d.namespace)
 		if err != nil {
 			t.Fatal(err)
 		}
