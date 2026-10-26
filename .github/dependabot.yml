@@ -1,10 +1,12 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
+    target-branch: dev
     directory: /
     schedule:
       interval: weekly
   - package-ecosystem: gomod
+    target-branch: dev
     directories:
       - /
       - /driver/memory

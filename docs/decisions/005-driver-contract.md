@@ -1,6 +1,12 @@
 # Driver 契约与 memory 参考实现
 
-状态：core 协议、Shared 客户端、memory 及后续独立 PostgreSQL、Redis driver 均已在 `dev` 实现。本文保留最初 driver 契约的决策背景；部署边界分别见[决策 006](006-postgres-driver.md)与[决策 007](007-redis-driver.md)。不代表已有标签版本。
+更新：PG 的 snapshot 存储方案已由 [009 多表存储决策](009-postgres-relational.md) 取代；
+driver 契约不限定持久化布局，结构化状态入口与快照入口都是可选辅助函数。以下保留原决策背景。
+
+状态：core 协议、Shared 客户端、memory 及 PostgreSQL、Redis driver 均已在 `dev` 实现。
+本文保留最初 driver 契约的决策背景；部署边界分别见[决策 006](006-postgres-driver.md)与
+[决策 007](007-redis-driver.md)；PostgreSQL 的存储布局演进见[决策 009](009-postgres-relational.md)。
+不代表已有标签版本。
 
 ## API 与原子边界
 
@@ -34,7 +40,7 @@ Command、Operation、ValidateCommand 和 Transition 保留为独立 driver 模�
 不是 Driver 调用入口。各内置 driver 的五个方法转入同一私有执行路径，不复制调度逻辑，
 不改变原子边界、幂等身份、TTL、错误优先级或取消语义。
 
-`Transition(previous, backendNow, command)` 返回新 snapshot、Result 和业务错误。
+`Transition(state, backendNow, command)` 返回结构化新状态、Result、CommitWindow 和错误。
 Driver 必须串行化整个资源的读、转换、写，并且在新 snapshot 非 nil 时即使业务错误也要提交；
 例如队满拒绝需要保存，过期回收可能让其他人获得授权。持久化失败不能返回可用授权。
 提交结果可能未知，数据库支持事务也不例外。绝不自动回退到独立的本地容量池。

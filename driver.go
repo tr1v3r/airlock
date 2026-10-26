@@ -13,9 +13,9 @@ import (
 
 // Driver provides atomic admission operations for a resource. Implementations must
 // serialize all operations, use backend time after obtaining exclusive access
-// (or enforce the TransitionOptimistic publication window with atomic CAS),
-// persist the returned snapshot even when Transition returns a business error,
-// and honor ctx. Transport errors are ambiguous and never authorize work.
+// (or enforce the Transition publication window with atomic CAS),
+// atomically persist lifecycle/scheduling changes even on business rejection,
+// and honor ctx. Storage layout and use of the reference helpers are optional. Transport errors are ambiguous and never authorize work.
 // Drivers do not own injected connections, execute work, or fall back locally.
 // All callers of a resource must use the same immutable ResourceConfig.
 // Implementations must be safe for concurrent use. Contexts must be non-nil.

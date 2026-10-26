@@ -3,13 +3,17 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+
 	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 func mockDriver(t *testing.T, options ...Option) (*Driver, sqlmock.Sqlmock) {
@@ -38,10 +42,35 @@ func request(now time.Time) airlock.Request {
 	r.Config = airlock.ResourceConfig{Admission: airlock.Config{Capacity: 1, MaxQueued: 8, MaxQueuedPerTenant: 8}, LeaseTTL: time.Second, MaxWait: 30 * time.Second, SubmitWindow: 30 * time.Second, Retention: time.Second, MaxRecords: 64}
 	return r
 }
+func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
+	s := airlock.SharedState{Version: 1, Config: request(now).Config, Rotations: [][]string{}}
+	if len(snapshot) > 0 {
+		_ = json.Unmarshal(snapshot, &s)
+	}
+	config, _ := json.Marshal(s.Config)
+	rotations, _ := json.Marshal(s.Rotations)
+	if string(snapshot) == "corrupt" {
+		config = []byte("corrupt")
+	}
+	return sqlmock.NewRows(strings.Split(strings.ReplaceAll(resourceColumns, " ", ""), ",")).AddRow(s.Version, config, rotations, s.Protected, s.Cursor, strconv.FormatUint(s.Revision, 10), millis(s.Time))
+}
+func requestRows(snapshot []byte) *sqlmock.Rows {
+	rows := sqlmock.NewRows(strings.Split(strings.ReplaceAll(requestColumns, " ", ""), ","))
+	var s airlock.SharedState
+	_ = json.Unmarshal(snapshot, &s)
+	for _, r := range s.Records {
+		rows.AddRow(r.Request.ID, r.Request.Owner, r.Request.Tenant, r.Request.Weight, r.Request.SubmitUntil.UnixMilli(), r.Request.WaitUntil.UnixMilli(), string(r.Status), r.LeaseID, millis(r.Until), millis(r.Finished), r.Failure, nil)
+	}
+	return rows
+}
 func beforeTransition(m sqlmock.Sqlmock, snapshot []byte, now time.Time) {
 	m.ExpectBegin()
 	m.ExpectExec("INSERT INTO").WillReturnResult(sqlmock.NewResult(0, 1))
-	m.ExpectQuery("SELECT snapshot").WillReturnRows(sqlmock.NewRows([]string{"snapshot"}).AddRow(snapshot))
+	m.ExpectQuery("SELECT state_version").WillReturnRows(resourceRows(snapshot, now))
+	if string(snapshot) == "corrupt" {
+		return
+	}
+	m.ExpectQuery("SELECT id").WillReturnRows(requestRows(snapshot))
 	m.ExpectQuery("SELECT pg_catalog.clock_timestamp").WillReturnRows(sqlmock.NewRows([]string{"now"}).AddRow(now))
 }
 
@@ -100,13 +129,45 @@ func TestValidationWithoutDatabase(t *testing.T) {
 
 func TestEnsureSchema(t *testing.T) {
 	d, m := mockDriver(t)
-	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	m.ExpectBegin()
+	for i := 0; i < 2; i++ {
+		m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	}
+	m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"unused"}))
+	m.ExpectQuery("SELECT id").WillReturnRows(sqlmock.NewRows([]string{"unused"}))
+	m.ExpectCommit()
 	if err := d.EnsureSchema(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	sentinel := errors.New("permission denied")
+	m.ExpectBegin()
 	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnError(sentinel)
+	m.ExpectRollback()
 	if err := d.EnsureSchema(context.Background()); !errors.Is(err, sentinel) {
+		t.Fatal(err)
+	}
+	// Begin failures surface with schema context.
+	m.ExpectBegin().WillReturnError(sentinel)
+	if err := d.EnsureSchema(context.Background()); !errors.Is(err, sentinel) {
+		t.Fatal(err)
+	}
+	// Missing required columns fail the schema probe.
+	m.ExpectBegin()
+	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	m.ExpectQuery("SELECT state_version").WillReturnError(sentinel)
+	m.ExpectRollback()
+	err := d.EnsureSchema(context.Background())
+	if !errors.Is(err, sentinel) || !strings.Contains(err.Error(), "incompatible schema") {
+		t.Fatal(err)
+	}
+	// Row-close failures abort the probe transaction.
+	m.ExpectBegin()
+	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"unused"}).CloseError(sentinel))
+	m.ExpectRollback()
+	if err = d.EnsureSchema(context.Background()); !errors.Is(err, sentinel) {
 		t.Fatal(err)
 	}
 }
@@ -126,11 +187,12 @@ func TestExecuteFailureBoundaries(t *testing.T) {
 			case "lock":
 				m.ExpectBegin()
 				m.ExpectExec("INSERT INTO").WillReturnResult(sqlmock.NewResult(0, 1))
-				m.ExpectQuery("SELECT snapshot").WillReturnError(sentinel)
+				m.ExpectQuery("SELECT state_version").WillReturnError(sentinel)
 			case "clock":
 				m.ExpectBegin()
 				m.ExpectExec("INSERT INTO").WillReturnResult(sqlmock.NewResult(0, 1))
-				m.ExpectQuery("SELECT snapshot").WillReturnRows(sqlmock.NewRows([]string{"snapshot"}).AddRow([]byte{}))
+				m.ExpectQuery("SELECT state_version").WillReturnRows(resourceRows(nil, now))
+				m.ExpectQuery("SELECT id").WillReturnRows(requestRows(nil))
 				m.ExpectQuery("SELECT pg_catalog.clock_timestamp").WillReturnError(sentinel)
 			case "corrupt":
 				beforeTransition(m, []byte("corrupt"), now)
@@ -145,6 +207,7 @@ func TestExecuteFailureBoundaries(t *testing.T) {
 					m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 0))
 				case "commit":
 					m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
+					m.ExpectExec("INSERT INTO").WillReturnResult(sqlmock.NewResult(0, 1))
 					m.ExpectCommit().WillReturnError(sentinel)
 				}
 			}
@@ -163,12 +226,13 @@ func TestBusinessErrorCommitsMaintenance(t *testing.T) {
 	d, m := mockDriver(t)
 	now := time.Now()
 	r := request(now)
-	initial, _, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	initial, _, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}
 	beforeTransition(m, initial, now.Add(2*time.Second))
-	m.ExpectExec("UPDATE").WithArgs("test", r.Resource, sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+	m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
+	m.ExpectExec("INSERT INTO").WillReturnResult(sqlmock.NewResult(0, 1))
 	m.ExpectCommit()
 	got, err := d.Renew(context.Background(), airlock.LeaseRef{Request: r, ID: "stale"})
 	if !errors.Is(err, airlock.ErrLeaseLost) || got.Status == airlock.Granted {
@@ -183,12 +247,13 @@ func TestAmbiguousCommitRecovery(t *testing.T) {
 	cmd := airlock.Command{Kind: airlock.Submit, Request: r}
 	// Model a server-side commit whose response is lost. Transition is deterministic
 	// for a request, so the separately computed durable snapshot is authoritative.
-	durable, granted, err := airlock.Transition(nil, now, cmd)
+	durable, granted, err := transitionSnapshot(nil, now, cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
 	beforeTransition(m, nil, now)
-	m.ExpectExec("UPDATE").WithArgs("test", r.Resource, durable).WillReturnResult(sqlmock.NewResult(0, 1))
+	m.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
+	m.ExpectExec("INSERT INTO").WillReturnResult(sqlmock.NewResult(0, 1))
 	m.ExpectCommit().WillReturnError(errors.New("commit response lost"))
 	if got, err := d.Submit(context.Background(), r); err == nil || got != (airlock.Result{}) {
 		t.Fatalf("%+v %v", got, err)
@@ -212,4 +277,70 @@ func TestOperationDeadline(t *testing.T) {
 	if time.Since(started) > time.Second {
 		t.Fatal("operation was not bounded")
 	}
+}
+
+// A structurally valid stored grant must not be overwritten by an identity or
+// configuration conflict. Unlike business rejections that perform maintenance,
+// these transitions return no next snapshot and the transaction must roll back.
+func TestConflictingCommandsRollbackWithoutPersist(t *testing.T) {
+	for _, conflict := range []string{"owner", "configuration"} {
+		for _, operation := range []airlock.Operation{airlock.Submit, airlock.Observe, airlock.Cancel, airlock.Renew, airlock.Release} {
+			t.Run(conflict+"/"+string(operation), func(t *testing.T) {
+				d, mock := mockDriver(t)
+				now := time.Now().UTC().Truncate(time.Millisecond)
+				r := request(now)
+				snapshot, grant, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+				if err != nil || grant.Status != airlock.Granted {
+					t.Fatalf("seed: %+v err=%v", grant, err)
+				}
+				wrong := r
+				want := airlock.ErrRequestConflict
+				if conflict == "owner" {
+					wrong.Owner = airlock.NewRequest(now).Owner
+				} else {
+					wrong.Config.Admission.Capacity++
+					want = airlock.ErrConfigConflict
+				}
+				beforeTransition(mock, snapshot, now.Add(time.Millisecond))
+				// No UPDATE or COMMIT expectation: either would fail this test.
+				mock.ExpectRollback()
+				got, err := driverconformance.Invoke(context.Background(), d, airlock.Command{Kind: operation, Request: wrong, LeaseID: grant.LeaseID})
+				if !errors.Is(err, want) || got != (airlock.Result{}) {
+					t.Fatalf("conflicting %s exposed result: %+v err=%v want=%v", operation, got, err, want)
+				}
+			})
+		}
+	}
+}
+
+func TestBackwardBackendClockRollsBackValidSnapshot(t *testing.T) {
+	d, mock := mockDriver(t)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	r := request(now)
+	snapshot, grant, err := transitionSnapshot(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
+	if err != nil || grant.Status != airlock.Granted {
+		t.Fatalf("seed: %+v err=%v", grant, err)
+	}
+	beforeTransition(mock, snapshot, now.Add(-time.Millisecond))
+	mock.ExpectRollback()
+	got, err := d.Renew(context.Background(), airlock.LeaseRef{Request: r, ID: grant.LeaseID})
+	if !errors.Is(err, airlock.ErrCorruptState) || got != (airlock.Result{}) {
+		t.Fatalf("backward clock returned usable renewal: %+v err=%v", got, err)
+	}
+}
+
+func transitionSnapshot(data []byte, now time.Time, cmd airlock.Command) ([]byte, airlock.Result, error) {
+	state, err := airlock.DecodeState(data)
+	if err != nil {
+		return nil, airlock.Result{}, err
+	}
+	next, result, _, err := airlock.Transition(state, now, cmd)
+	if next == nil {
+		return nil, result, err
+	}
+	encoded, codecErr := airlock.EncodeState(next)
+	if codecErr != nil {
+		return nil, airlock.Result{}, codecErr
+	}
+	return encoded, result, err
 }

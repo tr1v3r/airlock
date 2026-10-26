@@ -143,8 +143,10 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 	r.Tenant = tenant
 	r.Weight = n
 	r.WaitUntil = now.Add(r.Config.MaxWait).UTC().Truncate(time.Millisecond)
+	folded := false
 	if deadline, ok := ctx.Deadline(); ok && deadline.Before(r.WaitUntil) {
 		r.WaitUntil = deadline.UTC().Truncate(time.Millisecond)
+		folded = true
 	}
 	if allowance > 0 {
 		r.WaitUntil = r.WaitUntil.Add(-allowance)
@@ -190,7 +192,17 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 					continue
 				}
 			default:
-				err = ErrLeaseLost
+				// The waiting deadline was folded from the caller's context, so
+				// backend expiry of that request IS the caller's deadline observed
+				// from the authoritative side. Report it deterministically whichever
+				// side is noticed first; the terminal fact is preserved too. An
+				// unfolded window keeps ErrLeaseLost, and external cancellation
+				// never reaches this branch (it exits via ctx.Err above).
+				if folded && result.Status == Expired {
+					err = errors.Join(context.DeadlineExceeded, ErrLeaseLost)
+				} else {
+					err = ErrLeaseLost
+				}
 			}
 		}
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.options.OperationTimeout)

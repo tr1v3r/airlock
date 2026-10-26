@@ -1,0 +1,156 @@
+[
+  {
+    "slug": "overview",
+    "type": "architecture",
+    "title": "Airlock：两条准入路径与责任边界",
+    "candidate": ".archify/architecture-overview-20261024-152114/candidate.json",
+    "html": ".archify/architecture-overview-20261024-152114/overview.html",
+    "title_en": "Runtime overview",
+    "question": "从 New 还是 NewShared 开始？谁执行任务？",
+    "question_en": "Choose New or NewShared; identify who runs work.",
+    "sources": [
+      "airlock.go",
+      "distributed.go",
+      "driver.go"
+    ],
+    "tests": [
+      "airlock_contract_test.go",
+      "shared_options_test.go"
+    ],
+    "preview": "previews/overview.png"
+  },
+  {
+    "slug": "local-admission",
+    "type": "workflow",
+    "title": "本地准入：快速路径、排队与取消竞争",
+    "candidate": ".archify/workflow-local-admission-20261024-152114/candidate.json",
+    "html": ".archify/workflow-local-admission-20261024-152114/local-admission.html",
+    "title_en": "Local admission and cancellation",
+    "question": "为什么申请失败？取消与授予同时发生怎么办？",
+    "question_en": "Follow immediate grants, queue rejection and cancel/grant races.",
+    "sources": [
+      "airlock.go",
+      "try_acquire.go"
+    ],
+    "tests": [
+      "weighted_test.go",
+      "try_acquire_test.go"
+    ],
+    "preview": "previews/local-admission.png"
+  },
+  {
+    "slug": "scheduler",
+    "type": "workflow",
+    "title": "调度器：组配额、租户轮转与受保护请求",
+    "candidate": ".archify/workflow-scheduler-20261024-152114/candidate.json",
+    "html": ".archify/workflow-scheduler-20261024-152114/scheduler.html",
+    "title_en": "Fair scheduling and protected heads",
+    "question": "为什么还有空闲 token 却不能放行？",
+    "question_en": "Understand request fairness, priority turns and head-of-line blocking.",
+    "sources": [
+      "priority.go",
+      "airlock.go",
+      "examples/isolation/example.go"
+    ],
+    "tests": [
+      "priority_test.go",
+      "local_model_test.go"
+    ],
+    "preview": "previews/scheduler.png"
+  },
+  {
+    "slug": "request-states",
+    "type": "lifecycle",
+    "title": "后端请求生命周期：状态、幂等与回收",
+    "candidate": ".archify/lifecycle-request-states-20261024-152114/candidate.json",
+    "html": ".archify/lifecycle-request-states-20261024-152114/request-states.html",
+    "title_en": "Authoritative request lifecycle",
+    "question": "哪些状态能续租、取消和回收？",
+    "question_en": "Trace persistent states, cancellation tombstones and retention.",
+    "sources": [
+      "driver_state.go",
+      "driver.go"
+    ],
+    "tests": [
+      "driver_state_test.go",
+      "driver_model_test.go"
+    ],
+    "preview": "previews/request-states.png"
+  },
+  {
+    "slug": "lease-states",
+    "type": "lifecycle",
+    "title": "客户端 Lease：有效期与不可逆失效",
+    "candidate": ".archify/lifecycle-lease-states-20261024-152114/candidate.json",
+    "html": ".archify/lifecycle-lease-states-20261024-152114/lease-states.html",
+    "title_en": "Client lease lifecycle",
+    "question": "本地失效是否代表后端已经释放？",
+    "question_en": "Separate local invalidity from backend release confirmation.",
+    "sources": [
+      "distributed.go"
+    ],
+    "tests": [
+      "distributed_concurrency_test.go",
+      "distributed_clock_test.go"
+    ],
+    "preview": "previews/lease-states.png"
+  },
+  {
+    "slug": "shared-sequence",
+    "type": "sequence",
+    "title": "Shared 调用链：排队、观察与租约交付",
+    "candidate": ".archify/sequence-shared-sequence-20261024-152114/candidate.json",
+    "html": ".archify/sequence-shared-sequence-20261024-152114/shared-sequence.html",
+    "title_en": "Shared request sequence",
+    "question": "排队后是谁推进状态？何时才能运行任务？",
+    "question_en": "Follow submission, polling, commit and lease delivery.",
+    "sources": [
+      "distributed.go",
+      "driver/postgres/postgres.go",
+      "driver/redis/redis.go"
+    ],
+    "tests": [
+      "distributed_test.go",
+      "distributed_concurrency_test.go"
+    ],
+    "preview": "previews/shared-sequence.png"
+  },
+  {
+    "slug": "driver-boundaries",
+    "type": "architecture",
+    "title": "驱动实现：原子边界与快照持久化",
+    "candidate": ".archify/architecture-driver-boundaries-20261024-152114/candidate.json",
+    "html": ".archify/architecture-driver-boundaries-20261024-152114/driver-boundaries.html",
+    "title_en": "Driver atomicity and persistence",
+    "question": "自定义驱动必须在哪里保证原子性？",
+    "question_en": "Locate the atomic boundary and the actual snapshot writer.",
+    "sources": [
+      "driver.go",
+      "driver_optimistic.go",
+      "driver/postgres/postgres.go",
+      "driver/redis/scripts.go"
+    ],
+    "tests": [
+      "internal/driverconformance/conformance.go",
+      "driver/redis/window_test.go"
+    ],
+    "preview": "previews/driver-boundaries.png"
+  },
+  {
+    "slug": "application-lifecycle",
+    "type": "workflow",
+    "title": "应用监督流程：停止任务后再释放租约",
+    "candidate": ".archify/workflow-application-lifecycle-20261024-152114/candidate.json",
+    "html": ".archify/workflow-application-lifecycle-20261024-152114/application-lifecycle.html",
+    "title_en": "Application-owned supervision",
+    "question": "任务、续租和释放应该按什么顺序停止？",
+    "question_en": "Stop work and join supervisors before releasing the lease.",
+    "sources": [
+      "driver/memory/examples/lifecycle/main.go"
+    ],
+    "tests": [
+      "driver/memory/examples/lifecycle/main_test.go"
+    ],
+    "preview": "previews/application-lifecycle.png"
+  }
+]

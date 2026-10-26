@@ -44,6 +44,12 @@ jobs:
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - run: golangci-lint config verify
+      - name: Check import grouping in all modules
+        run: |
+          golangci-lint fmt --diff
+          for manifest in driver/*/go.mod; do
+            (cd "$(dirname "$manifest")" && golangci-lint fmt --diff --config ../../.golangci.yml)
+          done
       - run: golangci-lint run
       - run: actionlint -color
 
@@ -55,7 +61,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        go: ['1.25.x', oldstable, stable]
+        go: ['1.26.x', oldstable, stable]
         include:
           - os: macos-latest
             go: stable

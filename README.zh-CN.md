@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-面向 Go 1.25+ 的多令牌、按租户并发准入库。
+面向 Go 1.26+ 的多令牌、按租户并发准入库。
 提供租户内 FIFO、等待租户间轮转、可选的优先级组加权选择与独立等待额度，以及全局和每租户排队上限。
 运行时仅依赖标准库；goroutine、结果、错误和任务完成由调用方管理。
 
@@ -24,11 +24,16 @@ Airlock 是一个**提供完整源码注释的 SDK**，方便编码 agent 理解
 
 普通本地准入不需要 driver。核心运行时仅依赖标准库，远端 driver 的依赖单独安装。
 
+## 架构图集
+
+查看[架构图集](docs/architecture/README.zh-CN.md)：8 张基于源码的架构、流程、时序和生命周期图，配套使用者、初学者、开发者阅读路径及源码/测试入口。[English guide](docs/architecture/README.md)。
+
 ## 安装
 
-所有模块统一要求 **Go 1.25+**。PostgreSQL 模块因 pgx/x-text 依赖升级修复可达
-安全漏洞（修复版本需要 Go 1.25）而率先触及该下限；core、memory 与 Redis 随后
-采用同一最低版本，仓库保持单一工具链要求与统一 CI 矩阵。
+所有模块统一要求 **Go 1.26+**。Go 1.25 下限源于 PostgreSQL 模块为修复可达
+安全漏洞升级 pgx/x-text；此次升至 1.26 跟随依赖更新 go-redis v9.23.0 与
+golang.org/x/sync v0.24.0（两者均声明 `go 1.26.0`）。全部模块保持同一
+最低版本，仓库保持单一工具链要求与统一 CI 矩阵。
 
 ```sh
 go get github.com/tr1v3r/airlock@dev
@@ -312,7 +317,7 @@ PR、推送到 `dev`/`main`、合并队列、手动触发和每周扫描均运�
   质量检查固定使用 Go 1.27.0 与 golangci-lint v2.13.2，需配套升级并验证，
   避免分析器尚未支持新版 Go 的导出格式。兼容性测试和漏洞扫描仍跟踪稳定版 Go。
 - 检查模块清单整洁性、校验和，并保证运行时仅依赖标准库。
-- Linux 覆盖 Go 1.25、上一稳定版及稳定版，macOS/Windows 覆盖稳定版。
+- Linux 覆盖 Go 1.26、上一稳定版及稳定版，macOS/Windows 覆盖稳定版。
   测试禁用缓存并随机排序，`GOTOOLCHAIN=local` 防止自动升级工具链掩盖最低版本不兼容。
   每个矩阵任务分别测试根模块与全部独立 driver，无任何模块跳过。
   本地示例在每个矩阵执行；Shared memory 示例在 Linux driver 任务运行，
@@ -398,6 +403,8 @@ driver 契约、租约客户端和 memory 参考实现已提供，PostgreSQL 和
 后端作者可阅读独立的[自定义 driver 指南](docs/guides/drivers.zh-CN.md)、
 [协议取舍](docs/decisions/005-driver-contract.md)和[模块说明](MODULES.md)。
 Redis 与 PostgreSQL 是独立模块，各自 README 说明部署要求和故障边界。
+
+PostgreSQL 使用资源表与请求表分开存储；`EnsureSchema` 创建缺失的表并检查必需列。
 
 `NewShared` 构造时不访问后端，不接管连接。旧名称 `NewDistributed`、`Distributed`、
 `DistributedOptions` 保留为已弃用的兼容入口或别名。旧构造函数同样使用 NewShared 的

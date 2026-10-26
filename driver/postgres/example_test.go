@@ -8,6 +8,7 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/tr1v3r/airlock"
 	"github.com/tr1v3r/airlock/driver/postgres"
 )
@@ -23,7 +24,7 @@ func ExampleNew() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Run schema migrations explicitly during deployment, before serving traffic.
+	// Create the schema explicitly during deployment, before serving traffic.
 	if err := driver.EnsureSchema(context.Background()); err != nil {
 		log.Fatal(err)
 	}

@@ -35,15 +35,36 @@ authorizes work, even if the write may have committed.
 
 ## Reuse the state machine and preserve the atomic boundary
 
-`Transition(snapshot, backendNow, command)` computes a new snapshot, Result and
-business error without I/O. Command/Operation/ValidateCommand are implementation
-helpers, not the public Driver call interface. Direct callers must provide a
-complete ResourceConfig; only NewShared resolves default configuration.
+Storage layout is a driver choice: SQL tables, snapshots, or another representation
+are all allowed when the same atomic contract holds. The reference helpers are optional.
+All three drivers use one structured entry point:
+
+```go
+func Transition(state *SharedState, now time.Time, cmd Command) (
+    next *SharedState, result Result, window CommitWindow, err error,
+)
+```
+
+A nil input initializes a resource. Transition takes exclusive ownership of the
+input maps/records, which must not be reused even on error. It performs no I/O.
+Persist every nonnil returned state, including on business errors. PostgreSQL maps
+SharedState and DriverRecord to relational rows; memory and Redis use DecodeState
+and EncodeState around Transition to persist snapshots.
+
+Command/Operation/ValidateCommand are implementation helpers, not the public
+Driver call interface. Direct callers provide a complete ResourceConfig; only
+NewShared resolves defaults.
+
+The commit window includes original and resulting deadlines. In-place renewal
+must retain the original lease expiry as a publication bound. Lock-based drivers
+may ignore the window while holding exclusive access through commit. Only
+confirmed CAS/window misses permit rereading and recomputing; transport errors
+remain ambiguous outcomes.
 
 Serialize the whole resource's read, transition and commit. Use backend time after
 obtaining exclusive access; optimistic backends must enforce the time window
-returned by TransitionOptimistic in the atomic publication step. Commit a non-nil
-next snapshot even with a business error: rejection records and expiry/scheduling
+returned by Transition in the atomic publication step. Commit a non-nil
+next state even with a business error: rejection records and expiry/scheduling
 changes are still authoritative. Return a usable result only after successful
 commit, and honor context cancellation. No fallback to a separate local pool.
 
