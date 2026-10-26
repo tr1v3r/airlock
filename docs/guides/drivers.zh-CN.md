@@ -36,14 +36,14 @@ LeaseRef 包含原 Request，ID 字段是授予时的 LeaseID。Result 表达生
 三个驱动统一使用结构化入口：
 
 ```go
-func Transition(state *DriverState, now time.Time, cmd Command) (
-    next *DriverState, result Result, window CommitWindow, err error,
+func Transition(state *SharedState, now time.Time, cmd Command) (
+    next *SharedState, result Result, window CommitWindow, err error,
 )
 ```
 
 nil 输入表示新资源。调用时转交输入 maps/records 的独占所有权，报错后也不能复用输入。
 Transition 不做 I/O；返回非 nil 状态时，即使同时返回业务错误也必须原子持久化。
-PostgreSQL 将 DriverState、DriverRecord 映射为关系表；memory 和 Redis 在 Transition
+PostgreSQL 将 SharedState、DriverRecord 映射为关系表；memory 和 Redis 在 Transition
 前后使用 DecodeState、EncodeState 处理快照。
 
 Command/Operation/ValidateCommand 是实现工具，不是公开 Driver 的调用接口。

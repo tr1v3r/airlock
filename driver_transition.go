@@ -24,14 +24,14 @@ func (w CommitWindow) Allows(now time.Time) bool {
 // Never persist nil next or return a successful result before commit.
 // Use backend time after locking, or enforce the returned window together with
 // CAS. Lock-based drivers can ignore the window while retaining their lock.
-func Transition(state *DriverState, now time.Time, cmd Command) (next *DriverState, result Result, window CommitWindow, err error) {
+func Transition(state *SharedState, now time.Time, cmd Command) (next *SharedState, result Result, window CommitWindow, err error) {
 	window.NotBefore = now.UTC()
 	boundary := func(at time.Time) {
 		if at.After(now) && (window.Before.IsZero() || at.Before(window.Before)) {
 			window.Before = at
 		}
 	}
-	collect := func(s *DriverState) {
+	collect := func(s *SharedState) {
 		if s == nil {
 			return
 		}
@@ -67,11 +67,11 @@ func Transition(state *DriverState, now time.Time, cmd Command) (next *DriverSta
 
 // DecodeState decodes a snapshot. Empty input represents a new resource.
 // Transition validates the decoded structure before using it.
-func DecodeState(data []byte) (*DriverState, error) {
+func DecodeState(data []byte) (*SharedState, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
-	state := new(DriverState)
+	state := new(SharedState)
 	if json.Unmarshal(data, state) != nil {
 		return nil, ErrCorruptState
 	}
@@ -79,7 +79,7 @@ func DecodeState(data []byte) (*DriverState, error) {
 }
 
 // EncodeState encodes a nonnil transition output for snapshot storage.
-func EncodeState(state *DriverState) ([]byte, error) {
+func EncodeState(state *SharedState) ([]byte, error) {
 	if state == nil {
 		return nil, ErrCorruptState
 	}

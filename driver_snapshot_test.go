@@ -17,7 +17,7 @@ func transitionSnapshot(data []byte, now time.Time, cmd Command) ([]byte, Result
 	}
 	return encoded, result, err
 }
-func transitionStructured(state *DriverState, now time.Time, cmd Command) (*DriverState, Result, error) {
+func transitionStructured(state *SharedState, now time.Time, cmd Command) (*SharedState, Result, error) {
 	next, result, _, err := Transition(state, now, cmd)
 	return next, result, err
 }

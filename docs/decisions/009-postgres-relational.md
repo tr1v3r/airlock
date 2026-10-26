@@ -6,11 +6,11 @@
 
 Driver 仍为 Submit/Observe/Cancel/Renew/Release，Shared/Lease 的用户调用不变。
 底层不必使用 Transition，也不必保存快照。参考算法统一为
-Transition(*DriverState, time.Time, Command)，返回新状态、Result、CommitWindow 和错误。
+Transition(*SharedState, time.Time, Command)，返回新状态、Result、CommitWindow 和错误。
 memory/Redis 通过 DecodeState、EncodeState 处理快照，PostgreSQL 直接处理结构化状态。结构化入口要求独占输入状态，允许修改输入，不能与别的
 操作共享 maps/records；返回 nil 不持久化，非 nil 即使伴随业务错误也要提交。
 
-这样复用的是调度与生命周期算法，不是存储布局。DriverState/DriverRecord 是可选的核心
+这样复用的是调度与生命周期算法，不是存储布局。SharedState/DriverRecord 是可选的核心
 辅助类型，其 Version 表示调度状态版本，不强制任何后端使用同名列。
 
 ## 2. 两张表，租约并入请求

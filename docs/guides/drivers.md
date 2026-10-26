@@ -40,15 +40,15 @@ are all allowed when the same atomic contract holds. The reference helpers are o
 All three drivers use one structured entry point:
 
 ```go
-func Transition(state *DriverState, now time.Time, cmd Command) (
-    next *DriverState, result Result, window CommitWindow, err error,
+func Transition(state *SharedState, now time.Time, cmd Command) (
+    next *SharedState, result Result, window CommitWindow, err error,
 )
 ```
 
 A nil input initializes a resource. Transition takes exclusive ownership of the
 input maps/records, which must not be reused even on error. It performs no I/O.
 Persist every nonnil returned state, including on business errors. PostgreSQL maps
-DriverState and DriverRecord to relational rows; memory and Redis use DecodeState
+SharedState and DriverRecord to relational rows; memory and Redis use DecodeState
 and EncodeState around Transition to persist snapshots.
 
 Command/Operation/ValidateCommand are implementation helpers, not the public

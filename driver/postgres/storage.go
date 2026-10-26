@@ -32,7 +32,7 @@ func instant(n sql.NullInt64) time.Time {
 const resourceColumns = `state_version, config, rotations, protected, cursor, revision, observed_ms`
 const requestColumns = `id, owner, tenant, weight, submit_until_ms, wait_until_ms, status, lease_id, until_ms, finished_ms, failure, queue_position`
 
-func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) (*airlock.DriverState, map[string]row, error) {
+func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) (*airlock.SharedState, map[string]row, error) {
 	config, err := json.Marshal(request.Config)
 	if err != nil {
 		return nil, nil, err
@@ -41,7 +41,7 @@ func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) 
 	if err != nil {
 		return nil, nil, fmt.Errorf("airlock/postgres: initialize: %w", err)
 	}
-	s := &airlock.DriverState{Resource: request.Resource, Records: make(map[string]*airlock.DriverRecord), Queues: make(map[string][]string)}
+	s := &airlock.SharedState{Resource: request.Resource, Records: make(map[string]*airlock.DriverRecord), Queues: make(map[string][]string)}
 	var rotations []byte
 	var revision string
 	var observed sql.NullInt64
@@ -100,7 +100,7 @@ func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) 
 	return s, before, nil
 }
 
-func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.DriverState, before map[string]row) error {
+func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState, before map[string]row) error {
 	rotations, err := json.Marshal(s.Rotations)
 	if err != nil {
 		return err

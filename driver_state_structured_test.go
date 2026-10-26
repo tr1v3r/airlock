@@ -15,7 +15,7 @@ func TestTransitionStateStorageIndependence(t *testing.T) {
 	other := r
 	id := NewRequest(r.SubmitUntil)
 	other.ID, other.Owner = id.ID, id.Owner
-	var state *DriverState
+	var state *SharedState
 	var snapshot []byte
 	var lease string
 	for _, command := range []Command{{Kind: Submit, Request: r}, {Kind: Submit, Request: other}, {Kind: Observe, Request: other}, {Kind: Renew, Request: r}, {Kind: Release, Request: r}, {Kind: Cancel, Request: other}} {

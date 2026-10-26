@@ -8,9 +8,9 @@ import (
 )
 
 // DriverRecord is one request and its lifecycle state in the reference scheduler.
-// Request.Config is omitted in persisted state; DriverState.Config is authoritative.
+// Request.Config is omitted in persisted state; SharedState.Config is authoritative.
 type DriverRecord struct {
-	// Request is immutable; Config is omitted from persisted records and restored from DriverState.
+	// Request is immutable; Config is omitted from persisted records and restored from SharedState.
 	Request Request
 	// Status distinguishes pending/granted records from retained terminal outcomes.
 	Status Status
@@ -24,10 +24,10 @@ type DriverRecord struct {
 	Failure string
 }
 
-// DriverState is the structured state of the reference durable scheduler.
+// SharedState is the structured state of the reference durable scheduler.
 // It is an optional implementation helper, not a storage format required by Driver.
 // Version 1 uses per-tenant FIFO queues, group rotations and a protected head.
-type DriverState struct {
+type SharedState struct {
 	// Version identifies the scheduler state version; currently only version 1 is accepted.
 	Version int
 	// Resource binds the state to one logical capacity pool.
@@ -51,10 +51,10 @@ type DriverState struct {
 }
 
 type durableRecord = DriverRecord
-type durableSnapshot = DriverState
+type durableSnapshot = SharedState
 
 // transition advances exclusively owned structured state.
-func transition(state *DriverState, now time.Time, cmd Command) (*DriverState, Result, error) {
+func transition(state *SharedState, now time.Time, cmd Command) (*SharedState, Result, error) {
 	r := cmd.Request
 	r.SubmitUntil = r.SubmitUntil.UTC()
 	r.WaitUntil = r.WaitUntil.UTC()
@@ -64,9 +64,9 @@ func transition(state *DriverState, now time.Time, cmd Command) (*DriverState, R
 	}
 	observedNow := now.UTC()
 	now = observedNow.Truncate(time.Millisecond)
-	var s DriverState
+	var s SharedState
 	if state == nil {
-		s = DriverState{Version: 1, Resource: r.Resource, Config: r.Config, Records: make(map[string]*durableRecord), Queues: make(map[string][]string)}
+		s = SharedState{Version: 1, Resource: r.Resource, Config: r.Config, Records: make(map[string]*durableRecord), Queues: make(map[string][]string)}
 	} else {
 		s = *state
 	}
