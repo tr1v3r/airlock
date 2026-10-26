@@ -10,6 +10,7 @@ import (
 func TestCommitWindowBoundaries(t *testing.T) {
 	now := time.Unix(1000, 123456000).UTC()
 	window := CommitWindow{NotBefore: now, Before: now.Add(time.Millisecond)}
+
 	for _, tc := range []struct {
 		offset time.Duration
 		want   bool
@@ -18,6 +19,7 @@ func TestCommitWindowBoundaries(t *testing.T) {
 			t.Errorf("offset %v: got %t want %t", tc.offset, got, tc.want)
 		}
 	}
+
 	window.Before = time.Time{}
 	if !window.Allows(now.Add(100*365*24*time.Hour)) || window.Allows(now.Add(-time.Nanosecond)) {
 		t.Fatal("unbounded window mishandles lower bound")
@@ -48,15 +50,18 @@ func TestOptimisticDirectGrantCannotCrossWaitDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	expectState(t, res, Granted)
 	if !window.Before.Equal(r.WaitUntil) || window.Allows(now.Add(3*time.Millisecond)) {
 		t.Fatalf("direct grant crossed WaitUntil: %+v", window)
 	}
+
 	// A missed publication is discarded; retry from the unchanged authoritative snapshot.
 	_, res, _, err = optimisticPlan(t, nil, now.Add(3*time.Millisecond), cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	expectState(t, res, Expired)
 }
 
@@ -70,11 +75,13 @@ func TestOptimisticFreshLeaseCannotBePublishedAlreadyExpired(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	expectState(t, res, Granted)
 	boundary := now.Add(cfg.LeaseTTL)
 	if !window.Before.Equal(boundary) || window.Allows(boundary) {
 		t.Fatalf("missing newly granted lease boundary: %+v", window)
 	}
+
 	// Re-evaluation may grant afresh, but computes a fresh lease deadline.
 	_, res, window, err = optimisticPlan(t, nil, boundary, cmd)
 	if err != nil {
@@ -100,10 +107,12 @@ func TestOptimisticRenewCannotCrossOriginalLeaseExpiry(t *testing.T) {
 	if res.Remaining != cfg.LeaseTTL || !window.Before.Equal(expiry) || window.Allows(expiry) {
 		t.Fatalf("renew bypassed original expiry: %+v %+v", res, window)
 	}
+
 	_, res, _, err = optimisticPlan(t, h.data, expiry, cmd)
 	if !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("expired lease revived: %v", err)
 	}
+
 	expectState(t, res, Expired)
 }
 
@@ -126,6 +135,7 @@ func TestOptimisticSubmissionTemporalBounds(t *testing.T) {
 		}, nil, Granted},
 		{"wait window opens", func(r *Request, now time.Time) { r.WaitUntil = now.Add(r.Config.MaxWait + 5*time.Millisecond) }, nil, Granted},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			now := time.Unix(1000, 0).UTC()
@@ -140,14 +150,17 @@ func TestOptimisticSubmissionTemporalBounds(t *testing.T) {
 			} else if !errors.Is(err, ErrInvalidRequest) {
 				t.Fatalf("future request accepted: %v", err)
 			}
+
 			boundary := now.Add(5 * time.Millisecond)
 			if !window.Before.Equal(boundary) || window.Allows(boundary) {
 				t.Fatalf("missing temporal boundary: %+v", window)
 			}
+
 			_, res, _, err := optimisticPlan(t, nil, boundary, cmd)
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("recomputed error %v want %v", err, tc.want)
 			}
+
 			expectState(t, res, tc.status)
 		})
 	}
@@ -167,23 +180,28 @@ func TestOptimisticProtectedQueueExpiryRecomputesScheduling(t *testing.T) {
 	baseline := append([]byte(nil), h.data...)
 	cursor := h.snapshot().Cursor
 	cmd := Command{Kind: Observe, Request: high}
+
 	for i := 0; i < 3; i++ {
 		_, res, window, err := optimisticPlan(t, baseline, h.now, cmd)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		expectState(t, res, Queued)
 		if !window.Before.Equal(big.WaitUntil) || window.Allows(big.WaitUntil) {
 			t.Fatal("protected queue deadline missing")
 		}
 	}
+
 	if !bytes.Equal(h.data, baseline) || h.snapshot().Cursor != cursor {
 		t.Fatal("uncommitted attempts consumed scheduling state")
 	}
+
 	next, res, _, err := optimisticPlan(t, baseline, big.WaitUntil, cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	expectState(t, res, Granted)
 	h.data = next
 	s := h.snapshot()
@@ -208,6 +226,7 @@ func TestOptimisticGarbageCollectionBounds(t *testing.T) {
 			if candidate := h.now.Add(retention); candidate.After(gcAt) {
 				gcAt = candidate
 			}
+
 			// Use an already expired, absent command so only retained history supplies a future bound.
 			h.now = h.now.Add(2 * time.Second)
 			probe := stateTestRequest(h.now, cfg, "probe", 1)
@@ -223,10 +242,12 @@ func TestOptimisticGarbageCollectionBounds(t *testing.T) {
 			if !window.Before.Equal(gcAt) || window.Allows(gcAt) {
 				t.Fatalf("missing terminal GC boundary: %+v want %v", window, gcAt)
 			}
+
 			next, _, window, err := optimisticPlan(t, h.data, gcAt, cmd)
 			if !errors.Is(err, ErrSubmitExpired) {
 				t.Fatal(err)
 			}
+
 			h.data = next
 			if len(h.snapshot().Records) != 0 {
 				t.Fatal("history not collected after missed guard")
@@ -234,6 +255,7 @@ func TestOptimisticGarbageCollectionBounds(t *testing.T) {
 			if !window.Before.IsZero() {
 				t.Fatalf("empty terminal operation has artificial upper bound: %+v", window)
 			}
+
 			_, _, _, err = optimisticPlan(t, h.data, gcAt, Command{Kind: Submit, Request: old})
 			if !errors.Is(err, ErrSubmitExpired) {
 				t.Fatal("old identity readmitted after GC")
@@ -256,11 +278,14 @@ func TestOptimisticClockJumpAndInvalidState(t *testing.T) {
 	if window.Allows(evaluated.Add(-time.Microsecond)) {
 		t.Fatal("submillisecond rollback allowed")
 	}
+
 	_, res, _, err := optimisticPlan(t, h.data, h.now.Add(2*time.Second), cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	expectState(t, res, Expired)
+
 	for _, tc := range []struct {
 		name string
 		data []byte
@@ -289,6 +314,7 @@ func TestStructuredRenewRetainsOriginalCommitDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	originalExpiry := state.Records[request.ID].Until
 	next, renewed, window, err := Transition(state, now.Add(50*time.Millisecond), Command{Kind: Renew, Request: request, LeaseID: grant.LeaseID})
 	if err != nil {

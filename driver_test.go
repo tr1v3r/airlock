@@ -28,6 +28,7 @@ func TestNewRequestIdentity(t *testing.T) {
 	if a.SubmitUntil.Location() != time.UTC || !a.SubmitUntil.Equal(until.Truncate(time.Millisecond)) {
 		t.Fatalf("deadline not normalized: %v", a.SubmitUntil)
 	}
+
 	for _, secret := range []string{"", "0", strings.Repeat("g", 32), strings.Repeat("A", 32), strings.Repeat("0", 30), strings.Repeat("0", 34)} {
 		if validSecret(secret) {
 			t.Errorf("invalid secret accepted: %q", secret)
@@ -50,6 +51,7 @@ func TestDriverConfigValidation(t *testing.T) {
 		"submit upper":    func(c *ResourceConfig) { c.SubmitWindow = time.Hour + time.Millisecond },
 		"retention upper": func(c *ResourceConfig) { c.Retention = 24*time.Hour + time.Millisecond },
 	}
+
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
 			c := stateTestConfig()
@@ -59,6 +61,7 @@ func TestDriverConfigValidation(t *testing.T) {
 			}
 		})
 	}
+
 	c := stateTestConfig()
 	c.LeaseTTL = time.Hour
 	c.MaxWait = time.Hour
@@ -86,7 +89,11 @@ func TestDriverRequestValidation(t *testing.T) {
 		{"owner", func(r *Request) { r.Owner = "wrong" }, ErrInvalidRequest},
 		{"id deadline", func(r *Request) { r.SubmitUntil = r.SubmitUntil.Add(time.Second) }, ErrInvalidRequest},
 		{"id suffix", func(r *Request) { r.ID += "0" }, ErrInvalidRequest},
-		{"negative epoch", func(r *Request) { x := NewRequest(time.Unix(-1, 0)); r.ID = x.ID; r.SubmitUntil = x.SubmitUntil }, ErrInvalidRequest},
+		{"negative epoch", func(r *Request) {
+			x := NewRequest(time.Unix(-1, 0))
+			r.ID = x.ID
+			r.SubmitUntil = x.SubmitUntil
+		}, ErrInvalidRequest},
 		{"fractional submit", func(r *Request) { r.SubmitUntil = r.SubmitUntil.Add(time.Nanosecond) }, ErrInvalidRequest},
 		{"fractional wait", func(r *Request) { r.WaitUntil = r.WaitUntil.Add(time.Nanosecond) }, ErrInvalidRequest},
 		{"wait bound", func(r *Request) { r.WaitUntil = r.SubmitUntil.Add(r.Config.MaxWait + time.Millisecond) }, ErrInvalidRequest},
@@ -94,6 +101,7 @@ func TestDriverRequestValidation(t *testing.T) {
 		{"negative weight", func(r *Request) { r.Weight = -1 }, ErrInvalidWeight},
 		{"excess weight", func(r *Request) { r.Weight = r.Config.Admission.Capacity + 1 }, ErrWeightExceedsCapacity},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			r := stateTestRequest(now, stateTestConfig(), "", 1)
@@ -103,6 +111,7 @@ func TestDriverRequestValidation(t *testing.T) {
 			}
 		})
 	}
+
 	r := stateTestRequest(now, stateTestConfig(), strings.Repeat("x", 256), 1)
 	r.Resource = strings.Repeat("r", 256)
 	r.WaitUntil = r.SubmitUntil.Add(r.Config.MaxWait)
@@ -117,6 +126,7 @@ func TestDriverPriorityConfigBounds(t *testing.T) {
 			c := stateTestConfig()
 			p := &PriorityPolicy{Groups: []PriorityGroup{{Name: "group", Turns: 1, MaxQueued: 100}}, DefaultGroup: "group", TenantGroups: map[string]string{}}
 			c.Admission.Priority = p
+
 			switch name {
 			case "mapping count":
 				for i := 0; i < 10001; i++ {
@@ -130,6 +140,7 @@ func TestDriverPriorityConfigBounds(t *testing.T) {
 				p.Groups[0].Name = strings.Repeat("g", 257)
 				p.DefaultGroup = p.Groups[0].Name
 			}
+
 			if err := validConfig(c); !errors.Is(err, ErrInvalidConfig) {
 				t.Fatalf("got %v", err)
 			}
@@ -146,13 +157,16 @@ func TestDriverTextEncoding(t *testing.T) {
 			} else {
 				r.Tenant = bad
 			}
+
 			if err := validRequest(r); !errors.Is(err, ErrInvalidRequest) {
 				t.Fatalf("%s accepted: %v", field, err)
 			}
 		}
+
 		for _, field := range []string{"group", "tenant", "mapping"} {
 			c := stateTestConfig()
 			c.Admission.Priority = &PriorityPolicy{Groups: []PriorityGroup{{Name: "g", Turns: 1, MaxQueued: 100}}, DefaultGroup: "g", TenantGroups: map[string]string{"a": "g"}}
+
 			switch field {
 			case "group":
 				c.Admission.Priority.Groups[0].Name = bad
@@ -161,6 +175,7 @@ func TestDriverTextEncoding(t *testing.T) {
 			case "mapping":
 				c.Admission.Priority.TenantGroups["a"] = bad
 			}
+
 			if err := validConfig(c); !errors.Is(err, ErrInvalidConfig) {
 				t.Fatalf("%s accepted: %v", field, err)
 			}

@@ -28,6 +28,7 @@ func (a *Airlock) TryAcquireN(n int) (*Permit, error) {
 	if n <= 0 {
 		return nil, ErrInvalidWeight
 	}
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if n > a.cfg.Capacity {
@@ -36,6 +37,7 @@ func (a *Airlock) TryAcquireN(n int) (*Permit, error) {
 	if a.queued != 0 || n > a.cfg.Capacity-a.used {
 		return nil, ErrWouldBlock
 	}
+
 	a.used += n
 	a.active++
 	return &Permit{owner: a, weight: n}, nil

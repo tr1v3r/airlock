@@ -46,25 +46,31 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 	if err := airlock.ValidateCommand(cmd); err != nil {
 		return airlock.Result{}, err
 	}
+
 	d.mu.Lock()
 	if d.resources == nil {
 		d.resources = make(map[string]*resource)
 	}
+
 	r := d.resources[cmd.Request.Resource]
 	if r == nil {
 		r = &resource{gate: make(chan struct{}, 1)}
 		d.resources[cmd.Request.Resource] = r
 	}
+
 	d.mu.Unlock()
+
 	select {
 	case r.gate <- struct{}{}:
 		defer func() { <-r.gate }()
 	case <-ctx.Done():
 		return airlock.Result{}, ctx.Err()
 	}
+
 	if err := ctx.Err(); err != nil {
 		return airlock.Result{}, err
 	}
+
 	if cmd.Kind == airlock.Observe && r.state != nil {
 		o := r.observation
 		o.Record = r.state.Records[cmd.Request.ID]
@@ -75,21 +81,25 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 			return result, err
 		}
 	}
+
 	state, err := airlock.DecodeState(r.snapshot)
 	if err != nil {
 		return airlock.Result{}, err
 	}
+
 	next, result, _, err := airlock.Transition(state, time.Now(), cmd)
 	if next != nil {
 		data, codecErr := airlock.EncodeState(next)
 		if codecErr != nil {
 			return airlock.Result{}, codecErr
 		}
+
 		r.snapshot = data
 		r.state = next
 		r.observation = airlock.Observation{Resource: next.Resource, Config: next.Config, Revision: next.Revision,
 			Time: next.Time, NextMaintenance: next.NextMaintenance()}
 	}
+
 	if err := ctx.Err(); err != nil {
 		return airlock.Result{}, err
 	}

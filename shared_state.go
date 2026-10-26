@@ -62,6 +62,7 @@ func transition(state *SharedState, now time.Time, cmd Command) (*SharedState, R
 	if err := ValidateCommand(cmd); err != nil {
 		return nil, Result{}, err
 	}
+
 	observedNow := now.UTC()
 	now = observedNow.Truncate(time.Millisecond)
 	var s SharedState
@@ -70,24 +71,30 @@ func transition(state *SharedState, now time.Time, cmd Command) (*SharedState, R
 	} else {
 		s = *state
 	}
-	if state != nil && (s.Version != 1 || s.Records == nil || s.Revision == 0 || s.Revision == ^uint64(0) || s.Time.IsZero() || now.Before(s.Time)) {
+
+	if state != nil && (s.Version != 1 || s.Records == nil || s.Revision == 0 || s.Revision == ^uint64(0) ||
+		s.Time.IsZero() || now.Before(s.Time)) {
 		return nil, Result{}, ErrCorruptState
 	}
 	if s.Resource != r.Resource || !reflect.DeepEqual(s.Config, r.Config) {
 		return nil, Result{}, ErrConfigConflict
 	}
+
 	for _, rec := range s.Records {
 		if rec != nil {
 			rec.Request.Config = s.Config
 		}
 	}
+
 	if old := s.Records[r.ID]; old != nil && !reflect.DeepEqual(old.Request, r) {
 		return nil, Result{}, ErrRequestConflict
 	}
+
 	g, waiters, err := s.restore()
 	if err != nil {
 		return nil, Result{}, err
 	}
+
 	// Expire all old grants/queues before granting anything. Map iteration does
 	// not alter survivor order; dispatch runs only after the entire sweep.
 	for id, rec := range s.Records {
@@ -99,13 +106,16 @@ func transition(state *SharedState, now time.Time, cmd Command) (*SharedState, R
 				g.used -= rec.Request.Weight
 				g.active--
 			}
+
 			rec.Status = Expired
 			rec.Finished = now
 		}
+
 		if rec.Status != Queued && rec.Status != Granted && !now.Before(rec.Finished.Add(s.Config.Retention)) && !now.Before(rec.Request.SubmitUntil) {
 			delete(s.Records, id)
 		}
 	}
+
 	s.dispatch(g, waiters, now)
 	rec := s.Records[r.ID]
 	var opErr error
@@ -122,6 +132,7 @@ func transition(state *SharedState, now time.Time, cmd Command) (*SharedState, R
 		default:
 			rec = &durableRecord{Request: r}
 			s.Records[r.ID] = rec
+
 			switch {
 			case cmd.Kind == Cancel:
 				rec.Status = Cancelled
@@ -153,19 +164,23 @@ func transition(state *SharedState, now time.Time, cmd Command) (*SharedState, R
 				g.remove(waiters[r.ID])
 				delete(waiters, r.ID)
 			}
+
 			if rec.Status == Granted {
 				g.used -= r.Weight
 				g.active--
 			}
+
 			if rec.Status == Queued || rec.Status == Granted {
 				rec.Status = Cancelled
 				rec.Finished = now
 			}
+
 		case Renew, Release:
 			if rec.LeaseID == "" || rec.LeaseID != cmd.LeaseID {
 				opErr = ErrLeaseLost
 				break
 			}
+
 			if rec.Status == Granted {
 				if cmd.Kind == Renew {
 					rec.Until = now.Add(r.Config.LeaseTTL)
@@ -180,6 +195,7 @@ func transition(state *SharedState, now time.Time, cmd Command) (*SharedState, R
 			}
 		}
 	}
+
 	s.dispatch(g, waiters, now)
 	s.capture(g, waiters)
 	s.Time = now
@@ -192,14 +208,17 @@ func transition(state *SharedState, now time.Time, cmd Command) (*SharedState, R
 		if rec.Status == Granted {
 			out.Remaining = rec.Until.Sub(observedNow)
 		}
+
 		if rec.Status == Rejected && opErr == nil {
 			opErr = admissionError(rec.Failure)
 		}
 	}
+
 	// Store immutable configuration once, not once per retained request.
 	for _, rec := range s.Records {
 		rec.Request.Config = ResourceConfig{}
 	}
+
 	return &s, out, opErr
 }
 
@@ -210,6 +229,7 @@ func admissionError(s string) error {
 			return e
 		}
 	}
+
 	return ErrCorruptState
 }
 
@@ -231,13 +251,15 @@ func validRecord(r *durableRecord, at time.Time) bool {
 	if r.LeaseID != "" && r.LeaseID != leaseIdentity(r.Request) {
 		return false
 	}
+
 	switch r.Status {
 	case Granted:
 		return r.LeaseID != "" && r.Finished.IsZero() && r.Failure == "" && r.Until.After(at) && !r.Until.After(at.Add(r.Request.Config.LeaseTTL))
 	case Queued:
 		return r.LeaseID == "" && r.Finished.IsZero() && r.Failure == "" && r.Until.Equal(r.Request.WaitUntil) && r.Until.After(at)
 	case Released, Expired, Cancelled, Rejected:
-		return !r.Finished.IsZero() && !r.Finished.After(at) && (r.Status != Released || r.LeaseID != "") && ((r.Status == Rejected && admissionError(r.Failure) != ErrCorruptState) || (r.Status != Rejected && r.Failure == ""))
+		return !r.Finished.IsZero() && !r.Finished.After(at) && (r.Status != Released || r.LeaseID != "") &&
+			((r.Status == Rejected && admissionError(r.Failure) != ErrCorruptState) || (r.Status != Rejected && r.Failure == ""))
 	default:
 		return false
 	}
@@ -246,6 +268,7 @@ func validRecord(r *durableRecord, at time.Time) bool {
 // dispatch applies shared scheduling and converts newly granted waiters into durable leases.
 func (s *durableSnapshot) dispatch(g *Airlock, ws map[string]*waiter, now time.Time) {
 	g.dispatch()
+
 	for id, w := range ws {
 		if w.granted {
 			grant(s.Records[id], now)
@@ -258,34 +281,42 @@ func (s *durableSnapshot) dispatch(g *Airlock, ws map[string]*waiter, now time.T
 func groups(g *Airlock) []*priorityQueue {
 	var result []*priorityQueue
 	seen := make(map[*priorityQueue]bool)
+
 	for _, q := range g.priority.schedule {
 		if !seen[q] {
 			seen[q] = true
 			result = append(result, q)
 		}
 	}
+
 	return result
 }
 
 // capture saves tenant FIFO order, group rotations and the protected request for later restoration.
 func (s *durableSnapshot) capture(g *Airlock, ws map[string]*waiter) {
 	ids := make(map[*waiter]string, len(ws))
+
 	for id, w := range ws {
 		ids[w] = id
 	}
+
 	s.Protected = ids[g.protected]
 	s.Cursor = g.priority.cursor
 	s.Rotations = nil
 	s.Queues = make(map[string][]string)
+
 	for _, group := range groups(g) {
 		tenants := []string{}
+
 		for e := group.rotation.Front(); e != nil; e = e.Next() {
 			tq := e.Value.(*tenantQueue)
 			tenants = append(tenants, tq.id)
+
 			for n := tq.requests.Front(); n != nil; n = n.Next() {
 				s.Queues[tq.id] = append(s.Queues[tq.id], ids[n.Value.(*waiter)])
 			}
 		}
+
 		s.Rotations = append(s.Rotations, tenants)
 	}
 }
@@ -298,15 +329,20 @@ func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 	if err != nil {
 		return nil, nil, ErrCorruptState
 	}
+
 	ws := make(map[string]*waiter)
 	qs := groups(g)
-	if s.Cursor < 0 || s.Cursor >= len(g.priority.schedule) || (len(s.Rotations) != 0 && len(s.Rotations) != len(qs)) || len(s.Records) > s.Config.MaxRecords {
+	if s.Cursor < 0 || s.Cursor >= len(g.priority.schedule) || (len(s.Rotations) != 0 &&
+		len(s.Rotations) != len(qs)) || len(s.Records) > s.Config.MaxRecords {
 		return nil, nil, ErrCorruptState
 	}
+
 	for id, r := range s.Records {
-		if r == nil || r.Request.ID != id || r.Request.Resource != s.Resource || validRequestFields(r.Request) != nil || !reflect.DeepEqual(r.Request.Config, s.Config) || !validRecord(r, s.Time) {
+		if r == nil || r.Request.ID != id || r.Request.Resource != s.Resource ||
+			validRequestFields(r.Request) != nil || !reflect.DeepEqual(r.Request.Config, s.Config) || !validRecord(r, s.Time) {
 			return nil, nil, ErrCorruptState
 		}
+
 		switch r.Status {
 		case Granted:
 			g.used += r.Request.Weight
@@ -314,41 +350,50 @@ func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 		case Queued, Cancelled, Released, Expired, Rejected:
 		}
 	}
+
 	if g.used > g.cfg.Capacity {
 		return nil, nil, ErrCorruptState
 	}
+
 	for i, rotation := range s.Rotations {
 		for _, tenant := range rotation {
 			if g.tenants[tenant] != nil || g.priority.group(tenant) != qs[i] || len(s.Queues[tenant]) == 0 {
 				return nil, nil, ErrCorruptState
 			}
+
 			for _, id := range s.Queues[tenant] {
 				r := s.Records[id]
 				if r == nil || r.Status != Queued || r.Request.Tenant != tenant || ws[id] != nil {
 					return nil, nil, ErrCorruptState
 				}
+
 				w, e := g.enqueue(tenant, r.Request.Weight)
 				if e != nil {
 					return nil, nil, ErrCorruptState
 				}
+
 				ws[id] = w
 			}
 		}
 	}
+
 	for id, r := range s.Records {
 		if r.Status == Queued && ws[id] == nil {
 			return nil, nil, ErrCorruptState
 		}
 	}
+
 	if len(g.tenants) != len(s.Queues) {
 		return nil, nil, ErrCorruptState
 	}
+
 	if s.Protected != "" {
 		g.protected = ws[s.Protected]
 		if g.protected == nil || g.protected.tenant.requests.Front().Value != g.protected {
 			return nil, nil, ErrCorruptState
 		}
 	}
+
 	g.priority.cursor = s.Cursor
 	return g, ws, nil
 }

@@ -179,7 +179,11 @@ func NewRequest(until time.Time) Request {
 }
 
 // randomID generates a lowercase 128-bit cryptographic identity.
-func randomID() string { b := make([]byte, 16); _, _ = rand.Read(b); return hex.EncodeToString(b) }
+func randomID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 // validSecret accepts exactly 16 bytes encoded as lowercase hexadecimal.
 func validSecret(s string) bool {
@@ -192,29 +196,35 @@ func validConfig(c ResourceConfig) error {
 	if c.Admission.Capacity > 10000 || c.Admission.MaxQueued > 10000 || c.MaxRecords < 1 || c.MaxRecords > 10000 {
 		return ErrInvalidConfig
 	}
+
 	for _, d := range []time.Duration{c.LeaseTTL, c.MaxWait, c.SubmitWindow, c.Retention} {
 		if d <= 0 || d%time.Millisecond != 0 {
 			return ErrInvalidConfig
 		}
 	}
+
 	if c.LeaseTTL > time.Hour || c.MaxWait > time.Hour || c.SubmitWindow > time.Hour || c.Retention > 24*time.Hour {
 		return ErrInvalidConfig
 	}
+
 	if p := c.Admission.Priority; p != nil {
 		if len(p.TenantGroups) > 10000 {
 			return ErrInvalidConfig
 		}
+
 		for tenant, group := range p.TenantGroups {
 			if len(tenant) > 256 || len(group) > 256 || !validText(tenant) || !validText(group) {
 				return ErrInvalidConfig
 			}
 		}
+
 		for _, group := range p.Groups {
 			if len(group.Name) > 256 || !validText(group.Name) {
 				return ErrInvalidConfig
 			}
 		}
 	}
+
 	_, err := New(c.Admission)
 	return err
 }
@@ -232,7 +242,11 @@ func validRequest(r Request) error {
 // multiply restoration cost by the number of configured tenant mappings.
 func validRequestFields(r Request) error {
 	prefix := strconv.FormatInt(r.SubmitUntil.UnixMilli(), 10) + "-"
-	if r.Resource == "" || !validText(r.Resource) || !validText(r.Tenant) || len(r.Resource) > 256 || len(r.Tenant) > 256 || !validSecret(r.Owner) || !strings.HasPrefix(r.ID, prefix) || !validSecret(strings.TrimPrefix(r.ID, prefix)) || r.SubmitUntil.UnixMilli() <= 0 || !r.SubmitUntil.Equal(r.SubmitUntil.Truncate(time.Millisecond)) || !r.WaitUntil.Equal(r.WaitUntil.Truncate(time.Millisecond)) || r.WaitUntil.After(r.SubmitUntil.Add(r.Config.MaxWait)) {
+	if r.Resource == "" || !validText(r.Resource) || !validText(r.Tenant) || len(r.Resource) > 256 ||
+		len(r.Tenant) > 256 || !validSecret(r.Owner) || !strings.HasPrefix(r.ID, prefix) ||
+		!validSecret(strings.TrimPrefix(r.ID, prefix)) || r.SubmitUntil.UnixMilli() <= 0 ||
+		!r.SubmitUntil.Equal(r.SubmitUntil.Truncate(time.Millisecond)) ||
+		!r.WaitUntil.Equal(r.WaitUntil.Truncate(time.Millisecond)) || r.WaitUntil.After(r.SubmitUntil.Add(r.Config.MaxWait)) {
 		return ErrInvalidRequest
 	}
 	if r.Weight <= 0 {
@@ -251,6 +265,7 @@ func ValidateCommand(cmd Command) error {
 	if err := validRequest(cmd.Request); err != nil {
 		return err
 	}
+
 	switch cmd.Kind {
 	case Submit, Observe, Cancel, Renew, Release:
 		return nil

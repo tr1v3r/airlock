@@ -35,6 +35,7 @@ func testLease(t *testing.T) *fakeLease {
 			if ctx.Err() != nil {
 				t.Errorf("cleanup inherited cancellation: %v", ctx.Err())
 			}
+
 			if _, ok := ctx.Deadline(); !ok {
 				t.Error("cleanup has no deadline")
 			}
@@ -53,6 +54,7 @@ func TestJobRenewsAndReleasesAfterWork(t *testing.T) {
 		case renewed <- struct{}{}:
 		default:
 		}
+
 		return nil
 	}
 	stopped, releases := false, 0
@@ -60,11 +62,13 @@ func TestJobRenewsAndReleasesAfterWork(t *testing.T) {
 		if !stopped {
 			t.Error("released before work stopped")
 		}
+
 		releases++
 		return nil
 	}
 	err := runJob(ctx, lease, time.Millisecond, time.Second, func(ctx context.Context) error {
 		defer func() { stopped = true }()
+
 		select {
 		case <-renewed:
 			return nil
@@ -94,6 +98,7 @@ func TestJobLeaseLossCancelsBlockedRenewalBeforeRelease(t *testing.T) {
 		if !workStopped || !renewalStopped.Load() {
 			t.Error("release raced work or renewal")
 		}
+
 		if ctx.Err() != nil {
 			t.Error("cancelled cleanup")
 		}
@@ -101,12 +106,14 @@ func TestJobLeaseLossCancelsBlockedRenewalBeforeRelease(t *testing.T) {
 	}
 	err := runJob(ctx, lease, time.Millisecond, time.Second, func(ctx context.Context) error {
 		defer func() { workStopped = true }()
+
 		select {
 		case <-started:
 			close(lease.done)
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+
 		<-ctx.Done()
 		return ctx.Err()
 	})
@@ -151,6 +158,7 @@ func TestJobPreservesRenewErrorWhenDoneClosesFirst(t *testing.T) {
 
 func TestJobWorkFinishedPreservesLateRenewalFailure(t *testing.T) {
 	lostReply := errors.New("renew committed but response was lost")
+
 	for _, tc := range []struct {
 		name     string
 		renewErr error
@@ -180,6 +188,7 @@ func TestJobWorkFinishedPreservesLateRenewalFailure(t *testing.T) {
 				if !joined.Load() || ctx.Err() != nil {
 					t.Error("release did not join renewal with an independent context")
 				}
+
 				releases++
 				return nil
 			}
@@ -206,6 +215,7 @@ func (e testErrorGroup) Unwrap() []error { return e }
 
 func TestOnlyContextError(t *testing.T) {
 	backend := errors.New("backend unavailable")
+
 	for _, tc := range []struct {
 		name        string
 		err, target error
@@ -247,6 +257,7 @@ func TestJobParentCancellationAndInvalidLease(t *testing.T) {
 		if invalid {
 			want = airlock.ErrLeaseLost
 		}
+
 		if !errors.Is(err, want) || called == invalid {
 			t.Fatalf("invalid=%v called=%v err=%v", invalid, called, err)
 		}
@@ -265,6 +276,7 @@ func TestJobReleaseRetryKeepsIdentityAndDoesNotRetryWork(t *testing.T) {
 			if ctx.Err() != nil || ctx == previous {
 				t.Error("cleanup did not get a fresh context")
 			}
+
 			previous = ctx
 			if persistent || attempts == 1 {
 				return lostReply

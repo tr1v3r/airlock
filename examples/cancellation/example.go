@@ -17,6 +17,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	held, err := lock.AcquireFor(context.Background(), "A")
 	if err != nil {
 		log.Fatal(err)
@@ -32,5 +33,6 @@ func main() {
 		fmt.Println("tokens still held:", lock.Stats().InUse) // 1; failure did not take a token.
 		return                                                // Do not release a token for the failed acquisition.
 	}
+
 	permit.Release()
 }

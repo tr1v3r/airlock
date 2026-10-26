@@ -17,15 +17,18 @@ func squares(ctx context.Context, inputs []int) ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	results := make([]int, len(inputs))
 	var wg sync.WaitGroup
 	// Also join already-started workers if a later acquisition is cancelled.
 	defer wg.Wait()
+
 	for i, value := range inputs {
 		permit, err := lock.AcquireFor(ctx, "batch")
 		if err != nil {
 			return nil, err
 		}
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -33,6 +36,7 @@ func squares(ctx context.Context, inputs []int) ([]int, error) {
 			results[i] = value * value
 		}()
 	}
+
 	return results, nil
 }
 
@@ -42,5 +46,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	fmt.Println(results)
 }

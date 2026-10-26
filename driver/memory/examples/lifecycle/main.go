@@ -32,18 +32,21 @@ func demo() error {
 	if err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	lease, err := client.Acquire(ctx)
 	if err != nil {
 		return err
 	}
+
 	// In a remote deployment, choose renewal and I/O bounds with ample margin
 	// before LeaseTTL. The ordinary default TTL is 30s, not this demo's 1s.
 	err = runJob(ctx, lease, 250*time.Millisecond, 100*time.Millisecond, func(ctx context.Context) error {
 		fmt.Println("work started")
 		timer := time.NewTimer(1200 * time.Millisecond)
 		defer timer.Stop()
+
 		select {
 		case <-ctx.Done():
 			fmt.Println("work stopped")
@@ -87,6 +90,7 @@ func runJob(ctx context.Context, lease jobLease, renewEvery, operationTimeout ti
 	// Keep observing expiry even while a renewal is blocked on network I/O.
 	go func() {
 		defer close(watchDone)
+
 		select {
 		case <-lease.Done():
 			cancel(airlock.ErrLeaseLost)
@@ -97,6 +101,7 @@ func runJob(ctx context.Context, lease jobLease, renewEvery, operationTimeout ti
 		defer close(renewDone)
 		ticker := time.NewTicker(renewEvery)
 		defer ticker.Stop()
+
 		for {
 			select {
 			case <-workCtx.Done():
@@ -105,6 +110,7 @@ func runJob(ctx context.Context, lease jobLease, renewEvery, operationTimeout ti
 				if workCtx.Err() != nil {
 					return
 				}
+
 				op, stop := context.WithTimeout(workCtx, operationTimeout)
 				err := lease.Renew(op)
 				stop()
@@ -113,6 +119,7 @@ func runJob(ctx context.Context, lease jobLease, renewEvery, operationTimeout ti
 					cancel(renewalErr)
 					return
 				}
+
 				fmt.Println("lease renewed")
 			}
 		}
@@ -129,17 +136,20 @@ func runJob(ctx context.Context, lease jobLease, renewEvery, operationTimeout ti
 				err = errors.Join(err, cause)
 			}
 		}
+
 		// Preserve a backend failure even when work finished (or the watcher
 		// cancelled) before Renew returned. Normal cancellation caused by stopping
 		// the supervisors is not itself a failed job.
 		if renewalErr != nil && !onlyContextError(renewalErr, workCtx.Err()) && !errors.Is(err, renewalErr) {
 			err = errors.Join(err, renewalErr)
 		}
+
 		err = errors.Join(err, releaseStoppedJob(ctx, lease, operationTimeout))
 	}()
 	if !lease.Valid() {
 		cancel(airlock.ErrLeaseLost)
 	}
+
 	if workCtx.Err() != nil {
 		return context.Cause(workCtx)
 	}
@@ -153,18 +163,22 @@ func onlyContextError(err, target error) bool {
 	if err == nil || target == nil {
 		return false
 	}
+
 	switch wrapped := err.(type) {
 	case interface{ Unwrap() []error }:
 		children := wrapped.Unwrap()
 		if len(children) == 0 {
 			return false
 		}
+
 		for _, child := range children {
 			if !onlyContextError(child, target) {
 				return false
 			}
 		}
+
 		return true
+
 	case interface{ Unwrap() error }:
 		return onlyContextError(wrapped.Unwrap(), target)
 	default:
@@ -175,6 +189,7 @@ func onlyContextError(err, target error) bool {
 // releaseStoppedJob retries cleanup once with the same identity and fresh bounded contexts.
 func releaseStoppedJob(ctx context.Context, lease jobLease, timeout time.Duration) error {
 	var failures []error
+
 	// A failed release may already have committed. Retry cleanup once using the
 	// SAME lease identity; never acquire a new lease or rerun the business task.
 	for attempt := 0; attempt < 2; attempt++ {
@@ -184,7 +199,9 @@ func releaseStoppedJob(ctx context.Context, lease jobLease, timeout time.Duratio
 		if err == nil {
 			return nil
 		}
+
 		failures = append(failures, err)
 	}
+
 	return fmt.Errorf("release outcome unknown after two attempts: %w", errors.Join(failures...))
 }

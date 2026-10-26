@@ -29,20 +29,24 @@ func TestSynchronousFailover(t *testing.T) {
 	if mode == "" {
 		t.Skip("run scripts/postgres-failover.sh")
 	}
+
 	path := os.Getenv("AIRLOCK_PG_FAILOVER_FIXTURE")
 	dsn := os.Getenv("AIRLOCK_POSTGRES_DSN")
 	if path == "" || dsn == "" {
 		t.Fatal("missing isolated failover fixture or DSN")
 	}
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
 	driver, err := postgres.New(db, "synchronous-failover")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	call := func(kind airlock.Operation, r airlock.Request, lease string, want airlock.Status) airlock.Result {
@@ -53,11 +57,13 @@ func TestSynchronousFailover(t *testing.T) {
 		}
 		return result
 	}
+
 	switch mode {
 	case "seed":
 		if err := driver.EnsureSchema(ctx); err != nil {
 			t.Fatal(err)
 		}
+
 		cfg := airlock.ResourceConfig{Admission: airlock.Config{Capacity: 3, MaxQueued: 10, MaxQueuedPerTenant: 10, Priority: &airlock.PriorityPolicy{Groups: []airlock.PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 5}, {Name: "low", Turns: 1, MaxQueued: 5}}, DefaultGroup: "low", TenantGroups: map[string]string{"online": "high"}}}, LeaseTTL: time.Minute, MaxWait: time.Minute, SubmitWindow: time.Minute, Retention: time.Minute, MaxRecords: 100}
 		req := func(tenant string, n int) airlock.Request {
 			now := time.Now()
@@ -79,23 +85,28 @@ func TestSynchronousFailover(t *testing.T) {
 		if err := os.WriteFile(path, data, 0600); err != nil {
 			t.Fatal(err)
 		}
+
 	case "verify":
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		var fixture failoverFixture
 		if err := json.Unmarshal(data, &fixture); err != nil {
 			t.Fatal(err)
 		}
+
 		var recovery bool
 		if err := db.QueryRowContext(ctx, "SELECT pg_catalog.pg_is_in_recovery()").Scan(&recovery); err != nil || recovery {
 			t.Fatalf("standby not promoted: %t %v", recovery, err)
 		}
+
 		held := call(airlock.Observe, fixture.Holder, "", airlock.Granted)
 		if held.LeaseID != fixture.LeaseID {
 			t.Fatal("failover replaced a committed lease")
 		}
+
 		call(airlock.Observe, fixture.Pending, "", airlock.Queued)
 		small := airlock.NewRequest(time.Now().Add(30 * time.Second))
 		small.Config = fixture.Holder.Config
@@ -115,7 +126,9 @@ func TestSynchronousFailover(t *testing.T) {
 		if _, err := driver.Release(ctx, airlock.LeaseRef{Request: wrong, ID: tiny.LeaseID}); !errors.Is(err, airlock.ErrRequestConflict) {
 			t.Fatalf("wrong owner: %v", err)
 		}
+
 		call(airlock.Release, small, tiny.LeaseID, airlock.Released)
+
 	default:
 		t.Fatalf("unknown mode %q", mode)
 	}

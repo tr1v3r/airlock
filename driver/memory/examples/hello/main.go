@@ -30,12 +30,14 @@ func hello() error {
 	if err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	lease, err := client.Acquire(ctx)
 	if err != nil {
 		return err
 	}
+
 	fmt.Println("hello, shared airlock")
 	// This example only prints a greeting. For long-running work, observe Done
 	// and renew explicitly as shown in ../lifecycle. Work stops before release.

@@ -139,10 +139,12 @@ func New(cfg Config) (*Airlock, error) {
 	if cfg.Capacity <= 0 || cfg.MaxQueued < 0 || cfg.MaxQueuedPerTenant < 0 || cfg.MaxQueuedPerTenant > cfg.MaxQueued {
 		return nil, ErrInvalidConfig
 	}
+
 	priority, err := newPriorityState(cfg.Priority, cfg.MaxQueued)
 	if err != nil {
 		return nil, err
 	}
+
 	// Retain only the compiled immutable policy, not caller-owned collections.
 	cfg.Priority = nil
 	return &Airlock{cfg: cfg, tenants: make(map[string]*tenantQueue), priority: priority}, nil
@@ -205,6 +207,7 @@ func (a *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 	if n <= 0 {
 		return nil, ErrInvalidWeight
 	}
+
 	a.mu.Lock()
 	if n > a.cfg.Capacity {
 		a.mu.Unlock()
@@ -220,21 +223,25 @@ func (a *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 		a.mu.Unlock()
 		return &Permit{owner: a, weight: n}, nil
 	}
+
 	w, err := a.enqueue(tenant, n)
 	if err != nil {
 		a.mu.Unlock()
 		return nil, err
 	}
+
 	// Install notification before dispatch while still holding mu.
 	w.ready = make(chan struct{})
 	a.dispatch()
 	a.mu.Unlock()
+
 	select {
 	case <-w.ready:
 		if w.err != nil {
 			return nil, w.err
 		}
 		return &Permit{owner: a, weight: n}, nil
+
 	case <-ctx.Done():
 		a.mu.Lock()
 		if w.granted {
@@ -245,6 +252,7 @@ func (a *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 			a.mu.Unlock()
 			return nil, w.err
 		}
+
 		a.remove(w)
 		a.dispatch()
 		a.mu.Unlock()
@@ -258,19 +266,23 @@ func (a *Airlock) enqueue(tenant string, n int) (*waiter, error) {
 	if a.queued >= a.cfg.MaxQueued {
 		return nil, ErrQueueFull
 	}
+
 	group := a.priority.group(tenant)
 	if group.queued >= group.limit {
 		return nil, ErrGroupQueueFull
 	}
+
 	tq := a.tenants[tenant]
 	if a.cfg.MaxQueuedPerTenant == 0 || (tq != nil && tq.requests.Len() >= a.cfg.MaxQueuedPerTenant) {
 		return nil, ErrTenantQueueFull
 	}
+
 	if tq == nil {
 		tq = &tenantQueue{id: tenant, group: group}
 		tq.turn = group.rotation.PushBack(tq)
 		a.tenants[tenant] = tq
 	}
+
 	w := &waiter{tenant: tq, weight: n}
 	w.node = tq.requests.PushBack(w)
 	a.queued++
@@ -283,6 +295,7 @@ func (a *Airlock) remove(w *waiter) {
 	if a.protected == w {
 		a.protected = nil
 	}
+
 	tq := w.tenant
 	tq.requests.Remove(w.node)
 	a.queued--
@@ -305,10 +318,12 @@ func (a *Airlock) dispatch() {
 			// Keep its queue indexed until the selected request is removed.
 			group.rotation.MoveToBack(tq.turn)
 		}
+
 		w := a.protected
 		if w.weight > a.cfg.Capacity-a.used {
 			return
 		}
+
 		a.remove(w)
 		a.used += w.weight
 		a.active++
@@ -326,11 +341,13 @@ func (p *Permit) Release() {
 	if p == nil {
 		return
 	}
+
 	p.once.Do(func() {
 		a := p.owner
 		if a == nil {
 			return
 		}
+
 		a.mu.Lock()
 		a.used -= p.weight
 		a.active--
@@ -356,11 +373,13 @@ func (a *Airlock) Resize(capacity int) error {
 	if capacity <= 0 {
 		return ErrInvalidConfig
 	}
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if capacity == a.cfg.Capacity {
 		return nil
 	}
+
 	previous := a.cfg.Capacity
 	a.cfg.Capacity = capacity
 	if capacity < previous {
@@ -373,10 +392,12 @@ func (a *Airlock) Resize(capacity int) error {
 					w.err = ErrWeightExceedsCapacity
 					close(w.ready)
 				}
+
 				node = next
 			}
 		}
 	}
+
 	a.dispatch()
 	return nil
 }

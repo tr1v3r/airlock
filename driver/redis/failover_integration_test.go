@@ -27,18 +27,22 @@ func TestAsynchronousFailoverLosesAcknowledgedGrant(t *testing.T) {
 	if mode == "" {
 		t.Skip("run scripts/redis-failover.sh")
 	}
+
 	path, addr := os.Getenv("AIRLOCK_REDIS_FAILOVER_FIXTURE"), os.Getenv("AIRLOCK_REDIS_ADDR")
 	if path == "" || addr == "" {
 		t.Fatal("missing isolated failover fixture or address")
 	}
+
 	c := goredis.NewClient(&goredis.Options{Addr: addr, ContextTimeoutEnabled: true})
 	t.Cleanup(func() { _ = c.Close() })
 	d, err := redis.New(c, "async-failover")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	switch mode {
 	case "seed":
 		r := airlock.NewRequest(time.Now().Add(time.Minute))
@@ -49,6 +53,7 @@ func TestAsynchronousFailoverLosesAcknowledgedGrant(t *testing.T) {
 		if err != nil || got.Status != airlock.Granted {
 			t.Fatalf("seed: %+v %v", got, err)
 		}
+
 		fixture := failoverFixture{Request: r, LeaseID: got.LeaseID, Deadline: start.Add(got.Remaining)}
 		data, err := json.Marshal(fixture)
 		if err != nil {
@@ -57,11 +62,13 @@ func TestAsynchronousFailoverLosesAcknowledgedGrant(t *testing.T) {
 		if err := os.WriteFile(path, data, 0600); err != nil {
 			t.Fatal(err)
 		}
+
 	case "verify":
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		var fixture failoverFixture
 		if err := json.Unmarshal(data, &fixture); err != nil {
 			t.Fatal(err)
@@ -69,10 +76,12 @@ func TestAsynchronousFailoverLosesAcknowledgedGrant(t *testing.T) {
 		if !time.Now().Before(fixture.Deadline) {
 			t.Fatal("fault took longer than old lease; overlap was not demonstrated")
 		}
+
 		got, err := d.Observe(ctx, fixture.Request)
 		if !errors.Is(err, airlock.ErrNotFound) || got.Status != "" || got.LeaseID != "" || got.Weight != 0 {
 			t.Fatalf("expected lost grant: %+v %v", got, err)
 		}
+
 		fresh := airlock.NewRequest(time.Now().Add(30 * time.Second))
 		fresh.Config, fresh.Resource, fresh.Weight, fresh.WaitUntil = fixture.Request.Config, fixture.Request.Resource, 1, fresh.SubmitUntil
 		got, err = d.Submit(ctx, fresh)
@@ -82,7 +91,9 @@ func TestAsynchronousFailoverLosesAcknowledgedGrant(t *testing.T) {
 		if !time.Now().Before(fixture.Deadline) {
 			t.Fatal("new grant did not overlap old acknowledged lease")
 		}
+
 		t.Log("confirmed: stale promotion grants full capacity while original acknowledged lease has time remaining")
+
 	default:
 		t.Fatalf("unknown mode %q", mode)
 	}

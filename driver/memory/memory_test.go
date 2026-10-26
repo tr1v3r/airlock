@@ -21,6 +21,7 @@ func TestCancellation(t *testing.T) {
 	if _, err := d.Submit(ctx, airlock.Request{}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
+
 	d.resources = map[string]*resource{"locked": {gate: make(chan struct{}, 1)}}
 	r := d.resources["locked"]
 	r.gate <- struct{}{}
@@ -29,6 +30,7 @@ func TestCancellation(t *testing.T) {
 	if _, err := d.Submit(ctx, memoryRequest("locked")); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
 	}
+
 	<-r.gate
 }
 
@@ -74,6 +76,7 @@ func TestCancellationAtAtomicBoundary(t *testing.T) {
 		if _, err := d.Submit(ctx, request); !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
+
 		stored := d.resources[request.Resource].snapshot
 		if (len(stored) > 0) != (at == 3) {
 			t.Fatalf("commit state at boundary %d", at)
@@ -94,6 +97,7 @@ func TestCorruptSnapshotIsNotPublished(t *testing.T) {
 			if string(stored.snapshot) != snapshot {
 				t.Fatal("failed transition replaced committed snapshot")
 			}
+
 			// A failed read/transition must release the gate for subsequent recovery.
 			select {
 			case stored.gate <- struct{}{}:

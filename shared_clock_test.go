@@ -24,6 +24,7 @@ func (d *clockStateDriver) executeClock(ctx context.Context, cmd Command) (Resul
 	if next != nil {
 		d.state = next
 	}
+
 	d.calls = append(d.calls, cmd)
 	d.mu.Unlock()
 	if d.after != nil {
@@ -80,6 +81,7 @@ func TestSharedClockAllowanceOffsets(t *testing.T) {
 			o := clockOptions()
 			o.ClockSkewAllowance = tc.allowance
 			c := clientNew(t, d, o)
+
 			for attempt := 0; attempt < 3; attempt++ {
 				lease, err := c.Acquire(context.Background())
 				if !errors.Is(err, tc.want) {
@@ -89,6 +91,7 @@ func TestSharedClockAllowanceOffsets(t *testing.T) {
 					if lease != nil {
 						t.Fatal("failed acquisition authorized work")
 					}
+
 					continue
 				}
 				if lease == nil || !lease.Valid() {
@@ -100,6 +103,7 @@ func TestSharedClockAllowanceOffsets(t *testing.T) {
 				if err := lease.Release(context.Background()); err != nil {
 					t.Fatal(err)
 				}
+
 				clientClosed(t, lease)
 			}
 		})
@@ -121,6 +125,7 @@ func TestSharedClockAllowanceDeadlineIdentity(t *testing.T) {
 				ctx, cancel = context.WithDeadline(ctx, callerDeadline)
 				defer cancel()
 			}
+
 			before := time.Now().UTC().Truncate(time.Millisecond)
 			lease, err := c.Acquire(ctx)
 			after := time.Now().UTC().Truncate(time.Millisecond)
@@ -136,6 +141,7 @@ func TestSharedClockAllowanceDeadlineIdentity(t *testing.T) {
 			if !strings.HasPrefix(r.ID, strconv.FormatInt(r.SubmitUntil.UnixMilli(), 10)+"-") {
 				t.Fatal("request identity lost its immutable deadline binding")
 			}
+
 			if early {
 				if !r.WaitUntil.Equal(callerDeadline.UTC().Truncate(time.Millisecond).Add(-o.ClockSkewAllowance)) {
 					t.Fatalf("caller deadline not shortened: %v", r.WaitUntil)
@@ -146,6 +152,7 @@ func TestSharedClockAllowanceDeadlineIdentity(t *testing.T) {
 					t.Fatalf("waiting budget not reserved: %v", r.WaitUntil)
 				}
 			}
+
 			if r.Config != o.Config { // This fixture has no pointer-valued priority policy.
 				t.Fatal("client allowance changed the immutable resource policy")
 			}
@@ -163,12 +170,14 @@ func TestSharedClockAllowanceShortContextDoesNotSubmit(t *testing.T) {
 		if cancelled {
 			cancel()
 		}
+
 		lease, err := c.Acquire(ctx)
 		cancel()
 		want := ErrLeaseLost
 		if cancelled {
 			want = context.Canceled
 		}
+
 		if lease != nil || !errors.Is(err, want) || len(d.commands()) != 0 {
 			t.Fatalf("cancelled=%v lease=%v error=%v commands=%d", cancelled, lease, err, len(d.commands()))
 		}
@@ -199,6 +208,7 @@ func TestSharedClockAllowanceCancellationDuringBudgetCheck(t *testing.T) {
 	if ctx.Err() != nil {
 		t.Fatal("context cancelled before acquisition preflight")
 	}
+
 	lease, err := client.Acquire(ctx)
 	if lease != nil || !errors.Is(err, context.Canceled) || errors.Is(err, ErrLeaseLost) || len(d.commands()) != 0 {
 		t.Fatalf("cancellation precedence: lease=%v error=%v commands=%d", lease, err, len(d.commands()))
@@ -250,6 +260,7 @@ func (d *deadlineOutcomeDriver) Cancel(ctx context.Context, r Request) (Result, 
 func TestSharedExpiredResultPreservesCallerDeadline(t *testing.T) {
 	lostObserve := errors.New("observe transport response lost")
 	lostCleanup := errors.New("cleanup transport response lost")
+
 	for _, tc := range []struct {
 		name                   string
 		expire                 bool
@@ -269,6 +280,7 @@ func TestSharedExpiredResultPreservesCallerDeadline(t *testing.T) {
 			if tc.expire {
 				d.expire = func() { cancel(context.DeadlineExceeded) }
 			}
+
 			o := sharedConcurrentOptions(16)
 			o.Config.Admission.Capacity = 1
 			o.Config.LeaseTTL = time.Minute // Holder survives the queued request's deadline.
@@ -279,6 +291,7 @@ func TestSharedExpiredResultPreservesCallerDeadline(t *testing.T) {
 			if d.observed.Status != Expired {
 				t.Fatalf("fixture did not observe backend expiry: %+v", d.observed)
 			}
+
 			wantLeaseLost := tc.observeErr == nil
 			wantDeadline := wantLeaseLost
 			if lease != nil || errors.Is(err, ErrLeaseLost) != wantLeaseLost || errors.Is(err, context.DeadlineExceeded) != wantDeadline {
@@ -287,6 +300,7 @@ func TestSharedExpiredResultPreservesCallerDeadline(t *testing.T) {
 			if tc.observeErr != nil && !errors.Is(err, tc.observeErr) || tc.cleanupErr != nil && !errors.Is(err, tc.cleanupErr) {
 				t.Fatalf("original operation/cleanup error lost: %v", err)
 			}
+
 			calls := d.commands()
 			if len(calls) != 4 || calls[1].Kind != Submit || calls[2].Kind != Observe || calls[3].Kind != Cancel {
 				t.Fatalf("unexpected cleanup sequence: %+v", calls)
@@ -317,6 +331,7 @@ func TestSharedFoldedDeadlineExpiryReportsCallerDeadline(t *testing.T) {
 				ctx, cancel = context.WithTimeout(context.Background(), 20*time.Second)
 				defer cancel()
 			}
+
 			d := &deadlineOutcomeDriver{}
 			o := sharedConcurrentOptions(16)
 			o.Config.Admission.Capacity = 1
@@ -328,6 +343,7 @@ func TestSharedFoldedDeadlineExpiryReportsCallerDeadline(t *testing.T) {
 			if d.observed.Status != Expired {
 				t.Fatalf("fixture did not observe backend expiry: %+v", d.observed)
 			}
+
 			wantDeadline := tc.withDeadline
 			if lease != nil || !errors.Is(err, ErrLeaseLost) || errors.Is(err, context.DeadlineExceeded) != wantDeadline {
 				t.Fatalf("lease=%v error=%v want leaseLost=true deadline=%v", lease, err, wantDeadline)
@@ -366,10 +382,12 @@ func TestSharedClockAllowanceCancelledGrantCannotRevive(t *testing.T) {
 	if lease != nil || !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled grant: %v %v", lease, err)
 	}
+
 	calls := d.commands()
 	if len(calls) != 2 || calls[1].Kind != Cancel || calls[0].Request.ID != calls[1].Request.ID {
 		t.Fatal("cleanup changed the submission identity")
 	}
+
 	result, err := d.Submit(context.Background(), calls[0].Request)
 	if err != nil || result.Status != Cancelled {
 		t.Fatalf("late submission revived cancelled work: %+v %v", result, err)

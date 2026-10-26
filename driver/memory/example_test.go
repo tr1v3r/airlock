@@ -19,10 +19,12 @@ func ExampleNew() {
 	if err != nil {
 		panic(err)
 	}
+
 	lease, err := client.AcquireNFor(context.Background(), "online", 2)
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println(lease.Weight(), lease.Valid())
 	// Do bounded, cancellable work here; stop if lease.Done closes. Renew explicitly
 	// if needed. Release only after the work has actually stopped.
@@ -31,6 +33,7 @@ func ExampleNew() {
 	if err := lease.Release(cleanup); err != nil {
 		panic(err)
 	}
+
 	fmt.Println(lease.Valid())
 	// Output:
 	// 2 true
@@ -54,10 +57,12 @@ func ExampleNew_multipleResources() {
 	if err != nil {
 		panic(err)
 	}
+
 	images, err := newPool("image-jobs", 8)
 	if err != nil {
 		panic(err)
 	}
+
 	release := func(lease *airlock.Lease) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
