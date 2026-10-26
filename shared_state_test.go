@@ -613,3 +613,37 @@ func TestEncodeStateRejectsNil(t *testing.T) {
 		t.Fatalf("nil transition output must not be persisted: %s %v", data, err)
 	}
 }
+
+// Shared queue restoration must not allocate local goroutine notifications.
+func TestSharedDispatchWithoutLocalNotifications(t *testing.T) {
+	h := newStateHarness(t)
+	cfg := stateTestConfig()
+	holder := stateTestRequest(h.now, cfg, "holder", 3)
+	lease := h.call(Submit, holder, "", nil)
+	pending := stateTestRequest(h.now, cfg, "waiting", 2)
+	expectState(t, h.call(Submit, pending, "", nil), Queued)
+	s := h.snapshot()
+	// Decoded snapshots omit per-request Config; restore expects normalized records.
+	for _, r := range s.Records {
+		r.Request.Config = s.Config
+	}
+	g, ws, err := s.restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := ws[pending.ID]
+	if w == nil || w.ready != nil {
+		t.Fatal("shared waiter has a local notification channel")
+	}
+	// Free the holder's accounting, then exercise the shared dispatch wrapper.
+	g.used -= holder.Weight
+	g.active--
+	s.dispatch(g, ws, h.now)
+	rec := s.Records[pending.ID]
+	if !w.granted || w.ready != nil || rec.Status != Granted || rec.LeaseID == "" || len(ws) != 0 {
+		t.Fatalf("shared grant: waiter=%+v record=%+v remaining=%d", w, rec, len(ws))
+	}
+	// The public transition path must produce the same usable lease outcome.
+	expectState(t, h.call(Release, holder, lease.LeaseID, nil), Released)
+	expectState(t, h.call(Observe, pending, "", nil), Granted)
+}
