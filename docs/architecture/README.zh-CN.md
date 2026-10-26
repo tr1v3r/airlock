@@ -42,7 +42,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 ![Airlock：两条准入路径与责任边界](previews/overview.png)
 
-实现：[airlock.go](../../airlock.go), [distributed.go](../../distributed.go), [driver.go](../../driver.go)
+实现：[airlock.go](../../airlock.go), [shared.go](../../shared.go), [driver.go](../../driver.go)
 
 测试：[airlock_test.go](../../airlock_test.go), [shared_options_test.go](../../shared_options_test.go)
 
@@ -90,7 +90,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 ![客户端 Lease：有效期与不可逆失效](previews/lease-states.png)
 
-实现：[distributed.go](../../distributed.go)
+实现：[shared.go](../../shared.go)
 
 测试：[shared_concurrency_test.go](../../shared_concurrency_test.go), [shared_clock_test.go](../../shared_clock_test.go)
 
@@ -102,7 +102,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 ![Shared 调用链：排队、观察与租约交付](previews/shared-sequence.png)
 
-实现：[distributed.go](../../distributed.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/redis.go](../../driver/redis/redis.go)
+实现：[shared.go](../../shared.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/redis.go](../../driver/redis/redis.go)
 
 测试：[shared_test.go](../../shared_test.go), [shared_concurrency_test.go](../../shared_concurrency_test.go)
 
