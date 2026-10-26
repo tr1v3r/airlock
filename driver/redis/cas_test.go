@@ -37,20 +37,23 @@ func TestLuaCASRejectedCandidatePreservesState(t *testing.T) {
 		{"clock_before_lower", []any{"1", "old", "new", stamp + 1, 0}, false},
 		{"clock_at_exclusive_upper", []any{"1", "old", "new", stamp - 1, stamp}, false},
 	}
+
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			d, client, server := fixture(t)
 			server.SetTime(now)
 			ctx := context.Background()
 			key := d.key(test.name)
-			if err := client.Set(ctx, key, "old", 0).Err(); err != nil {
+			if err := client.HSet(ctx, key, "state", "old").Err(); err != nil {
 				t.Fatal(err)
 			}
+
 			got, err := d.eval(ctx, casScript, key, test.args...)
 			if (err != nil) != test.wantError || (!test.wantError && got != int64(0)) {
 				t.Fatalf("CAS result=%v err=%v wantError=%t", got, err, test.wantError)
 			}
-			value, err := client.Get(ctx, key).Result()
+
+			value, err := client.HGet(ctx, key, "state").Result()
 			if err != nil || value != "old" {
 				t.Fatalf("rejected candidate changed state: %q err=%v", value, err)
 			}
@@ -67,6 +70,7 @@ func TestLuaCASTimeWindowEdges(t *testing.T) {
 		if bounded {
 			name = "last_microsecond_before_upper"
 		}
+
 		t.Run(name, func(t *testing.T) {
 			d, client, server := fixture(t)
 			now := time.Unix(1800000000, 999999000).UTC()
@@ -75,13 +79,14 @@ func TestLuaCASTimeWindowEdges(t *testing.T) {
 			if bounded {
 				upper = now.UnixMicro() + 1
 			}
+
 			key := d.key(name)
 			ctx := context.Background()
 			got, err := d.eval(ctx, casScript, key, "0", "", "new", now.UnixMicro(), upper)
 			if err != nil || got != int64(1) {
 				t.Fatalf("inclusive lower / exclusive upper: result=%v err=%v", got, err)
 			}
-			if value, err := client.Get(ctx, key).Result(); err != nil || value != "new" {
+			if value, err := client.HGet(ctx, key, "state").Result(); err != nil || value != "new" {
 				t.Fatalf("committed value=%q err=%v", value, err)
 			}
 		})
@@ -98,6 +103,7 @@ func TestLuaCASWrongTypePreservesOriginal(t *testing.T) {
 	if got, err := d.eval(ctx, casScript, key, "1", "old", "replacement", 0, 0); err == nil {
 		t.Fatalf("wrong type unexpectedly accepted: %v", got)
 	}
+
 	values, err := client.LRange(ctx, key, 0, -1).Result()
 	if err != nil || len(values) != 1 || values[0] != "original" {
 		t.Fatalf("failed script altered list: %v err=%v", values, err)
@@ -124,12 +130,14 @@ func TestExpiryBetweenReadAndCommit(t *testing.T) {
 					server.SetTime(now.Add(101 * time.Millisecond))
 					shifted = true
 				}
+
 				err := next(ctx, cmd)
 				if isCAS(cmd) && err == nil && cmd.(*noRetryCmd).Val() == int64(0) {
 					conflicts++
 				}
 				return err
 			}})
+
 			result, err := driverconformance.Invoke(context.Background(), d, airlock.Command{Kind: operation, Request: r, LeaseID: grant.LeaseID})
 			if operation == airlock.Renew {
 				if !errors.Is(err, airlock.ErrLeaseLost) {
@@ -138,9 +146,11 @@ func TestExpiryBetweenReadAndCommit(t *testing.T) {
 			} else if err != nil || result.Status != airlock.Expired {
 				t.Fatal(result, err)
 			}
+
 			if conflicts != 1 {
 				t.Fatal("time guard not exercised", conflicts)
 			}
+
 			observed := mustExecute(t, d, airlock.Command{Kind: airlock.Observe, Request: r})
 			if observed.Status != airlock.Expired {
 				t.Fatal(observed)
@@ -148,6 +158,7 @@ func TestExpiryBetweenReadAndCommit(t *testing.T) {
 		})
 	}
 }
+
 func TestLuaCASGuards(t *testing.T) {
 	d, client, server := fixture(t)
 	ctx := context.Background()
@@ -175,6 +186,7 @@ func TestLuaCASGuards(t *testing.T) {
 		{"mismatch", []any{"1", "other", "newer", stamp, 0}, false, 0},
 		{"replace", []any{"1", "new", "newer", stamp, now.Add(time.Second).UnixMicro()}, false, 1},
 	}
+
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			raw, err := d.eval(ctx, casScript, key, test.args...)
@@ -189,7 +201,8 @@ func TestLuaCASGuards(t *testing.T) {
 			}
 		})
 	}
-	if got := client.Get(ctx, key).Val(); got != "newer" {
+
+	if got := client.HGet(ctx, key, "state").Val(); got != "newer" {
 		t.Fatal(got)
 	}
 }
@@ -206,6 +219,7 @@ func TestCASConflictRecomputesAgainstCommittedWinner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	candidate, winner := requestAt(now), requestAt(now)
 	candidate.Config.Admission.Capacity = 3
 	candidate.Weight = 3
@@ -222,6 +236,7 @@ func TestCASConflictRecomputesAgainstCommittedWinner(t *testing.T) {
 				return err
 			}
 		}
+
 		err := next(ctx, cmd)
 		if isCAS(cmd) && err == nil {
 			switch cmd.(*noRetryCmd).Val() {
@@ -233,6 +248,7 @@ func TestCASConflictRecomputesAgainstCommittedWinner(t *testing.T) {
 		}
 		return err
 	}})
+
 	got, err := d.Submit(context.Background(), candidate)
 	if err != nil || got.Status != airlock.Queued || got.Weight != 3 || got.LeaseID != "" || got.Remaining != 0 {
 		t.Fatalf("stale candidate must recompute as queued: %+v err=%v", got, err)
@@ -240,6 +256,7 @@ func TestCASConflictRecomputesAgainstCommittedWinner(t *testing.T) {
 	if !injected || conflicts != 1 || commits != 1 || winning.Status != airlock.Granted || got.Revision != winning.Revision+1 {
 		t.Fatalf("winner=%+v candidate=%+v conflicts=%d commits=%d", winning, got, conflicts, commits)
 	}
+
 	mustExecute(t, other, airlock.Command{Kind: airlock.Release, Request: winner, LeaseID: winning.LeaseID})
 	granted := mustExecute(t, other, airlock.Command{Kind: airlock.Observe, Request: candidate})
 	if granted.Status != airlock.Granted || granted.Weight != 3 || granted.LeaseID == "" || granted.LeaseID == winning.LeaseID {
@@ -267,6 +284,7 @@ func TestEvalDoesNotFallbackOnOtherErrors(t *testing.T) {
 				}
 				return sentinel
 			}})
+
 			got, err := d.Submit(context.Background(), request())
 			if !errors.Is(err, sentinel) || got != (airlock.Result{}) || len(names) != 1 || names[0] != "evalsha" {
 				t.Fatalf("commands=%v result=%+v err=%v", names, got, err)

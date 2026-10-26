@@ -25,6 +25,7 @@ func distributed(t *testing.T, d *Driver, resource string) *airlock.Shared {
 	}
 	return client
 }
+
 func TestDistributedLeaseLifecycle(t *testing.T) {
 	d, _, _ := fixture(t)
 	client := distributed(t, d, "lifecycle")
@@ -33,15 +34,18 @@ func TestDistributedLeaseLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	cancel()
 	if !lease.Valid() || lease.Weight() != 1 {
 		t.Fatal("acquisition cancellation revoked delivered lease")
 	}
+
 	wait, cancelWait := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancelWait()
 	// The protocol wait deadline is truncated to milliseconds, so expiry may
 	// win before the context timer fires. Both outcomes must return no lease.
-	if blocked, err := client.Acquire(wait); (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded) && !errors.Is(err, airlock.ErrLeaseLost)) || blocked != nil {
+	if blocked, err := client.Acquire(wait); (!errors.Is(err, context.DeadlineExceeded) &&
+		!errors.Is(err, os.ErrDeadlineExceeded) && !errors.Is(err, airlock.ErrLeaseLost)) || blocked != nil {
 		t.Fatal(blocked, err)
 	}
 	if err := lease.Renew(context.Background()); err != nil {
@@ -53,29 +57,35 @@ func TestDistributedLeaseLifecycle(t *testing.T) {
 	if lease.Valid() {
 		t.Fatal("released lease valid")
 	}
+
 	select {
 	case <-lease.Done():
 	default:
 		t.Fatal("release did not close Done")
 	}
+
 	if err := lease.Release(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	next, err := client.AcquireFor(context.Background(), "next")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	select {
 	case <-next.Done():
 	case <-time.After(3 * time.Second):
 		t.Fatal("lease did not expire")
 	}
+
 	if next.Valid() {
 		t.Fatal("expired lease valid")
 	}
 	if err := next.Renew(context.Background()); !errors.Is(err, airlock.ErrLeaseLost) {
 		t.Fatal(err)
 	}
+
 	replacement, err := client.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -84,6 +94,7 @@ func TestDistributedLeaseLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 func TestDistributedUnknownRenewInvalidates(t *testing.T) {
 	d, client, _ := fixture(t)
 	distributed := distributed(t, d, "unknown-renew")
@@ -91,6 +102,7 @@ func TestDistributedUnknownRenewInvalidates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	dropped := false
 	client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
 		err := next(ctx, cmd)
@@ -100,17 +112,20 @@ func TestDistributedUnknownRenewInvalidates(t *testing.T) {
 		}
 		return err
 	}})
+
 	if err := lease.Renew(context.Background()); !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Fatal(err)
 	}
 	if lease.Valid() {
 		t.Fatal("unknown renewal retained authority")
 	}
+
 	select {
 	case <-lease.Done():
 	default:
 		t.Fatal("unknown renewal did not close Done")
 	}
+
 	if err := lease.Release(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -137,12 +152,14 @@ func TestConstructorSocketDeadlines(t *testing.T) {
 		{"negative_duration_read", -time.Second, 0, false},
 		{"negative_duration_write", 0, -time.Second, false},
 	}
+
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			standalone := goredis.NewClient(&goredis.Options{ContextTimeoutEnabled: true, ReadTimeout: test.read, WriteTimeout: test.write})
 			defer func() { _ = standalone.Close() }()
 			cluster := goredis.NewClusterClient(&goredis.ClusterOptions{ContextTimeoutEnabled: true, ReadTimeout: test.read, WriteTimeout: test.write})
 			defer func() { _ = cluster.Close() }()
+
 			for name, c := range map[string]goredis.UniversalClient{"standalone": standalone, "cluster": cluster} {
 				_, err := New(c, "")
 				if (err == nil) != test.accept {
@@ -163,12 +180,17 @@ func TestContextOnlySocketDeadlineBoundsBlackHole(t *testing.T) {
 			if drain {
 				operation = "read"
 			}
+
 			t.Run(fmt.Sprintf("%s_timeout_%d", operation, configured), func(t *testing.T) {
 				local, remote := net.Pipe()
-				defer func() { _ = local.Close(); _ = remote.Close() }()
+				defer func() {
+					_ = local.Close()
+					_ = remote.Close()
+				}()
 				if drain {
 					go func() { _, _ = io.Copy(io.Discard, remote) }()
 				}
+
 				client := goredis.NewClient(&goredis.Options{
 					ContextTimeoutEnabled: true, ReadTimeout: configured, WriteTimeout: configured,
 					Dialer: func(context.Context, string, string) (net.Conn, error) { return local, nil },
@@ -178,6 +200,7 @@ func TestContextOnlySocketDeadlineBoundsBlackHole(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				type outcome struct {
 					result airlock.Result
 					err    error
@@ -187,6 +210,7 @@ func TestContextOnlySocketDeadlineBoundsBlackHole(t *testing.T) {
 					result, err := d.Submit(context.Background(), request())
 					done <- outcome{result, err}
 				}()
+
 				select {
 				case got := <-done:
 					if got.result != (airlock.Result{}) {
@@ -195,6 +219,7 @@ func TestContextOnlySocketDeadlineBoundsBlackHole(t *testing.T) {
 					if !errors.Is(got.err, context.DeadlineExceeded) && !errors.Is(got.err, os.ErrDeadlineExceeded) {
 						t.Fatalf("black-hole I/O must fail with a timeout, got %v", got.err)
 					}
+
 				case <-time.After(2 * time.Second):
 					_ = local.Close()
 					_ = remote.Close()

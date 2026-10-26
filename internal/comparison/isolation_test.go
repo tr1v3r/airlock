@@ -29,6 +29,7 @@ func newIsolationPools(t *testing.T, split bool, highQueue int) isolationPools {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		t.Cleanup(func() {
 			s := a.Stats()
 			if s.InUse != 0 || s.Queued != 0 || s.ActivePermits != 0 || s.WaitingTenants != 0 {
@@ -52,6 +53,7 @@ func newIsolationPools(t *testing.T, split bool, highQueue int) isolationPools {
 			MaxQueuedPerTenant: lowQueue, Priority: policy})
 		return isolationPools{high: a, low: a}
 	}
+
 	high := newPool(airlock.Config{Capacity: isolationHigh, MaxQueued: highQueue, MaxQueuedPerTenant: highQueue})
 	policy.Groups = policy.Groups[1:]
 	policy.TenantGroups = map[string]string{"M0": "M"}
@@ -70,10 +72,12 @@ func (p isolationPools) pool(high bool) *airlock.Airlock {
 func isolationWaitQueued(t *testing.T, a *airlock.Airlock, n int) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
+
 	for a.Stats().Queued != n {
 		if time.Now().After(deadline) {
 			t.Fatalf("queue did not reach %d: %+v", n, a.Stats())
 		}
+
 		runtime.Gosched()
 	}
 }
@@ -84,6 +88,7 @@ func isolationHold(t *testing.T, a *airlock.Airlock, tenant string, n int) *airl
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(p.Release)
 	return p
 }
@@ -96,6 +101,7 @@ func TestIsolationProtectedLowHead(t *testing.T) {
 		if split {
 			name = "split"
 		}
+
 		t.Run(name, func(t *testing.T) {
 			pools := newIsolationPools(t, split, 16)
 			hold := isolationHold(t, pools.low, "L0", 7)
@@ -107,6 +113,7 @@ func TestIsolationProtectedLowHead(t *testing.T) {
 				if p != nil {
 					p.Release()
 				}
+
 				done <- err
 			}()
 			isolationWaitQueued(t, pools.low, 1)
@@ -115,17 +122,21 @@ func TestIsolationProtectedLowHead(t *testing.T) {
 				if err != nil {
 					t.Fatalf("low head blocked independent high pool: %v", err)
 				}
+
 				high.Release()
 			} else if !errors.Is(err, airlock.ErrWouldBlock) {
 				if high != nil {
 					high.Release()
 				}
+
 				t.Fatalf("shared high bypassed protected low: %v", err)
 			}
+
 			cancel()
 			if err := <-done; !errors.Is(err, context.Canceled) {
 				t.Fatalf("waiting low cancellation: %v", err)
 			}
+
 			hold.Release()
 		})
 	}
@@ -139,6 +150,7 @@ func TestIsolationHighOverloadAndCancellation(t *testing.T) {
 	if got := pools.high.Stats().InUse + pools.low.Stats().InUse; got != isolationTotal {
 		t.Fatalf("used = %d", got)
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
@@ -147,6 +159,7 @@ func TestIsolationHighOverloadAndCancellation(t *testing.T) {
 		if p != nil {
 			p.Release()
 		}
+
 		done <- err
 	}()
 	isolationWaitQueued(t, pools.high, 1)
@@ -154,8 +167,10 @@ func TestIsolationHighOverloadAndCancellation(t *testing.T) {
 		if p != nil {
 			p.Release()
 		}
+
 		t.Fatalf("full high queue: %v", err)
 	}
+
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled waiter: %v", err)
@@ -163,10 +178,12 @@ func TestIsolationHighOverloadAndCancellation(t *testing.T) {
 	if s := pools.high.Stats(); s.Queued != 0 || s.InUse != isolationHigh {
 		t.Fatalf("cancel changed holder or retained waiter: %+v", s)
 	}
+
 	hold.Release()
 	if s := pools.high.Stats(); s.Queued != 0 || s.InUse != 0 {
 		t.Fatalf("cancelled request retried or leaked: %+v", s)
 	}
+
 	low.Release()
 }
 
@@ -184,8 +201,10 @@ func TestIsolationAcquisitionContextDoesNotRevokePermit(t *testing.T) {
 		if other != nil {
 			other.Release()
 		}
+
 		t.Fatalf("cancellation reclaimed a live holder: %v", err)
 	}
+
 	p.Release()
 	p.Release()
 	next := isolationHold(t, pools.high, "H1", isolationHigh)
@@ -194,22 +213,27 @@ func TestIsolationAcquisitionContextDoesNotRevokePermit(t *testing.T) {
 
 func TestIsolationWeightBoundaryAndNoBorrowing(t *testing.T) {
 	pools := newIsolationPools(t, true, 1)
+
 	for _, high := range []bool{false, true} {
 		a := pools.pool(high)
 		if p, err := a.TryAcquireN(a.Stats().Capacity + 1); !errors.Is(err, airlock.ErrWeightExceedsCapacity) {
 			if p != nil {
 				p.Release()
 			}
+
 			t.Fatalf("oversize partition request: %v", err)
 		}
 	}
+
 	low := isolationHold(t, pools.low, "L0", isolationLow)
 	if p, err := pools.low.TryAcquireFor("L1"); !errors.Is(err, airlock.ErrWouldBlock) {
 		if p != nil {
 			p.Release()
 		}
+
 		t.Fatalf("low borrowed high capacity: %v", err)
 	}
+
 	high := isolationHold(t, pools.high, "H0", isolationHigh)
 	high.Release()
 	low.Release()

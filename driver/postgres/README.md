@@ -51,10 +51,18 @@ this is not a comprehensive schema/constraint audit.
 
 | Table | Key | Stored fields |
 | --- | --- | --- |
-| `public.airlock_resources` | `(namespace, resource)` | `state_version`, immutable `config` JSONB, tenant `rotations` JSONB, `protected`, `cursor`, `revision`, `observed_ms` |
-| `public.airlock_resources_requests` | `(namespace, resource, id)` | `owner`, `tenant`, `weight`, `submit_until_ms`, `wait_until_ms`, `status`, `lease_id`, `until_ms`, `finished_ms`, `failure`, `queue_position` |
+| `public.airlock_resources` | `(namespace, resource)` | `state_version`, immutable `config` JSONB, tenant `rotations` JSONB, `protected`, `cursor`, `revision`, `observed_ms`, `next_maintenance_ms` |
+| `public.airlock_requests` | `(namespace, resource, id)` | `owner`, `tenant`, `weight`, `submit_until_ms`, `wait_until_ms`, `status`, `lease_id`, `until_ms`, `finished_ms`, `failure`, `queue_position` |
 
-The request table is always `<resource_table>_requests`, in the same schema.
+The default tables are `public.airlock_resources` and `public.airlock_requests`.
+Explicitly selecting `airlock_resources` with `WithTable` uses `airlock_requests`
+in the selected schema as well. Other custom resource table names use the
+`<resource_table>_requests` naming rule.
+
+默认表名为 `airlock_resources` 和 `airlock_requests`。通过 `WithTable` 显式选择
+`airlock_resources` 时也使用同 schema 下的 `airlock_requests`；其他自定义资源表名
+追加 `_requests` 后缀。
+
 See the exact [DDL](schema.go). Request lifecycle/lease fields are ordinary SQL
 columns, not JSON. One request has at most one lease, so a third lease table would
 add joins without an independent lifecycle. Request rows reference the resource;
@@ -68,19 +76,28 @@ to execute work):
 
 ```sql
 SELECT tenant, status, sum(weight) AS tokens, count(*) AS requests
-FROM public.airlock_resources_requests
+FROM public.airlock_requests
 WHERE namespace = 'my-service' AND resource = 'export-jobs'
 GROUP BY tenant, status;
 ```
 
 Only configuration and group/tenant rotation lists remain JSONB on the resource
-row. There is no complete-resource snapshot column. Each operation still reads
-all retained requests for that resource (bounded by MaxRecords), runs the shared
-pure scheduler, and writes only inserted/changed/deleted requests. Observe with
-no maintenance changes updates the resource revision/time but no request rows;
-renewing one lease does not rewrite unrelated requests. No throughput claim is
-made: hot resources still serialize on one resource lock, and reads/scheduling
-remain O(retained requests). Different resources lock different rows.
+row. There is no complete-resource snapshot column. Mutations read all retained
+requests for the resource (bounded by MaxRecords), run the shared scheduler, and
+write only inserted/changed/deleted requests.
+
+Ordinary Observe reads one resource header and one request by primary key in a
+single MVCC statement, with no row lock, rotations load, full request scan or
+metadata write. If the stored next-maintenance boundary is due, it obtains the
+resource lock and rechecks using a new statement before loading full state; a
+peer may already have completed maintenance. Lease/queue expiry and history
+collection therefore progress even when no holder calls Release. Read-only
+observations keep the current Revision; writes still serialize per resource.
+Different resources lock different rows but share connection/backend capacity.
+
+普通 Observe 按主键读取资源元数据和当前请求，不获取资源行锁，不扫描该资源的
+全部请求，也不写入 Revision。维护到期后才进入资源锁，并在取得锁后重新查询，
+合并已经由其他客户端完成的维护；无人 Release 时仍可通过租约到期推进调度。
 
 Terminal records are reclaimed by subsequent operations, but resource rows are
 permanent. Bound resource cardinality administratively. Stop all resource clients

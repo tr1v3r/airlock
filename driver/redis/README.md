@@ -44,17 +44,25 @@ Do not mutate client options or install hooks that retry ambiguous operations.
 Each resource uses one persistent key:
 `airlock:{sha256(namespace + NUL + resource)}:state`. Namespace is valid UTF-8,
 without NUL, at most 256 bytes. The hash tag gives every operation one Cluster
-slot. Missing and existing-empty keys are distinguished: empty, corrupt, and
-wrong-type state fails closed. Keys never expire and retain config/cursor even
+slot. The key is a hash: `state` holds the authoritative JSON snapshot, `meta`
+holds observation metadata, and `r:<request-id>` holds each indexed request.
+Missing keys and hashes missing their snapshot are distinguished; empty, corrupt,
+and wrong-type state fails closed. Keys never expire and retain config/cursor even
 when idle. All participants must use the same immutable resource configuration.
 
-A Lua read atomically obtains state and Redis `TIME`. Go computes the shared
-state transition. Lua then compares the exact old value and checks the commit
-time window before a single `SET`. The window includes live lease expiry,
-waiting/submission deadlines, and history cleanup boundaries, so a lease cannot
-be renewed from an expired read. Server time is preserved to microseconds and
-checked against Lua's exact integer range. All validation precedes `SET`; no
-potentially failing command follows it. Redis scripts do not roll back writes.
+For mutations and due maintenance, a Lua read atomically obtains the snapshot
+and Redis `TIME`; Go computes the shared transition. Lua compares the exact old
+snapshot and checks the commit window, including lease expiry, waiting/submission
+deadlines and history cleanup. Time retains microsecond precision within Lua's
+exact integer range.
+
+The script prepares request indexes tagged with a unique candidate token, then
+publishes the snapshot and matching observation header together in its final
+`HSET`. There is no command after that publication. A preparation error cannot
+authorize work: missing or token-mismatched projections fall back to the
+authoritative snapshot. Tokens are independent of Revision so different failed
+candidates for the same revision cannot be mistaken for a committed result.
+Redis scripts do not roll back earlier writes.
 
 Only explicit comparison/time-window misses trigger bounded, context-aware
 backoff and a fresh computation. Each script command disables go-redis network
@@ -64,12 +72,19 @@ return a zero result: the write may already have succeeded. In particular, an
 uncertain renewal is not repeated inside the adapter. Business rejections still
 commit expiry and scheduling changes. No connection is held during business work.
 
-The whole bounded snapshot is read, encoded, and written for each operation.
-This keeps the memory/PostgreSQL/Redis scheduling contract identical but costs
-O(records) transfer/work and CAS retries on hot resources. There is no global
-lock across resources, no Pub/Sub wakeup, no background cleanup, and no automatic
-renewal. The core distributed client uses bounded polling; arrival at the backend
-sets admission order, and polling frequency does not select grants.
+An ordinary `Observe` atomically reads only `meta`, the selected request and
+backend time. Before the next lease/queue expiry or history collection boundary,
+it returns the committed result without reading the full snapshot, restoring the
+scheduler, changing Revision or executing CAS. Missing projections or due
+maintenance fall back to the ordinary transition; confirmed CAS losers recheck
+the projection before recomputing.
+
+Mutations still read/write the bounded snapshot and maintain the request index,
+with O(records) work and additional memory. No Pub/Sub or worker is introduced.
+The core client's default polling interval remains 50ms per queued acquisition;
+this change reduces each poll's cost, not the number of polling callers.
+Independent resources use different keys but share backend CPU/network/pool
+capacity. Arrival at the backend determines queue order, not polling frequency.
 
 ## Operational limits
 

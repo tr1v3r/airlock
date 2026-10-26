@@ -19,6 +19,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	// Background calls may wait in the configured queues when capacity is full.
 	background, err := lock.AcquireNFor(ctx, "background", 2)
 	if err != nil {

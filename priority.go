@@ -60,38 +60,47 @@ func newPriorityState(policy *PriorityPolicy, maxQueued int) (priorityState, err
 		q := &priorityQueue{limit: maxQueued}
 		return priorityState{fallback: q, schedule: []*priorityQueue{q}}, nil
 	}
+
 	const maxTurns = 1024
 	if len(policy.Groups) == 0 || len(policy.Groups) > maxTurns {
 		return priorityState{}, ErrInvalidConfig
 	}
+
 	state := priorityState{tenants: make(map[string]*priorityQueue, len(policy.TenantGroups))}
 	groups := make(map[string]*priorityQueue, len(policy.Groups))
 	turns, queued := 0, 0
+
 	for i, spec := range policy.Groups {
 		if spec.Name == "" || groups[spec.Name] != nil || spec.Turns <= 0 || spec.Turns > maxTurns-turns ||
 			(i > 0 && spec.Turns > policy.Groups[i-1].Turns) ||
 			spec.MaxQueued < 0 || spec.MaxQueued > maxQueued-queued {
 			return priorityState{}, ErrInvalidConfig
 		}
+
 		turns += spec.Turns
 		queued += spec.MaxQueued
 		q := &priorityQueue{limit: spec.MaxQueued}
 		groups[spec.Name] = q
+
 		for j := 0; j < spec.Turns; j++ {
 			state.schedule = append(state.schedule, q)
 		}
 	}
+
 	state.fallback = groups[policy.DefaultGroup]
 	if state.fallback == nil {
 		return priorityState{}, ErrInvalidConfig
 	}
+
 	for tenant, name := range policy.TenantGroups {
 		q := groups[name]
 		if tenant == "" || q == nil {
 			return priorityState{}, ErrInvalidConfig
 		}
+
 		state.tenants[tenant] = q
 	}
+
 	return state, nil
 }
 

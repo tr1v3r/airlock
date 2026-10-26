@@ -24,6 +24,31 @@ GOWORK=off go vet ./...
 bash scripts/driver-check.sh
 ```
 
+Local cross-module development may pin drivers to the working tree with a
+workspace file. It is intentionally not committed: published modules keep
+their pinned core versions, and the checks above already run with GOWORK=off.
+
+```sh
+go work init . ./driver/memory ./driver/postgres ./driver/redis
+go work edit -go 1.26.0
+```
+
+With go.work active, driver packages resolve `github.com/tr1v3r/airlock` to
+the working tree: editor navigation follows local code and driver tests
+exercise local changes. go.work and go.work.sum are gitignored. Development
+worktrees must carry their own copy; without one they inherit the parent
+checkout's go.work, whose use directives point at the parent tree, and plain
+`go build ./...` fails with "directory prefix . does not contain modules
+listed in go.work". `go work init` also refuses to run while a parent go.work
+exists, so copy the file instead:
+
+```sh
+cp ../../go.work .
+```
+
+Do not run `go work sync`: advance driver pins explicitly with
+`GOWORK=off go get github.com/tr1v3r/airlock@<commit>` inside each driver.
+
 Import formatting is configured in the root `.golangci.yml`: standard library,
 third-party dependencies, then `github.com/tr1v3r/airlock` packages. CI checks every
 module. From the repository root, apply the same formatting locally with:

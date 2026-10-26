@@ -43,6 +43,7 @@ func WithOperationTimeout(timeout time.Duration) Option {
 		if timeout <= 0 {
 			return errors.New("airlock/redis: timeout must be positive")
 		}
+
 		d.timeout = timeout
 		return nil
 	}
@@ -67,10 +68,12 @@ func New(client goredis.UniversalClient, namespace string, options ...Option) (*
 		if o := c.Options(); o.ReadTimeout < 0 || o.WriteTimeout < 0 {
 			return nil, errors.New("airlock/redis: socket deadlines must be enabled")
 		}
+
 	case *goredis.ClusterClient:
 		if c == nil {
 			return nil, errors.New("airlock/redis: nil cluster client")
 		}
+
 		o := c.Options()
 		// Cluster normalization leaves raw -2 negative; the node clients
 		// would normalize it again to a disabled socket deadline.
@@ -80,13 +83,17 @@ func New(client goredis.UniversalClient, namespace string, options ...Option) (*
 		if !o.ContextTimeoutEnabled || o.ReadOnly || o.RouteByLatency || o.RouteRandomly {
 			return nil, errors.New("airlock/redis: cluster requires context deadlines and primary routing")
 		}
+
 	default:
 		return nil, errors.New("airlock/redis: unsupported or nil client")
 	}
+
 	if len(namespace) > 256 || !utf8.ValidString(namespace) || strings.ContainsRune(namespace, 0) {
 		return nil, errors.New("airlock/redis: invalid namespace")
 	}
+
 	d := &Driver{client: client, namespace: namespace, timeout: 5 * time.Second}
+
 	for _, option := range options {
 		if option == nil {
 			return nil, errors.New("airlock/redis: nil option")
@@ -95,6 +102,7 @@ func New(client goredis.UniversalClient, namespace string, options ...Option) (*
 			return nil, err
 		}
 	}
+
 	return d, nil
 }
 
@@ -115,6 +123,7 @@ func (*noRetryCmd) NoRetry() bool { return true }
 // eval tries EVALSHA once, then EVAL only when NOSCRIPT proves no script ran.
 func (d *Driver) eval(ctx context.Context, script, key string, args ...any) (any, error) {
 	hash := fmt.Sprintf("%x", sha1.Sum([]byte(script)))
+
 	for _, head := range []struct{ name, body string }{{"evalsha", hash}, {"eval", script}} {
 		argv := append([]any{head.name, head.body, 1, key}, args...)
 		cmd := &noRetryCmd{goredis.NewCmd(ctx, argv...)}
@@ -128,6 +137,7 @@ func (d *Driver) eval(ctx context.Context, script, key string, args ...any) (any
 		}
 		return nil, err
 	}
+
 	return nil, errors.New("airlock/redis: script unavailable")
 }
 
@@ -139,6 +149,7 @@ func micro(t time.Time) (int64, error) {
 	if t.IsZero() {
 		return 0, nil
 	}
+
 	n := t.UnixMicro()
 	if n <= 0 || n > maxExactMicro || t.Nanosecond()%1000 != 0 {
 		return 0, errors.New("airlock/redis: clock outside exact microsecond range")
@@ -152,6 +163,7 @@ func decodeRead(raw any) ([]byte, bool, time.Time, error) {
 	if !ok || len(values) != 4 {
 		return nil, false, time.Time{}, errors.New("airlock/redis: malformed read response")
 	}
+
 	exists, ok := values[0].(int64)
 	state, okState := values[1].(string)
 	sec, okSec := values[2].(string)
@@ -159,11 +171,13 @@ func decodeRead(raw any) ([]byte, bool, time.Time, error) {
 	if !ok || (exists != 0 && exists != 1) || !okState || !okSec || !okUs || (exists == 0 && state != "") {
 		return nil, false, time.Time{}, errors.New("airlock/redis: malformed read fields")
 	}
+
 	seconds, e1 := strconv.ParseInt(sec, 10, 64)
 	micros, e2 := strconv.ParseInt(us, 10, 64)
 	if e1 != nil || e2 != nil || seconds <= 0 || seconds > maxExactMicro/1000000 || micros < 0 || micros >= 1000000 {
 		return nil, false, time.Time{}, errors.New("airlock/redis: invalid server time")
 	}
+
 	now := time.Unix(seconds, micros*1000).UTC()
 	if _, err := micro(now); err != nil {
 		return nil, false, time.Time{}, err
@@ -188,22 +202,33 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 	if err := airlock.ValidateCommand(command); err != nil {
 		return airlock.Result{}, err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()
 	key := d.key(command.Request.Resource)
+
 	for attempt := 0; ; attempt++ {
+		if command.Kind == airlock.Observe {
+			if result, ready, err := d.observe(ctx, command.Request); ready || err != nil {
+				return result, err
+			}
+		}
+
 		raw, err := d.eval(ctx, readScript, key)
 		if err != nil {
 			return airlock.Result{}, fmt.Errorf("airlock/redis: read: %w", err)
 		}
+
 		snapshot, exists, now, err := decodeRead(raw)
 		if err != nil {
 			return airlock.Result{}, err
 		}
+
 		state, decodeErr := airlock.DecodeState(snapshot)
 		if decodeErr != nil {
 			return airlock.Result{}, decodeErr
 		}
+
 		nextState, result, window, transitionErr := airlock.Transition(state, now, command)
 		var next []byte
 		if nextState != nil {
@@ -213,36 +238,54 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 				return airlock.Result{}, encodeErr
 			}
 		}
+
 		if next == nil {
 			return result, transitionErr
 		}
+
 		lower, err := micro(window.NotBefore)
 		if err != nil {
 			return airlock.Result{}, err
 		}
+
 		upper, err := micro(window.Before)
 		if err != nil {
 			return airlock.Result{}, err
 		}
+
 		expected := "0"
 		if exists {
 			expected = "1"
 		}
-		raw, err = d.eval(ctx, casScript, key, expected, string(snapshot), string(next), lower, upper)
+
+		projection, err := index(nextState)
+		if err != nil {
+			return airlock.Result{}, err
+		}
+
+		raw, err = d.eval(
+			ctx, casScript, key,
+			expected, string(snapshot), string(next),
+			lower, upper, string(projection),
+		)
 		if err != nil {
 			return airlock.Result{}, fmt.Errorf("airlock/redis: compare and swap: %w", err)
 		}
+
 		committed, ok := raw.(int64)
 		if !ok || (committed != 0 && committed != 1) {
 			return airlock.Result{}, errors.New("airlock/redis: malformed CAS response")
 		}
+
 		if committed == 1 {
 			if err := ctx.Err(); err != nil {
 				return airlock.Result{}, err
 			}
 			return result, transitionErr
 		}
+
 		timer := time.NewTimer(time.Duration(1+min(attempt, 9)) * time.Millisecond)
+
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -260,7 +303,7 @@ func (d *Driver) Submit(ctx context.Context, request airlock.Request) (airlock.R
 	return d.execute(ctx, airlock.Command{Kind: airlock.Submit, Request: request})
 }
 
-// Observe returns the request outcome after advancing expiry and scheduling.
+// Observe reads the committed outcome, advancing expiry and scheduling when due.
 func (d *Driver) Observe(ctx context.Context, request airlock.Request) (airlock.Result, error) {
 	return d.execute(ctx, airlock.Command{Kind: airlock.Observe, Request: request})
 }

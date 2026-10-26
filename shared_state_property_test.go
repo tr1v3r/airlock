@@ -37,28 +37,34 @@ type protocolModel struct {
 
 func (m *protocolModel) inUse() int {
 	used := 0
+
 	for _, r := range m.records {
 		if r.status == Granted {
 			used += r.request.Weight
 		}
 	}
+
 	return used
 }
 
 func (m *protocolModel) drain(now time.Time) {
 	var live []string
+
 	for _, id := range m.queue {
 		if r := m.records[id]; r != nil && r.status == Queued {
 			live = append(live, id)
 		}
 	}
+
 	m.queue = live
 	used := m.inUse()
+
 	for len(m.queue) > 0 {
 		r := m.records[m.queue[0]]
 		if r.request.Weight > m.cfg.Admission.Capacity-used {
 			break
 		}
+
 		r.status, r.leased, r.until = Granted, true, now.Add(m.cfg.LeaseTTL)
 		used += r.request.Weight
 		m.queue = m.queue[1:]
@@ -70,14 +76,17 @@ func (m *protocolModel) apply(now time.Time, cmd Command) (Status, error, bool) 
 	if old := m.records[r.ID]; old != nil && !reflect.DeepEqual(old.request, r) {
 		return "", ErrRequestConflict, false
 	}
+
 	for id, old := range m.records {
 		if (old.status == Granted || old.status == Queued) && !now.Before(old.until) {
 			old.status, old.finished = Expired, now
 		}
+
 		if old.status != Granted && old.status != Queued && !now.Before(old.finished.Add(m.cfg.Retention)) && !now.Before(old.request.SubmitUntil) {
 			delete(m.records, id)
 		}
 	}
+
 	m.drain(now)
 	old := m.records[r.ID]
 	var err error
@@ -94,6 +103,7 @@ func (m *protocolModel) apply(now time.Time, cmd Command) (Status, error, bool) 
 		default:
 			old = &protocolModelRecord{request: r}
 			m.records[r.ID] = old
+
 			switch {
 			case cmd.Kind == Cancel:
 				old.status, old.finished = Cancelled, now
@@ -128,11 +138,13 @@ func (m *protocolModel) apply(now time.Time, cmd Command) (Status, error, bool) 
 			}
 		}
 	}
+
 	m.drain(now)
 	m.revision++
 	if old == nil {
 		return "", err, true
 	}
+
 	if old.failure != nil && err == nil {
 		err = old.failure
 	}
@@ -148,23 +160,29 @@ func (m *protocolModel) check(t testing.TB, data []byte) {
 	if s.Revision != m.revision || len(s.Records) != len(m.records) {
 		t.Fatalf("model revision/size: got %d/%d want %d/%d", s.Revision, len(s.Records), m.revision, len(m.records))
 	}
+
 	for id, expected := range m.records {
 		got := s.Records[id]
-		if got == nil || got.Status != expected.status || !got.Until.Equal(expected.until) || !got.Finished.Equal(expected.finished) || (got.LeaseID != "") != expected.leased {
+		if got == nil || got.Status != expected.status || !got.Until.Equal(expected.until) ||
+			!got.Finished.Equal(expected.finished) || (got.LeaseID != "") != expected.leased {
 			t.Fatalf("model record %s: got %+v want %+v", id, got, expected)
 		}
+
 		wantFailure := ""
 		if expected.failure != nil {
 			wantFailure = expected.failure.Error()
 		}
+
 		if got.Failure != wantFailure {
 			t.Fatalf("failure: got %q want %q", got.Failure, wantFailure)
 		}
+
 		got.Request.Config = m.cfg
 		if !reflect.DeepEqual(got.Request, expected.request) {
 			t.Fatalf("record identity/weight changed: got %+v want %+v", got.Request, expected.request)
 		}
 	}
+
 	if got := s.Queues["tenant"]; !reflect.DeepEqual(append([]string{}, got...), append([]string{}, m.queue...)) {
 		t.Fatalf("queue mismatch: got %v want %v", got, m.queue)
 	}
@@ -179,10 +197,12 @@ func runProtocolTrace(t testing.TB, trace []byte, priority bool) {
 	if priority {
 		cfg.Admission.Priority = &PriorityPolicy{Groups: []PriorityGroup{{Name: "all", Turns: 3, MaxQueued: 5}}, DefaultGroup: "all", TenantGroups: map[string]string{"tenant": "all"}}
 	}
+
 	m := protocolModel{cfg: cfg, records: make(map[string]*protocolModelRecord)}
 	now := time.Unix(3000, 0).UTC()
 	var data []byte
 	var requests []Request
+
 	for step, instruction := range trace {
 		// Separate byte bits choose elapsed time, operation, identity reuse and
 		// weight. Zero advances allow saturated queues, later jumps exercise GC.
@@ -196,24 +216,29 @@ func runProtocolTrace(t testing.TB, trace []byte, priority bool) {
 		} else {
 			r = requests[int(instruction)%len(requests)]
 		}
+
 		cmd := Command{Kind: kind, Request: r, LeaseID: leaseIdentity(r)}
 		if instruction&32 != 0 {
 			cmd.LeaseID = "wrong"
 		}
+
 		if instruction == 255 {
 			cmd.Request.Owner = "00000000000000000000000000000000"
 		}
+
 		wantStatus, wantErr, commit := m.apply(now, cmd)
 		next, result, err := transitionSnapshot(data, now, cmd)
 		if !errors.Is(err, wantErr) || result.Status != wantStatus || (next != nil) != commit {
 			t.Fatalf("step %d instruction=%d kind=%s: status=%s err=%v committed=%t; want %s/%v/%t", step, instruction, kind, result.Status, err, next != nil, wantStatus, wantErr, commit)
 		}
+
 		if next != nil {
 			data = next
 			m.check(t, data)
 			if result.Revision != m.revision {
 				t.Fatal("result revision does not match committed model")
 			}
+
 			if result.Status == Granted {
 				want := m.records[r.ID]
 				if result.Weight != want.request.Weight || result.Remaining != want.until.Sub(now) || result.LeaseID == "" {
@@ -236,6 +261,7 @@ func TestTransitionModelTraces(t *testing.T) {
 		// this is a tuning reference, not a wall-time assertion or CI SLA.
 		seeds, steps = 64, 250
 	}
+
 	for seed := 0; seed < seeds; seed++ {
 		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
 			rng := rand.New(rand.NewSource(int64(seed)))
@@ -243,6 +269,7 @@ func TestTransitionModelTraces(t *testing.T) {
 			if _, err := rng.Read(trace); err != nil {
 				t.Fatal(err)
 			}
+
 			runProtocolTrace(t, trace, seed%2 == 1)
 		})
 	}
@@ -259,18 +286,22 @@ func TestTransitionRestoredRequestFieldValidation(t *testing.T) {
 		"negative weight":  func(r *Request) { r.Weight = -1 },
 		"excessive weight": func(r *Request) { r.Weight = r.Config.Admission.Capacity + 1 },
 	}
+
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
 			s, cmd := scaleSnapshot(t, 2, 64, 0)
+
 			for id, rec := range s.Records {
 				if id != cmd.Request.ID {
 					mutate(&rec.Request)
 				}
 			}
+
 			data, err := json.Marshal(s)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			next, _, err := transitionSnapshot(data, s.Time, cmd)
 			if next != nil || !errors.Is(err, ErrCorruptState) {
 				t.Fatalf("invalid restored fields accepted: next=%t error=%v", next != nil, err)
@@ -291,11 +322,13 @@ func FuzzTransitionSnapshot(f *testing.F) {
 		if len(input) > 16*1024 {
 			t.Skip()
 		}
+
 		original := append([]byte(nil), input...)
 		next, result, err := transitionSnapshot(input, now, cmd)
 		if !bytes.Equal(input, original) {
 			t.Fatal("transition mutated caller's snapshot")
 		}
+
 		again, res, e := transitionSnapshot(input, now, cmd)
 		if !bytes.Equal(next, again) || res != result || !errors.Is(e, err) {
 			t.Fatal("same snapshot/command/time was nondeterministic")
@@ -309,16 +342,20 @@ func FuzzTransitionSnapshot(f *testing.F) {
 		if _, _, e := transitionSnapshot(next, now, cmd); errors.Is(e, ErrCorruptState) || errors.Is(e, ErrConfigConflict) {
 			t.Fatalf("committed snapshot cannot be restored: %v", e)
 		}
+
 		var s durableSnapshot
 		if e := json.Unmarshal(next, &s); e != nil {
 			t.Fatal(e)
 		}
+
 		used := 0
+
 		for _, rec := range s.Records {
 			if rec.Status == Granted {
 				used += rec.Request.Weight
 			}
 		}
+
 		if used < 0 || used > s.Config.Admission.Capacity || len(s.Records) > s.Config.MaxRecords {
 			t.Fatalf("accepted snapshot violates bounds: used=%d records=%d", used, len(s.Records))
 		}
@@ -332,6 +369,7 @@ func FuzzTransitionCommandSequence(f *testing.F) {
 		if len(trace) > 128 {
 			t.Skip()
 		}
+
 		runProtocolTrace(t, trace, priority)
 	})
 }
@@ -342,9 +380,11 @@ func checkOptimisticWindow(t testing.TB, offset, span uint16, queued bool) {
 	if queued {
 		q = 3
 	}
+
 	s, cmd := scaleSnapshot(t, 8, 4, q)
 	deadline := s.Time.Add(time.Duration(2+int(span)%31) * time.Millisecond)
 	cmd.Request.WaitUntil = deadline
+
 	for id, rec := range s.Records {
 		// Vary both command-only and persisted deadlines. Observe cannot change
 		// admission within the window: a holder is either absent or still live.
@@ -352,15 +392,19 @@ func checkOptimisticWindow(t testing.TB, offset, span uint16, queued bool) {
 		if id == cmd.Request.ID {
 			rec.Request.WaitUntil = cmd.Request.WaitUntil
 		}
+
 		if rec.Status == Granted || rec.Status == Queued {
 			rec.Until = rec.Request.WaitUntil
 		}
+
 		rec.Request.Config = ResourceConfig{}
 	}
+
 	data, err := json.Marshal(s)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	now := s.Time.Add(time.Duration(offset%1000) * time.Microsecond)
 	next, result, window, err := transitionOptimistic(data, now, cmd)
 	plain, reference, referenceErr := transitionSnapshot(data, now, cmd)
@@ -369,14 +413,17 @@ func checkOptimisticWindow(t testing.TB, offset, span uint16, queued bool) {
 	}
 	// The observed request's WaitUntil is the earliest boundary in this fixture;
 	// all retained GC/submit and other active deadlines are at or after it.
-	if window.NotBefore != now || !window.Before.Equal(deadline) || !window.Allows(now) || window.Allows(now.Add(-time.Nanosecond)) || window.Allows(deadline) || !window.Allows(deadline.Add(-time.Nanosecond)) {
+	if window.NotBefore != now || !window.Before.Equal(deadline) || !window.Allows(now) ||
+		window.Allows(now.Add(-time.Nanosecond)) || window.Allows(deadline) || !window.Allows(deadline.Add(-time.Nanosecond)) {
 		t.Fatalf("incorrect publication bounds: %+v want [%v,%v)", window, now, deadline)
 	}
+
 	later := now.Add(deadline.Sub(now) / 2)
 	laterData, laterResult, _, err := transitionOptimistic(data, later, cmd)
 	if err != nil || laterResult.Status != result.Status {
 		t.Fatalf("within-window observation changed lifecycle: %+v/%+v %v", result, laterResult, err)
 	}
+
 	var before, after durableSnapshot
 	if err := json.Unmarshal(next, &before); err != nil {
 		t.Fatal(err)
@@ -384,6 +431,7 @@ func checkOptimisticWindow(t testing.TB, offset, span uint16, queued bool) {
 	if err := json.Unmarshal(laterData, &after); err != nil {
 		t.Fatal(err)
 	}
+
 	after.Time = before.Time
 	if !reflect.DeepEqual(before, after) {
 		t.Fatal("within-window Observe changed records or scheduling state")
