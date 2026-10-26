@@ -26,6 +26,19 @@ linters:
       require-specific: true
   exclusions:
     presets: []
+formatters:
+  enable:
+    - gofmt
+    - gci
+  settings:
+    gofmt:
+      simplify: false
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/tr1v3r/airlock)
+      custom-order: true
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

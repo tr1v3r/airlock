@@ -6,9 +6,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/tr1v3r/airlock"
-	"github.com/tr1v3r/airlock/internal/driverconformance"
 	"io"
 	"os"
 	"strings"
@@ -16,6 +13,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 func integrationDB(t *testing.T) *sql.DB {

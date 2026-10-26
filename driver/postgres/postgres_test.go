@@ -5,13 +5,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/tr1v3r/airlock"
-	"github.com/tr1v3r/airlock/internal/driverconformance"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
+
+	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 func mockDriver(t *testing.T, options ...Option) (*Driver, sqlmock.Sqlmock) {

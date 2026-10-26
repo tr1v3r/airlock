@@ -5,10 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"golang.org/x/sync/semaphore"
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // model is a deterministic policy simulator. It does not reproduce goroutine

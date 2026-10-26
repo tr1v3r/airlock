@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	goredis "github.com/redis/go-redis/v9"
-	"github.com/tr1v3r/airlock"
 	"io"
 	"net"
 	"os"
 	"testing"
 	"time"
+
+	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/tr1v3r/airlock"
 )
 
 func distributed(t *testing.T, d *Driver, resource string) *airlock.Shared {

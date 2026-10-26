@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tr1v3r/airlock"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/tr1v3r/airlock"
 )
 
 func newAirlock(t *testing.T, capacity, total, tenant int) *airlock.Airlock {

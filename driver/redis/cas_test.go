@@ -3,12 +3,14 @@ package redis
 import (
 	"context"
 	"errors"
-	goredis "github.com/redis/go-redis/v9"
-	"github.com/tr1v3r/airlock"
-	"github.com/tr1v3r/airlock/internal/driverconformance"
 	"strconv"
 	"testing"
 	"time"
+
+	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 // Lua errors do not roll back prior writes. Assert preservation for every failed

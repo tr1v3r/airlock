@@ -4,16 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/alicebob/miniredis/v2"
-	goredis "github.com/redis/go-redis/v9"
-	"github.com/tr1v3r/airlock"
-	"github.com/tr1v3r/airlock/internal/driverconformance"
 	"io"
 	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/tr1v3r/airlock"
+	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
 func fixture(t *testing.T) (*Driver, *goredis.Client, *miniredis.Miniredis) {
