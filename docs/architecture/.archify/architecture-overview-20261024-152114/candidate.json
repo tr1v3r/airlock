@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "fb877d0ca2e47e638b6e464e3a222b70751f4dc9",
+      "revision": "7f6ddf4ca1469fbca5b00586c4a8056d4734fc31",
       "link_mode": "local-only"
     }
   },
@@ -61,7 +61,7 @@
         {
           "path": "airlock.go",
           "line": 141,
-          "end_line": 181
+          "end_line": 190
         }
       ]
     },
@@ -81,8 +81,8 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 183,
-          "end_line": 201
+          "line": 196,
+          "end_line": 211
         }
       ]
     },

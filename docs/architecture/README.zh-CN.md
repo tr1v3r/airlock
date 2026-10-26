@@ -15,7 +15,7 @@ GitHub 文件页不会执行 HTML。下方 PNG 可直接预览；克隆仓库后
 `docs/architecture/index.html`，或下载单张 HTML 后打开。HTML 内联了图和查看器，
 无需服务端；支持搜索、节点聚焦、浅深主题及 PNG/SVG 导出。
 PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定到
-[`fb877d0`](https://github.com/tr1v3r/airlock/tree/fb877d0ca2e47e638b6e464e3a222b70751f4dc9)，
+[`7f6ddf4`](https://github.com/tr1v3r/airlock/tree/7f6ddf4ca1469fbca5b00586c4a8056d4734fc31)，
 即拆分出 `protocol/` 与 `internal/scheduler/` 的包结构重构；图中的源码行号属于固定快照，不是浮动分支。
 
 ## 按需求切入

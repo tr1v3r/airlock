@@ -1,16 +1,16 @@
 {
   "archify_version": "3.2.0",
-  "source_revision": "fb877d0ca2e47e638b6e464e3a222b70751f4dc9",
-  "automated_browser_scope": "Archify 3.2.0 finalize browser-check gate passed for all eight diagrams at revision fb877d0 (receipts under .archify/*/review-2026-10-26T06-52-42-260Z, the final passing run).",
+  "source_revision": "7f6ddf4ca1469fbca5b00586c4a8056d4734fc31",
+  "automated_browser_scope": "Archify 3.2.0 finalize browser-check gate passed for all eight diagrams at revision 7f6ddf4 (receipts under .archify/*/review-2026-10-26T11-41-49-357Z, the final passing run).",
   "preview_capture": "Full-page Chrome screenshot at 1440 CSS pixels wide; light color scheme; no screenshot cropping.",
   "index_checks": "No horizontal overflow at 1440 and 390 CSS pixels; all 8 preview images loaded at 1440 (lazy below-fold images defer at 390 by design).",
   "diagrams": [
     {
       "slug": "overview",
       "candidate": ".archify/architecture-overview-20261024-152114/candidate.json",
-      "candidate_sha256": "3fd17a2eb854e9dc64b8c5e900b355cc32a3939044ce02c87ab818382757c5f6",
+      "candidate_sha256": "51f4c5a1a479f3ad1c3685ba48d8665e904fcd9908f8df3814e7cad118cfb9a2",
       "html": ".archify/architecture-overview-20261024-152114/overview.html",
-      "html_sha256": "992a6022d0b2f0526203b7bdbd423d84118e278e4fad56d44791854f5a4a3dc1",
+      "html_sha256": "6de15bc334b877a06dd2a04c147944e02b4fafad5351eb508ea0a896bbb5464d",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -25,9 +25,9 @@
     {
       "slug": "local-admission",
       "candidate": ".archify/workflow-local-admission-20261024-152114/candidate.json",
-      "candidate_sha256": "8f5373923355a8537e564a08d85485f2360ddd410a4d3e06c0103aa416c55856",
+      "candidate_sha256": "23c50c899528833fdba67ac6ab249407bd589d6241feae0f02a5ec042560f2c2",
       "html": ".archify/workflow-local-admission-20261024-152114/local-admission.html",
-      "html_sha256": "30922014c671f53d1dc18ea448a9a343630505d7ba9433bbadcda516d7a3d64f",
+      "html_sha256": "3e09cc259fc4b9d2b9517c4d1ccf14239a78ce8c76cc09a20fee8289d921b946",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -42,9 +42,9 @@
     {
       "slug": "scheduler",
       "candidate": ".archify/workflow-scheduler-20261024-152114/candidate.json",
-      "candidate_sha256": "56c7c0fbfc2b49fccbd070ed8923640f3f51e7cdad62f50b6dcd2a7c793b9cf6",
+      "candidate_sha256": "0875467bbe996d38f01e667fa416b9b3dff92008b5e1cca2b8cb81563b416be1",
       "html": ".archify/workflow-scheduler-20261024-152114/scheduler.html",
-      "html_sha256": "b1b4ab0bb5f72ad4c4b68d4164440c4f42f03606d99aff464f526dc71a78559e",
+      "html_sha256": "8d9fc300041b683a4bd0e3ced27f39c6db12b3dc210409f7254d973c532e5d92",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -59,9 +59,9 @@
     {
       "slug": "request-states",
       "candidate": ".archify/lifecycle-request-states-20261024-152114/candidate.json",
-      "candidate_sha256": "e90b30507100bcae9e2e9151bb575803be6c4a9e59c16bfa5232d51a581ba4e6",
+      "candidate_sha256": "d0a342ee14470f55398beeb7cf18ca1c304fd35013803bf4e8b25d0c7c62a41b",
       "html": ".archify/lifecycle-request-states-20261024-152114/request-states.html",
-      "html_sha256": "4827bcd6b8e0ac02a30744b1d8c358752bebb5b897ff6df76ff314a9eee3efea",
+      "html_sha256": "3f0c7a125eeebd47bb57ff9323c886b26b434e5860b3b5cabcb06052224b554c",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -79,9 +79,9 @@
     {
       "slug": "lease-states",
       "candidate": ".archify/lifecycle-lease-states-20261024-152114/candidate.json",
-      "candidate_sha256": "bd1bb9aa865caca82273eb9df046373e1cea7aba5ef334b49426af2ddf34ca88",
+      "candidate_sha256": "9b4082b5ead88fbe32da14d59e0f7a71b9cd1144986f108a3382e83890c5c1de",
       "html": ".archify/lifecycle-lease-states-20261024-152114/lease-states.html",
-      "html_sha256": "4fb75d3b81e6493d8db7017e79d161b2825baf320d776eacc4d00930466a6d69",
+      "html_sha256": "d90bf7e6f63dc8ba68c20db2d581b0decd2fc0acfe825b1879ea19ce96c9019a",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -96,9 +96,9 @@
     {
       "slug": "shared-sequence",
       "candidate": ".archify/sequence-shared-sequence-20261024-152114/candidate.json",
-      "candidate_sha256": "09b1a894a7523a597fdd9809b275c81b3cf423f35277be50f7f1ff30675ae400",
+      "candidate_sha256": "9139bac1285da5dcab73a5fd3b24e60da6909b92fa462b93fdc9f61603f47f35",
       "html": ".archify/sequence-shared-sequence-20261024-152114/shared-sequence.html",
-      "html_sha256": "450e07d9e643732eb3fd538097a0c693a7b6c99f5fc1c3d002037284505602ba",
+      "html_sha256": "fc6c7626ba3f13fd7788daa35521c215e17d9f423b838d60b822d690ff1712c5",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -113,9 +113,9 @@
     {
       "slug": "driver-boundaries",
       "candidate": ".archify/architecture-driver-boundaries-20261024-152114/candidate.json",
-      "candidate_sha256": "87cb003b165d8f8ccd04d53526689c1ace7d46cdd1fd7b16aabaaaa950a74dac",
+      "candidate_sha256": "563272a365f9f5006a8f94aa7e397dc8e1333388dfd1e5a3a90c96b149283773",
       "html": ".archify/architecture-driver-boundaries-20261024-152114/driver-boundaries.html",
-      "html_sha256": "b45d3c8f9038b6e15fb1abe4efb5766c2bc07d73e13828b2901876f0a5f91818",
+      "html_sha256": "e04760c834fda55f354d7dff7a1a42dfbd2aacb082951f049f3950dc4d0472b8",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -130,9 +130,9 @@
     {
       "slug": "application-lifecycle",
       "candidate": ".archify/workflow-application-lifecycle-20261024-152114/candidate.json",
-      "candidate_sha256": "5a67de9e0401ff4318127c45546c2115c5b693a9f9404d5a81cd059d798a57f1",
+      "candidate_sha256": "bb42ea90b432a89efc92bb52dd7092536e3d0696bb5a7d7d69a2da7de35593ff",
       "html": ".archify/workflow-application-lifecycle-20261024-152114/application-lifecycle.html",
-      "html_sha256": "97416e512292a09b7675061d729fb5df514d50952779e7f5976c059a8d7573d1",
+      "html_sha256": "0c2aa6a8c6f184bad867852c4f1ccbed0e9fb1bc2947cf0771783d32894ce5de",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
