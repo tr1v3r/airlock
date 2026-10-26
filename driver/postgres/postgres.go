@@ -25,10 +25,10 @@ type Driver struct {
 	db *sql.DB
 	// namespace is stored in a separate namespace column, preserving resource boundaries.
 	namespace string
-	// table is the validated and quoted schema-qualified resource table.
-	table string
-	// requests is the validated and quoted request table.
-	requests string
+	// resourceTable is the validated and quoted schema-qualified resource table.
+	resourceTable string
+	// requestTable is the validated and quoted request table.
+	requestTable string
 	// timeout caps database calls and transaction lock waits.
 	timeout time.Duration
 }
@@ -62,8 +62,8 @@ func WithTable(name string) Option {
 			}
 			parts[i] = `"` + part + `"`
 		}
-		d.table = strings.Join(parts, ".")
-		d.requests = parts[0] + "." + strings.TrimSuffix(parts[1], `"`) + `_requests"`
+		d.resourceTable = strings.Join(parts, ".")
+		d.requestTable = parts[0] + "." + strings.TrimSuffix(parts[1], `"`) + `_requests"`
 		return nil
 	}
 }
@@ -93,7 +93,7 @@ func New(db *sql.DB, namespace string, options ...Option) (*Driver, error) {
 	if len(namespace) > 256 || !utf8.ValidString(namespace) || strings.ContainsRune(namespace, 0) {
 		return nil, errors.New("airlock/postgres: invalid namespace")
 	}
-	d := &Driver{db: db, namespace: namespace, table: `"public"."airlock_resources"`, requests: `"public"."airlock_resources_requests"`, timeout: 5 * time.Second}
+	d := &Driver{db: db, namespace: namespace, resourceTable: `"public"."airlock_resources"`, requestTable: `"public"."airlock_resources_requests"`, timeout: 5 * time.Second}
 	for _, option := range options {
 		if option == nil {
 			return nil, errors.New("airlock/postgres: nil option")

@@ -98,7 +98,7 @@ func TestConfiguration(t *testing.T) {
 	}
 	for name, want := range map[string]string{"abc_1": `"public"."abc_1"`, "MySchema.MyTable": `"MySchema"."MyTable"`} {
 		d, err := New(db, "", WithTable(name), WithOperationTimeout(time.Minute))
-		if err != nil || d.table != want || d.timeout != time.Minute {
+		if err != nil || d.resourceTable != want || d.timeout != time.Minute {
 			t.Fatalf("%+v %v", d, err)
 		}
 	}
