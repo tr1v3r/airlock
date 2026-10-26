@@ -62,9 +62,17 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 	if err := ctx.Err(); err != nil {
 		return airlock.Result{}, err
 	}
-	next, result, err := airlock.Transition(r.snapshot, time.Now(), cmd)
+	state, err := airlock.DecodeState(r.snapshot)
+	if err != nil {
+		return airlock.Result{}, err
+	}
+	next, result, _, err := airlock.Transition(state, time.Now(), cmd)
 	if next != nil {
-		r.snapshot = next
+		data, codecErr := airlock.EncodeState(next)
+		if codecErr != nil {
+			return airlock.Result{}, codecErr
+		}
+		r.snapshot = data
 	}
 	if err := ctx.Err(); err != nil {
 		return airlock.Result{}, err

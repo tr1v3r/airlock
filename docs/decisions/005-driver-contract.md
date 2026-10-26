@@ -40,7 +40,7 @@ Command、Operation、ValidateCommand 和 Transition 保留为独立 driver 模�
 不是 Driver 调用入口。各内置 driver 的五个方法转入同一私有执行路径，不复制调度逻辑，
 不改变原子边界、幂等身份、TTL、错误优先级或取消语义。
 
-`Transition(previous, backendNow, command)` 返回新 snapshot、Result 和业务错误。
+`Transition(state, backendNow, command)` 返回结构化新状态、Result、CommitWindow 和错误。
 Driver 必须串行化整个资源的读、转换、写，并且在新 snapshot 非 nil 时即使业务错误也要提交；
 例如队满拒绝需要保存，过期回收可能让其他人获得授权。持久化失败不能返回可用授权。
 提交结果可能未知，数据库支持事务也不例外。绝不自动回退到独立的本地容量池。

@@ -15,14 +15,14 @@ func TestTransitionStateStorageIndependence(t *testing.T) {
 	other := r
 	id := NewRequest(r.SubmitUntil)
 	other.ID, other.Owner = id.ID, id.Owner
-	var state *DriverState
+	var state *SharedState
 	var snapshot []byte
 	var lease string
 	for _, command := range []Command{{Kind: Submit, Request: r}, {Kind: Submit, Request: other}, {Kind: Observe, Request: other}, {Kind: Renew, Request: r}, {Kind: Release, Request: r}, {Kind: Cancel, Request: other}} {
 		command.LeaseID = lease
 		before := append([]byte(nil), snapshot...)
-		next, result, err := TransitionState(state, now, command)
-		data, want, wantErr := Transition(before, now, command)
+		next, result, err := transitionStructured(state, now, command)
+		data, want, wantErr := transitionSnapshot(before, now, command)
 		if !reflect.DeepEqual(result, want) || err != wantErr {
 			t.Fatalf("%s: %+v %v != %+v %v", command.Kind, result, err, want, wantErr)
 		}
@@ -39,7 +39,7 @@ func TestTransitionStateStorageIndependence(t *testing.T) {
 }
 
 func TestTransitionStateRejectsInvalidInput(t *testing.T) {
-	if next, result, err := TransitionState(nil, time.Now(), Command{}); next != nil || result != (Result{}) || err != ErrInvalidConfig {
+	if next, result, err := transitionStructured(nil, time.Now(), Command{}); next != nil || result != (Result{}) || err != ErrInvalidConfig {
 		t.Fatalf("%+v %+v %v", next, result, err)
 	}
 }

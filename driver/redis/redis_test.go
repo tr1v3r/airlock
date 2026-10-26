@@ -217,7 +217,7 @@ func TestLostWriteResponseNeverRetries(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, recovered, recoveryErr := airlock.Transition([]byte(raw), time.Now(), airlock.Command{Kind: airlock.Observe, Request: r})
+			_, recovered, recoveryErr := transitionSnapshot([]byte(raw), time.Now(), airlock.Command{Kind: airlock.Observe, Request: r})
 			if recoveryErr != nil {
 				t.Fatal(recoveryErr)
 			}

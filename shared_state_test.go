@@ -20,7 +20,7 @@ func newStateHarness(t *testing.T) *stateHarness {
 }
 func (h *stateHarness) call(kind Operation, r Request, lease string, wantErr error) Result {
 	h.t.Helper()
-	data, res, err := Transition(h.data, h.now, Command{Kind: kind, Request: r, LeaseID: lease})
+	data, res, err := transitionSnapshot(h.data, h.now, Command{Kind: kind, Request: r, LeaseID: lease})
 	if !errors.Is(err, wantErr) {
 		h.t.Fatalf("%s %s: got %v want %v", kind, r.Tenant, err, wantErr)
 	}
@@ -375,14 +375,14 @@ func TestTransitionCorruptSnapshots(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, _, err := Transition(data, h.now, Command{Kind: Observe, Request: holder})
+			out, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: holder})
 			if !errors.Is(err, ErrCorruptState) || out != nil {
 				t.Fatalf("got data=%t err=%v", out != nil, err)
 			}
 		})
 	}
 	for _, data := range [][]byte{[]byte("{"), []byte("null")} {
-		if _, _, err := Transition(data, h.now, Command{Kind: Observe, Request: holder}); !errors.Is(err, ErrCorruptState) {
+		if _, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: holder}); !errors.Is(err, ErrCorruptState) {
 			t.Fatal(err)
 		}
 	}
@@ -433,12 +433,12 @@ func TestTransitionSnapshotsAreDeterministic(t *testing.T) {
 	}
 	original := append([]byte(nil), h.data...)
 	h.now = h.now.Add(time.Second)
-	data, result, err := Transition(original, h.now, Command{Kind: Observe, Request: holder})
+	data, result, err := transitionSnapshot(original, h.now, Command{Kind: Observe, Request: holder})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 20; i++ {
-		got, res, e := Transition(original, h.now, Command{Kind: Observe, Request: holder})
+		got, res, e := transitionSnapshot(original, h.now, Command{Kind: Observe, Request: holder})
 		if e != nil || !reflect.DeepEqual(got, data) || res != result {
 			t.Fatal("map iteration changed scheduler output")
 		}
@@ -448,7 +448,7 @@ func TestTransitionSnapshotsAreDeterministic(t *testing.T) {
 func TestTransitionUnrepresentableBackendTime(t *testing.T) {
 	h := newStateHarness(t)
 	r := stateTestRequest(h.now, stateTestConfig(), "a", 1)
-	out, _, err := Transition(nil, time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), Command{Kind: Submit, Request: r})
+	out, _, err := transitionSnapshot(nil, time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), Command{Kind: Submit, Request: r})
 	if !errors.Is(err, ErrCorruptState) || out != nil {
 		t.Fatalf("unserializable time committed: %v", err)
 	}
@@ -512,7 +512,7 @@ func TestTransitionRejectsCorruptLifecycleFields(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, _, err := Transition(data, h.now, Command{Kind: Observe, Request: active})
+			out, _, err := transitionSnapshot(data, h.now, Command{Kind: Observe, Request: active})
 			if !errors.Is(err, ErrCorruptState) || out != nil {
 				t.Fatalf("corrupt lifecycle accepted: output=%t error=%v", out != nil, err)
 			}
@@ -523,14 +523,14 @@ func TestTransitionRejectsCorruptLifecycleFields(t *testing.T) {
 func TestTransitionRemainingIncludesFractionalBackendTime(t *testing.T) {
 	now := time.Unix(1000, 900000)
 	r := stateTestRequest(now.Truncate(time.Millisecond), stateTestConfig(), "", 1)
-	data, result, err := Transition(nil, now, Command{Kind: Submit, Request: r})
+	data, result, err := transitionSnapshot(nil, now, Command{Kind: Submit, Request: r})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Remaining != r.Config.LeaseTTL-900*time.Microsecond {
 		t.Fatalf("optimistic TTL: %s", result.Remaining)
 	}
-	_, result, err = Transition(data, now.Add(100*time.Millisecond), Command{Kind: Observe, Request: r})
+	_, result, err = transitionSnapshot(data, now.Add(100*time.Millisecond), Command{Kind: Observe, Request: r})
 	if err != nil || result.Remaining != r.Config.LeaseTTL-100*time.Millisecond-900*time.Microsecond {
 		t.Fatalf("observation TTL: %s %v", result.Remaining, err)
 	}

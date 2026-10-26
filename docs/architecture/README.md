@@ -34,7 +34,7 @@ line numbers belong to the pinned snapshot, not the moving `dev` branch.
 | Share capacity across instances | [Shared guide](../guides/shared.md), `NewShared` | Same resource config; expiry cannot stop work |
 | Supervise renewals and task shutdown | [lifecycle example](../../driver/memory/examples/lifecycle/main.go) | Stop work and join supervisors before release; retry only cleanup |
 | Add a backend | [Driver guide](../guides/drivers.md), [Driver](../../driver.go) | Backend time, atomic commit, idempotency, unknown outcomes; run conformance |
-| Change scheduling / state transitions | [airlock.go](../../airlock.go), [driver_state.go](../../driver_state.go) | Shared scheduler; exercise model and race tests |
+| Change scheduling / state transitions | [airlock.go](../../airlock.go), [shared_state.go](../../shared_state.go) | Shared scheduler; exercise model and race tests |
 
 ## Diagrams
 
@@ -82,9 +82,9 @@ Trace persistent states, cancellation tombstones and retention.
 
 ![Authoritative request lifecycle](previews/request-states.png)
 
-Implementation: [driver_state.go](../../driver_state.go), [driver.go](../../driver.go)
+Implementation: [shared_state.go](../../shared_state.go), [driver.go](../../driver.go)
 
-Tests: [driver_state_test.go](../../driver_state_test.go), [driver_model_test.go](../../driver_model_test.go)
+Tests: [shared_state_test.go](../../shared_state_test.go), [driver_model_test.go](../../driver_model_test.go)
 
 ### 05 · Client lease lifecycle
 
@@ -118,7 +118,7 @@ Locate the atomic boundary and the actual snapshot writer.
 
 ![Driver atomicity and persistence](previews/driver-boundaries.png)
 
-Implementation: [driver.go](../../driver.go), [driver_optimistic.go](../../driver_optimistic.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
+Implementation: [driver.go](../../driver.go), [driver_transition.go](../../driver_transition.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
 
 Tests: [internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/window_test.go](../../driver/redis/window_test.go)
 

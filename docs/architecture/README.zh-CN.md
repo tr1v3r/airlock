@@ -30,7 +30,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 | 多实例共享容量 | [Shared 使用指南](../guides/shared.zh-CN.md)、`NewShared` | 资源配置一致；租约不等于强制停止 |
 | 管理续租与任务停止 | [lifecycle 示例](../../driver/memory/examples/lifecycle/main.go) | 先停止任务及监督，再释放；未知结果只重试清理 |
 | 新增后端 | [自定义驱动指南](../guides/drivers.zh-CN.md)、[Driver](../../driver.go) | 后端时间、原子提交、幂等、未知结果；运行 conformance |
-| 修改调度 / 状态机 | [airlock.go](../../airlock.go)、[driver_state.go](../../driver_state.go) | 本地与共享复用调度；同时检查 model / race 测试 |
+| 修改调度 / 状态机 | [airlock.go](../../airlock.go)、[shared_state.go](../../shared_state.go) | 本地与共享复用调度；同时检查 model / race 测试 |
 
 ## 图集
 
@@ -78,9 +78,9 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 ![后端请求生命周期：状态、幂等与回收](previews/request-states.png)
 
-实现：[driver_state.go](../../driver_state.go), [driver.go](../../driver.go)
+实现：[shared_state.go](../../shared_state.go), [driver.go](../../driver.go)
 
-测试：[driver_state_test.go](../../driver_state_test.go), [driver_model_test.go](../../driver_model_test.go)
+测试：[shared_state_test.go](../../shared_state_test.go), [driver_model_test.go](../../driver_model_test.go)
 
 ### 05 · 客户端 Lease：有效期与不可逆失效
 
@@ -114,7 +114,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 ![驱动实现：原子边界与快照持久化](previews/driver-boundaries.png)
 
-实现：[driver.go](../../driver.go), [driver_optimistic.go](../../driver_optimistic.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
+实现：[driver.go](../../driver.go), [driver_transition.go](../../driver_transition.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
 
 测试：[internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/window_test.go](../../driver/redis/window_test.go)
 

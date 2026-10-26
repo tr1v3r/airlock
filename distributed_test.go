@@ -22,7 +22,7 @@ type clientStateDriver struct {
 
 func (d *clientStateDriver) execute(ctx context.Context, cmd Command) (Result, error) {
 	d.mu.Lock()
-	data, result, err := Transition(d.state, time.Now(), cmd)
+	data, result, err := transitionSnapshot(d.state, time.Now(), cmd)
 	if data != nil {
 		d.state = data
 	}
@@ -265,7 +265,7 @@ func TestSharedQueuedCancellationCleanupIndependentContext(t *testing.T) {
 		t.Fatalf("last command %s", last.Kind)
 	}
 	d.mu.Lock()
-	_, r, e := Transition(d.state, time.Now(), Command{Kind: Observe, Request: last.Request})
+	_, r, e := transitionSnapshot(d.state, time.Now(), Command{Kind: Observe, Request: last.Request})
 	d.mu.Unlock()
 	if e != nil || r.Status != Cancelled {
 		t.Fatalf("cancel did not terminate request: %v %v", r, e)
@@ -362,7 +362,7 @@ func TestSharedAmbiguousSubmitAndCleanupErrors(t *testing.T) {
 		t.Fatal("cleanup changed identity or retried admission")
 	}
 	d.mu.Lock()
-	_, r, e := Transition(d.state, time.Now(), Command{Kind: Observe, Request: calls[0].Request})
+	_, r, e := transitionSnapshot(d.state, time.Now(), Command{Kind: Observe, Request: calls[0].Request})
 	d.mu.Unlock()
 	if e != nil || r.Status != Cancelled {
 		t.Fatal("ambiguous committed grant not cancelled")

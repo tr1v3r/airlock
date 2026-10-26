@@ -11,12 +11,13 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	goredis "github.com/redis/go-redis/v9"
-	"github.com/tr1v3r/airlock"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	goredis "github.com/redis/go-redis/v9"
+	"github.com/tr1v3r/airlock"
 )
 
 // Driver is a concurrency-safe Redis adapter. Construct it with New.
@@ -198,7 +199,19 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 		if err != nil {
 			return airlock.Result{}, err
 		}
-		next, result, window, transitionErr := airlock.TransitionOptimistic(snapshot, now, command)
+		state, decodeErr := airlock.DecodeState(snapshot)
+		if decodeErr != nil {
+			return airlock.Result{}, decodeErr
+		}
+		nextState, result, window, transitionErr := airlock.Transition(state, now, command)
+		var next []byte
+		if nextState != nil {
+			var encodeErr error
+			next, encodeErr = airlock.EncodeState(nextState)
+			if encodeErr != nil {
+				return airlock.Result{}, encodeErr
+			}
+		}
 		if next == nil {
 			return result, transitionErr
 		}

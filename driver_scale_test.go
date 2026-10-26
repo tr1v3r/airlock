@@ -59,7 +59,7 @@ func scaleBytes(tb testing.TB, records, mappings, queued int) ([]byte, time.Time
 	if err != nil {
 		tb.Fatal(err)
 	}
-	if next, _, err := Transition(data, s.Time, cmd); err != nil || next == nil {
+	if next, _, err := transitionSnapshot(data, s.Time, cmd); err != nil || next == nil {
 		tb.Fatalf("invalid scale fixture: %v", err)
 	}
 	return data, s.Time, cmd
@@ -94,7 +94,7 @@ func TestTransitionScaleFixtures(t *testing.T) {
 		for _, mappings := range []int{0, 64} {
 			for _, queued := range []int{0, records - 1} {
 				data, now, cmd := scaleBytes(t, records, mappings, queued)
-				next, result, err := Transition(data, now, cmd)
+				next, result, err := transitionSnapshot(data, now, cmd)
 				if err != nil || next == nil || result.Revision != 2 {
 					t.Fatalf("R=%d M=%d Q=%d: %+v %v", records, mappings, queued, result, err)
 				}

@@ -133,7 +133,7 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 	if err = tx.QueryRowContext(ctx, `SELECT pg_catalog.clock_timestamp()`).Scan(&now); err != nil {
 		return airlock.Result{}, fmt.Errorf("airlock/postgres: clock: %w", err)
 	}
-	next, result, transitionErr := airlock.TransitionState(state, now, cmd)
+	next, result, _, transitionErr := airlock.Transition(state, now, cmd)
 	if next == nil {
 		return result, transitionErr
 	}

@@ -202,7 +202,7 @@ func runProtocolTrace(t testing.TB, trace []byte, priority bool) {
 			cmd.Request.Owner = "00000000000000000000000000000000"
 		}
 		wantStatus, wantErr, commit := m.apply(now, cmd)
-		next, result, err := Transition(data, now, cmd)
+		next, result, err := transitionSnapshot(data, now, cmd)
 		if !errors.Is(err, wantErr) || result.Status != wantStatus || (next != nil) != commit {
 			t.Fatalf("step %d instruction=%d kind=%s: status=%s err=%v committed=%t; want %s/%v/%t", step, instruction, kind, result.Status, err, next != nil, wantStatus, wantErr, commit)
 		}
