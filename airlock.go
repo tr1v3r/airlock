@@ -14,7 +14,7 @@ var (
 	ErrInvalidTenant = errors.New("airlock: empty tenant")
 	// ErrInvalidWeight reports a nonpositive requested token count.
 	ErrInvalidWeight = errors.New("airlock: invalid weight")
-	// ErrWeightExceedsCapacity reports a request larger than the fixed capacity.
+	// ErrWeightExceedsCapacity reports a request larger than the current capacity.
 	ErrWeightExceedsCapacity = errors.New("airlock: weight exceeds capacity")
 	// ErrQueueFull reports that the global waiting queue is full.
 	ErrQueueFull = errors.New("airlock: queue full")
@@ -27,10 +27,11 @@ var (
 	ErrWouldBlock = errors.New("airlock: acquisition would block")
 )
 
-// Config defines fixed limits for an Airlock. Queue limits count pending
-// requests, not granted permits. Zero queue limits disable waiting.
+// Config defines initial capacity and fixed queue limits for an Airlock.
+// Queue limits count pending requests, not granted permits. Zero queue limits
+// disable waiting.
 type Config struct {
-	// Capacity is the positive maximum number of held tokens.
+	// Capacity is the positive initial token limit; Resize can change it.
 	Capacity int
 	// MaxQueued is the nonnegative maximum number of pending requests.
 	MaxQueued int
@@ -46,7 +47,7 @@ type Config struct {
 // count tokens; ActivePermits counts granted, unreleased permits, and Queued
 // counts pending requests, including a protected head request.
 type Stats struct {
-	// Capacity is the fixed token limit configured at construction.
+	// Capacity is the current token limit; InUse may exceed it after shrinking.
 	Capacity int
 	// InUse counts held tokens, including all tokens in each weighted permit.
 	InUse int
@@ -74,7 +75,8 @@ type Stats struct {
 type Airlock struct {
 	// mu protects all mutable scheduling and accounting state.
 	mu sync.Mutex
-	// cfg holds immutable limits; Priority is compiled into priority rather than retained.
+	// cfg holds the current capacity and fixed queue limits; mu protects capacity.
+	// Priority is compiled into priority rather than retained.
 	cfg Config
 	// used counts held tokens; queued counts pending requests across all tenants.
 	used, queued int
@@ -102,10 +104,12 @@ type tenantQueue struct {
 
 // waiter tracks one pending atomic allocation under the owning Airlock mutex.
 type waiter struct {
-	// ready closes after a full grant; cancellation removes the waiter without closing it.
+	// ready closes after a full grant or resize rejection; cancellation does not close it.
 	ready chan struct{}
 	// granted records the winning grant transition under the Airlock mutex.
 	granted bool
+	// err records a terminal resize rejection, published by closing ready.
+	err error
 	// weight is the positive token count requested atomically.
 	weight int
 	// node links the waiter into its tenant's FIFO.
@@ -128,8 +132,8 @@ type Permit struct {
 }
 
 // New constructs an Airlock, or returns ErrInvalidConfig for invalid limits or
-// priority policy. It snapshots the policy. It has no unlimited mode; limits,
-// tenant assignments and selection shares cannot be changed after creation.
+// priority policy. It snapshots the policy. It has no unlimited mode. Resize
+// changes capacity; queue limits, tenant assignments and selection shares remain fixed.
 func New(cfg Config) (*Airlock, error) {
 	if cfg.Capacity <= 0 || cfg.MaxQueued < 0 || cfg.MaxQueuedPerTenant < 0 || cfg.MaxQueuedPerTenant > cfg.MaxQueued {
 		return nil, ErrInvalidConfig
@@ -200,10 +204,11 @@ func (g *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 	if n <= 0 {
 		return nil, ErrInvalidWeight
 	}
+	g.mu.Lock()
 	if n > g.cfg.Capacity {
+		g.mu.Unlock()
 		return nil, ErrWeightExceedsCapacity
 	}
-	g.mu.Lock()
 	if err := ctx.Err(); err != nil {
 		g.mu.Unlock()
 		return nil, err
@@ -223,12 +228,19 @@ func (g *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 	g.mu.Unlock()
 	select {
 	case <-w.ready:
+		if w.err != nil {
+			return nil, w.err
+		}
 		return &Permit{owner: g, weight: n}, nil
 	case <-ctx.Done():
 		g.mu.Lock()
 		if w.granted {
 			g.mu.Unlock()
 			return &Permit{owner: g, weight: n}, nil
+		}
+		if w.err != nil {
+			g.mu.Unlock()
+			return nil, w.err
 		}
 		g.remove(w)
 		g.dispatch()
