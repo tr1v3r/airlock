@@ -31,8 +31,8 @@ GOWORK=off go vet ./...
 ```
 
 The public operations are `Submit`, `Observe`, `Cancel`, `Renew`, and `Release`.
-The first three accept an immutable `airlock.Request`; renewal and release use
-`airlock.LeaseRef{Request: original, ID: result.LeaseID}`. All return `(airlock.Result, error)`.
+The first three accept an immutable `protocol.Request`; renewal and release use
+`protocol.LeaseRef{Request: original, ID: result.LeaseID}`. All return `(protocol.Result, error)`.
 
 ## 中文
 
@@ -49,5 +49,5 @@ memory 主要用于 Shared 租约协议的测试和演示。**普通单进程并
 租约过期仅回收账本额度，业务必须自行停止工作。
 
 公开操作为 `Submit`、`Observe`、`Cancel`、`Renew` 和 `Release`。前三者接收不可变
-`airlock.Request`；续租与释放接收 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`，
-均返回 `(airlock.Result, error)`。
+`protocol.Request`；续租与释放接收 `protocol.LeaseRef{Request: original, ID: result.LeaseID}`，
+均返回 `(protocol.Result, error)`。

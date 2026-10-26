@@ -2,13 +2,13 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "驱动实现：原子边界与快照持久化",
+    "title": "驱动实现：原子边界与状态持久化",
     "locale": "zh-CN",
     "output": ".archify/architecture-driver-boundaries-20261024-152114/driver-boundaries.html",
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "revision": "75ab0c4ed5f6a137d988b983e07dd94d6f2305fa",
       "link_mode": "local-only"
     }
   },
@@ -28,9 +28,9 @@
       ],
       "sources": [
         {
-          "path": "driver.go",
-          "line": 14,
-          "end_line": 31
+          "path": "protocol/driver.go",
+          "line": 42,
+          "end_line": 63
         }
       ]
     },
@@ -50,8 +50,8 @@
       "sources": [
         {
           "path": "driver/memory/memory.go",
-          "line": 30,
-          "end_line": 64
+          "line": 39,
+          "end_line": 73
         }
       ]
     },
@@ -71,8 +71,8 @@
       "sources": [
         {
           "path": "driver/postgres/postgres.go",
-          "line": 123,
-          "end_line": 172
+          "line": 108,
+          "end_line": 150
         }
       ]
     },
@@ -92,8 +92,8 @@
       "sources": [
         {
           "path": "driver/redis/redis.go",
-          "line": 162,
-          "end_line": 221
+          "line": 175,
+          "end_line": 239
         }
       ]
     },
@@ -113,13 +113,13 @@
       "sources": [
         {
           "path": "driver/memory/memory.go",
-          "line": 14,
-          "end_line": 25
+          "line": 16,
+          "end_line": 33
         },
         {
           "path": "driver/memory/memory.go",
-          "line": 57,
-          "end_line": 64
+          "line": 65,
+          "end_line": 72
         }
       ]
     },
@@ -127,7 +127,7 @@
       "id": "pgstore",
       "type": "database",
       "label": "PostgreSQL",
-      "sublabel": "资源行保存 snapshot",
+      "sublabel": "资源行 + 请求表增量写",
       "pos": [
         700,
         245
@@ -138,9 +138,14 @@
       ],
       "sources": [
         {
-          "path": "driver/postgres/postgres.go",
-          "line": 138,
-          "end_line": 172
+          "path": "driver/postgres/storage.go",
+          "line": 35,
+          "end_line": 64
+        },
+        {
+          "path": "driver/postgres/storage.go",
+          "line": 103,
+          "end_line": 150
         }
       ]
     },
@@ -168,8 +173,8 @@
     {
       "id": "transition",
       "type": "backend",
-      "label": "Transition",
-      "sublabel": "无 I/O；复用本地调度",
+      "label": "ApplyCommand / ApplySnapshot",
+      "sublabel": "protocol 包可选参考机；无 I/O；复用调度核心",
       "pos": [
         360,
         620
@@ -180,27 +185,27 @@
       ],
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 32,
-          "end_line": 40
+          "path": "protocol/apply.go",
+          "line": 10,
+          "end_line": 28
         },
         {
-          "path": "driver_state.go",
-          "line": 163,
-          "end_line": 187
+          "path": "protocol/apply.go",
+          "line": 155,
+          "end_line": 177
         },
         {
-          "path": "driver_state.go",
-          "line": 221,
-          "end_line": 228
+          "path": "protocol/apply.go",
+          "line": 180,
+          "end_line": 189
         }
       ]
     },
     {
       "id": "window",
       "type": "backend",
-      "label": "TransitionOptimistic",
-      "sublabel": "附加提交时间窗口",
+      "label": "ApplyOptimistic",
+      "sublabel": "protocol 包可选；附加提交时间窗口",
       "pos": [
         700,
         620
@@ -211,9 +216,9 @@
       ],
       "sources": [
         {
-          "path": "driver_optimistic.go",
-          "line": 20,
-          "end_line": 62
+          "path": "protocol/window.go",
+          "line": 23,
+          "end_line": 66
         }
       ]
     }
@@ -273,16 +278,16 @@
       "dot": "cyan",
       "title": "三种原子边界",
       "items": [
-        "Memory 和 PostgreSQL 在独占资源后直接调用 Transition。",
-        "Redis 通过 TransitionOptimistic 计算；CAS 同时校验原快照与发布时间。"
+        "Memory 独占资源后调用 ApplySnapshot；PostgreSQL 事务内调用 ApplyCommand。",
+        "Redis 通过 ApplyOptimistic 计算；CAS 同时校验原快照与发布时间。"
       ]
     },
     {
       "dot": "cyan",
       "title": "自定义驱动的切入点",
       "items": [
-        "实现 Driver 的五个方法；不可自行修改 opaque snapshot。",
-        "即使有业务错误，也要提交非 nil 新快照；传输错误是未知结果。"
+        "实现 protocol.Driver 的五个方法；不可自行修改 opaque snapshot。",
+        "即使有业务错误，也要原子提交非 nil 新状态；传输错误是未知结果。"
       ]
     },
     {
@@ -290,7 +295,7 @@
       "title": "部署与性能边界",
       "items": [
         "Memory 仅供测试演示；远端驱动分别是独立 Go 模块。",
-        "每资源全快照读写；Observe 也推进状态，不能当作廉价只读查询。"
+        "Redis 每资源全快照读写；PostgreSQL 写增量行；Observe 也推进状态，不能当作廉价只读查询。"
       ]
     }
   ]

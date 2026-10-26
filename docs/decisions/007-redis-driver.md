@@ -6,7 +6,7 @@
 ## 1. 复用 Go 状态机，以 Lua 发布快照
 
 第一版没有把公平调度再翻译成 Lua。读取脚本原子返回 GET 与 TIME，Go 运行
-`TransitionOptimistic`，发布脚本检查原值、存在性和时间窗口后 SET。队列、组游标、
+`protocol.ApplyOptimistic`，发布脚本检查原值、存在性和 CommitWindow 后 SET。队列、组游标、
 租户轮转、protected head 和完整权重的授予都来自同一份 core 状态机。
 Lua 不遍历请求队列，也没有服务端维护循环；成本仍与快照字节数有关。
 

@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "revision": "75ab0c4ed5f6a137d988b983e07dd94d6f2305fa",
       "link_mode": "local-only"
     }
   },
@@ -27,9 +27,9 @@
       "sublabel": "不是 Status 枚举",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 92,
-          "end_line": 127
+          "path": "protocol/apply.go",
+          "line": 88,
+          "end_line": 122
         }
       ]
     },
@@ -40,19 +40,19 @@
       "sublabel": "持久等待；不占 token",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 73,
-          "end_line": 87
+          "path": "protocol/apply.go",
+          "line": 68,
+          "end_line": 82
         },
         {
-          "path": "driver_state.go",
-          "line": 117,
-          "end_line": 143
+          "path": "protocol/apply.go",
+          "line": 111,
+          "end_line": 136
         },
         {
-          "path": "driver_state.go",
-          "line": 221,
-          "end_line": 228
+          "path": "protocol/apply.go",
+          "line": 180,
+          "end_line": 189
         }
       ]
     },
@@ -63,14 +63,14 @@
       "sublabel": "占用全部 weight",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 131,
-          "end_line": 160
+          "path": "protocol/apply.go",
+          "line": 125,
+          "end_line": 153
         },
         {
-          "path": "driver_state.go",
-          "line": 73,
-          "end_line": 84
+          "path": "protocol/apply.go",
+          "line": 68,
+          "end_line": 78
         }
       ]
     },
@@ -81,14 +81,14 @@
       "sublabel": "匹配租约已释放",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 144,
-          "end_line": 160
+          "path": "protocol/apply.go",
+          "line": 137,
+          "end_line": 153
         },
         {
-          "path": "driver_state.go",
-          "line": 85,
-          "end_line": 87
+          "path": "protocol/apply.go",
+          "line": 79,
+          "end_line": 81
         }
       ]
     },
@@ -99,9 +99,9 @@
       "sublabel": "原 ID 不能重新提交",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 85,
-          "end_line": 101
+          "path": "protocol/apply.go",
+          "line": 79,
+          "end_line": 95
         }
       ]
     },
@@ -112,19 +112,19 @@
       "sublabel": "含先取消后提交",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 103,
-          "end_line": 108
+          "path": "protocol/apply.go",
+          "line": 99,
+          "end_line": 104
         },
         {
-          "path": "driver_state.go",
-          "line": 131,
-          "end_line": 143
+          "path": "protocol/apply.go",
+          "line": 125,
+          "end_line": 136
         },
         {
-          "path": "driver_state.go",
-          "line": 85,
-          "end_line": 87
+          "path": "protocol/apply.go",
+          "line": 79,
+          "end_line": 81
         }
       ]
     },
@@ -135,14 +135,14 @@
       "sublabel": "等待或租约到期",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 73,
-          "end_line": 87
+          "path": "protocol/apply.go",
+          "line": 68,
+          "end_line": 82
         },
         {
-          "path": "driver_state.go",
-          "line": 109,
-          "end_line": 111
+          "path": "protocol/apply.go",
+          "line": 105,
+          "end_line": 107
         }
       ]
     },
@@ -153,14 +153,14 @@
       "sublabel": "队列拒绝结果稳定",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 117,
-          "end_line": 121
+          "path": "protocol/apply.go",
+          "line": 111,
+          "end_line": 115
         },
         {
-          "path": "driver_state.go",
-          "line": 85,
-          "end_line": 87
+          "path": "protocol/apply.go",
+          "line": 79,
+          "end_line": 81
         }
       ]
     }
@@ -268,7 +268,7 @@
       "dot": "cyan",
       "title": "操作驱动时间推进",
       "items": [
-        "每次 Transition 先处理过期并调度，再执行命令、再次调度。",
+        "每次 ApplyCommand 先处理过期并调度，再执行命令、再次调度。",
         "没有后台清扫器；回收需同时越过 Finished + Retention 和 SubmitUntil。",
         "到期边：未授予时检查 WaitUntil，已授予时检查租约 Until。"
       ]

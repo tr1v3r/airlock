@@ -16,7 +16,7 @@ constants and variables, explaining input constraints, concurrency and lifecycle
 rules, and error handling. Read the comments for your pinned version alongside
 the examples when integrating the SDK.
 
-Start with the [Local API](airlock.go), [shared API](distributed.go), and [driver contract](driver.go).
+Start with the [Local API](airlock.go), [shared API](distributed.go), and [driver contract](protocol/driver.go).
 
 ## Choose an entry point
 
@@ -28,6 +28,20 @@ Start with the [Local API](airlock.go), [shared API](distributed.go), and [drive
 
 Ordinary local admission does not need a driver. The core runtime uses only the
 standard library; remote driver dependencies are installed separately.
+
+## Package layout
+
+| Package | Responsibility |
+| --- | --- |
+| `airlock` (root) | Application API: `New(Config)`, `Airlock`, `Permit`, `TryAcquire`, `Stats`, and `NewShared`/`Shared`/`Lease` over an injected driver |
+| `airlock/protocol` | Shared admission protocol: the `Driver` contract, request/lease identities, statuses, protocol errors, validation, and the optional reference state machine (`ApplyCommand`, `ApplySnapshot`, `ApplyOptimistic`) |
+| `airlock/internal/scheduler` | Scheduling core shared by local admission and the reference state machine: bounded queues, tenant FIFO, round-robin, priority groups, protected head |
+| `driver/memory`, `driver/postgres`, `driver/redis` | Independent backend modules implementing `protocol.Driver` |
+
+Dependencies point downward only: `protocol` never imports the root package,
+and the internal scheduler imports neither. Queue and waiter internals stay
+internal; a driver only needs the protocol contract, not the reference state
+machine.
 
 ## Architecture atlas
 
@@ -482,11 +496,16 @@ PostgreSQL and Redis are provided as independent modules. This does not indicate
 
 Backend authors can use the separate [custom driver guide](docs/guides/drivers.md),
 [protocol decisions](docs/decisions/005-driver-contract.md), and
-[module guide](MODULES.md). Redis and PostgreSQL are independent modules with
+[module guide](MODULES.md). Drivers implement `protocol.Driver` from the
+[`protocol` package](protocol); the reference state machine it ships is optional.
+Redis and PostgreSQL are independent modules with
 backend-specific deployment and failure boundaries documented in their READMEs.
 
-PostgreSQL stores resources and requests in separate tables. `EnsureSchema`
-creates missing tables and checks required columns.
+PostgreSQL stores resources and requests in separate tables and evaluates
+commands against structured `protocol.State` with delta writes. `EnsureSchema`
+creates missing tables and checks required columns. Redis guards
+snapshot compare-and-swap with the protocol's optimistic commit window. The
+memory driver keeps whole JSON snapshots through `protocol.ApplySnapshot`.
 
 `NewShared` performs no backend I/O at construction and does not own connections.
 The former `NewDistributed`, `Distributed`, and `DistributedOptions` names remain

@@ -112,5 +112,5 @@ expiry guards, cache reload, lost write responses, and client lease lifecycle.
 Default tests use miniredis; real standalone and Cluster tests are opt-in.
 
 The public operations are `Submit`, `Observe`, `Cancel`, `Renew`, and `Release`.
-The first three accept an immutable `airlock.Request`; renewal and release use
-`airlock.LeaseRef{Request: original, ID: result.LeaseID}`. All return `(airlock.Result, error)`.
+The first three accept an immutable `protocol.Request`; renewal and release use
+`protocol.LeaseRef{Request: original, ID: result.LeaseID}`. All return `(protocol.Result, error)`.

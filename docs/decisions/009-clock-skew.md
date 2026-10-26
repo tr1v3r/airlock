@@ -5,7 +5,7 @@ Status: implemented in this change; no protocol version or resource migration.
 ## Why
 
 `Shared` used the entire configured SubmitWindow and MaxWait when constructing
-absolute deadlines from the client wall clock. `Transition` correctly rejects a
+absolute deadlines from the client wall clock. `protocol.ApplySnapshot` correctly rejects a
 new request whose deadlines exceed its backend-time windows. Consequently, even
 a small stable client-ahead offset greater than command delivery time could make
 every fresh acquisition fail with `ErrInvalidRequest`. Increasing the windows

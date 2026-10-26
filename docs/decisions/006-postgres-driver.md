@@ -8,7 +8,7 @@ driver 契约不限定持久化布局，结构化状态入口与快照入口都�
 ## 每资源行锁与持久快照
 
 每个 `(namespace, resource)` 对应一个永久 logged row。每次 Submit/Observe/Cancel/Renew/Release 都在短事务内创建缺失行、
-`SELECT ... FOR UPDATE`、读取当前数据库时间、执行 core Transition、写回快照并 COMMIT。
+`SELECT ... FOR UPDATE`、读取当前数据库时间、执行 protocol.ApplyCommand、写回结构化状态并 COMMIT。
 不同资源不共享行锁；同资源所有客户端串行，不用 SKIP LOCKED 绕过 protected head。
 业务执行期间不持连接或事务，连接池归调用者拥有，构造器不隐式运行 DDL。
 
@@ -25,7 +25,7 @@ driver 契约不限定持久化布局，结构化状态入口与快照入口都�
 参考 [PG 行锁](https://www.postgresql.org/docs/current/explicit-locking.html)和
 [PG 时钟函数](https://www.postgresql.org/docs/current/functions-datetime.html)，核验日期 2026-10-23。
 
-即使 Transition 返回队满等业务错误，也要提交非 nil 的新快照：它可能记录稳定拒绝、回收过期授权，
+即使 ApplyCommand 返回队满等业务错误，也要提交非 nil 的新状态：它可能记录稳定拒绝、回收过期授权，
 或把资源授予其他等待者。查询/写入/COMMIT 失败返回原错误链和零 Result，不能交付未知授权。
 COMMIT 成功但响应丢失仍可能发生；以同 Request/LeaseID Observe、重试或 Cancel 恢复，不能新建 ID 重试。
 操作有默认超时并尊重更早的 ctx；database/sql 无法强制一个忽略 cancellation 的底层 SQL driver 中断。

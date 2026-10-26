@@ -36,11 +36,11 @@ Renew/Release 使用 LeaseRef，包含原 Request 和授予结果的 LeaseID；�
 这替换了早期 Execute 契约；自定义 driver 必须实现五个方法，没有旧 Execute 兼容适配器。
 高层 Shared 的申请/释放接口不变，本地 Airlock 不受影响。
 
-Command、Operation、ValidateCommand 和 Transition 保留为独立 driver 模块可以复用的状态机工具，
-不是 Driver 调用入口。各内置 driver 的五个方法转入同一私有执行路径，不复制调度逻辑，
+Command、Operation、ValidateCommand、ApplyCommand/ApplySnapshot 等参考状态机工具保留在 protocol 包，
+供独立 driver 模块复用，不是 Driver 调用入口。各内置 driver 的五个方法转入同一私有执行路径，不复制调度逻辑，
 不改变原子边界、幂等身份、TTL、错误优先级或取消语义。
 
-`Transition(previous, backendNow, command)` 返回新 snapshot、Result 和业务错误。
+`protocol.ApplySnapshot(previous, backendNow, command)` 返回新 snapshot、Result 和业务错误。
 Driver 必须串行化整个资源的读、转换、写，并且在新 snapshot 非 nil 时即使业务错误也要提交；
 例如队满拒绝需要保存，过期回收可能让其他人获得授权。持久化失败不能返回可用授权。
 提交结果可能未知，数据库支持事务也不例外。绝不自动回退到独立的本地容量池。
@@ -94,7 +94,7 @@ Cancel 可以先于 Submit 到达：创建 Cancelled tombstone，迟到 Submit �
 core 运行依赖保持标准库；memory 是独立模块。开发不创建 tag，driver 固定到真实已推送的 core commit
 对应 pseudo-version；独立 `GOWORK=off` 构建验证不能被本地 replace 替代。正式发布顺序另行授权。
 
-memory 使用同一个 Transition，状态仅存在本进程，同实例共享额度；不同实例彼此独立，重启丢失状态。
+memory 使用同一个 ApplySnapshot，状态仅存在本进程，同实例共享额度；不同实例彼此独立，重启丢失状态。
 终态记录自动按上述规则回收，但资源配置保留到 driver 生命周期结束；不能将它作为持久后端的故障降级。
 测试覆盖确定性状态轨迹、完整公平序列/恢复、幂等 GC、时间边界、取消先到、未知结果和 lease 并发竞态。
 真实 PG/Redis 的锁等待、连接/提交丢响应、Cluster/failover 边界由各 driver PR 补充，memory 测试不能证明它们。

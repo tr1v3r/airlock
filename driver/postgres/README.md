@@ -103,8 +103,8 @@ access. Tenant mapping is not authentication.
 响应使用可确定复现的单元模型及真实数据库提交成功后的响应丢失注入，不宣称模拟真实网络分区。
 
 公开操作为 `Submit`、`Observe`、`Cancel`、`Renew` 和 `Release`。前三者接收不可变
-`airlock.Request`；续租与释放接收 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`，
-均返回 `(airlock.Result, error)`。
+`protocol.Request`；续租与释放接收 `protocol.LeaseRef{Request: original, ID: result.LeaseID}`，
+均返回 `(protocol.Result, error)`。
 
 Relational tests also verify request-row write isolation, queue-order preservation on dequeue, and rejection of schemas missing required columns.
 

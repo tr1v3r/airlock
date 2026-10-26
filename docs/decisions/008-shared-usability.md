@@ -10,7 +10,7 @@ OperationTimeout=5s、PollInterval=50ms。负值、超出协议上限和不合�
 不改变 SharedOptions 的字段结构，不新增与 Config.Admission 重叠的配置入口。
 
 容量、优先级和队列上限没有隐式修改。特别是零队列仍表示不排队，MaxWait 默认值不代表启用等待。
-直接调用 Driver/Transition 的作者仍需提供完整不可变 ResourceConfig；客户端只传已补齐的配置，
+直接调用 protocol.Driver/ApplySnapshot 的作者仍需提供完整不可变 ResourceConfig；客户端只传已补齐的配置，
 各 driver 不分别解释默认值。已有显式合法配置保持原行为，NewDistributed 兼容入口使用相同规则。
 
 ## 2. 默认值是公开策略，有成本且不能静默迁移
@@ -42,7 +42,7 @@ OperationTimeout=5s、PollInterval=50ms。负值、超出协议上限和不合�
 ## 4. 文档按使用者分层
 
 README 先选择本地或共享入口，Shared 入门只介绍申请与租约生命周期；协议的五个方法、
-Request/LeaseRef/Transition、原子提交和恢复放入自定义 driver 指南。
+Request/LeaseRef/ApplySnapshot、原子提交和恢复放入自定义 driver 指南。
 memory 首先定位为契约测试和演示参考实现；普通单进程控制推荐 New(Config)。
 它不持久化、不同实例不共享，也不能作为 Redis/PG 故障时的降级。
 

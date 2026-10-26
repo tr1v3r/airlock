@@ -83,13 +83,13 @@ bash scripts/stress.sh extended
 # Isolate a failing model/concurrency case; preserve the printed shuffle/trace seed.
 GOWORK=off go test -race -run '^TestLocal' -count=1 -shuffle=12345 .
 GOWORK=off go test -race -run '^TestShared(Concurrent|Clock)' -count=1 .
-GOWORK=off go test -run '^TestTransitionModelTraces$' -count=1 -v .
+GOWORK=off go test -run '^TestApplySnapshotModelTraces$' -count=1 -v ./protocol/
 
 # Fuzz one target independently; minimized failures are replayed by ordinary tests.
 GOWORK=off go test -run '^$' -fuzz '^FuzzLocalDynamicModel$' -fuzztime=30s -fuzzminimizetime=1s -parallel=2 .
-GOWORK=off go test -run '^$' -fuzz '^FuzzTransitionSnapshot$' -fuzztime=30s -fuzzminimizetime=1s -parallel=2 .
-GOWORK=off go test -run '^$' -fuzz '^FuzzTransitionCommandSequence$' -fuzztime=30s -fuzzminimizetime=1s -parallel=2 .
-GOWORK=off go test -run '^$' -fuzz '^FuzzOptimisticWindow$' -fuzztime=30s -fuzzminimizetime=1s -parallel=2 .
+GOWORK=off go test -run '^$' -fuzz '^FuzzSnapshotDecodex27 -fuzztime=30s -fuzzminimizetime=1s -parallel=2 . ./protocol/
+GOWORK=off go test -run '^$' -fuzz '^FuzzApplySnapshotCommandSequencex27 -fuzztime=30s -fuzzminimizetime=1s -parallel=2 . ./protocol/
+GOWORK=off go test -run '^$' -fuzz '^FuzzOptimisticWindowx27 -fuzztime=30s -fuzzminimizetime=1s -parallel=2 . ./protocol/
 
 # Security must visit each manifest; root's ./... cannot substitute for this loop.
 for module in . driver/memory driver/postgres driver/redis; do
@@ -161,10 +161,13 @@ failures are failures, not silently downgraded to a workspace build.
 Benchmarks are opt-in evidence, not timing assertions on shared CI hardware:
 
 ```sh
-GOWORK=off go test -run '^$' -bench '^BenchmarkTransition(Optimistic)?Scale$' -benchmem -count=3 .
+GOWORK=off go test -run '^$' -bench '^BenchmarkApplySnapshot(Optimistic)?Scalex27 -benchmem -count=3 ./protocol/
 # Limit the large matrix explicitly; R is records, M tenant mappings, Q queued records.
 AIRLOCK_BENCH_LARGE=1 GOWORK=off go test -run '^$' \
-  -bench '^BenchmarkTransitionScale$/^R=1000$/^M=(0|1000)$/^Q=0$' -benchmem -benchtime=3x .
+  -bench '^BenchmarkApplySnapshotScale
+^R=1000
+^M=(0|1000)
+^Q=0x27 -benchmem -benchtime=3x .
 ```
 
 ## Isolated service fixtures and ownership

@@ -18,9 +18,9 @@ can also be downloaded and opened independently. The graph and viewer are inline
 no server is needed. The viewer supports search, node focus, light/dark themes and
 PNG/SVG export. PNGs are static browser previews, not substitutes for the explorable HTML.
 Source evidence is pinned to
-[`beb9c6f`](https://github.com/tr1v3r/airlock/tree/beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d).
-The atlas PR is based on `045c387`, which subsequently merged SDK comments; diagram
-line numbers belong to the pinned snapshot, not the moving `dev` branch.
+[`75ab0c4`](https://github.com/tr1v3r/airlock/tree/75ab0c4ed5f6a137d988b983e07dd94d6f2305fa),
+the package-structure refactor that introduced `protocol/` and `internal/scheduler/`;
+diagram line numbers belong to the pinned snapshot, not the moving branch.
 
 ## Find your entry point
 
@@ -29,12 +29,12 @@ line numbers belong to the pinned snapshot, not the moving `dev` branch.
 | Bound local in-flight work | [hello](../../examples/hello/example.go), `New(Config)` | Release successful permits; zero queue limits disable waiting |
 | Acquire a whole weighted allocation | [weighted](../../examples/weighted/example.go), `AcquireNFor` | No partial grants; protected large requests |
 | Reject immediately when busy | [tryacquire](../../examples/tryacquire/example.go), `TryAcquireNFor` | No bypassing waiters; still takes the mutex |
-| Tenant priorities and waiting budgets | [priority example](../../examples/priority/example.go), [priority.go](../../priority.go) | Shares count selections, not token usage |
+| Tenant priorities and waiting budgets | [priority example](../../examples/priority/example.go), [internal/scheduler/priority.go](../../internal/scheduler/priority.go) | Shares count selections, not token usage |
 | Isolate execution capacity | [isolation](../../examples/isolation/example.go) | Separate instances and fixed partitions; no borrowing/preemption |
 | Share capacity across instances | [Shared guide](../guides/shared.md), `NewShared` | Same resource config; expiry cannot stop work |
 | Supervise renewals and task shutdown | [lifecycle example](../../driver/memory/examples/lifecycle/main.go) | Stop work and join supervisors before release; retry only cleanup |
-| Add a backend | [Driver guide](../guides/drivers.md), [Driver](../../driver.go) | Backend time, atomic commit, idempotency, unknown outcomes; run conformance |
-| Change scheduling / state transitions | [airlock.go](../../airlock.go), [driver_state.go](../../driver_state.go) | Shared scheduler; exercise model and race tests |
+| Add a backend | [Driver guide](../guides/drivers.md), [protocol.Driver](../../protocol/driver.go) | Backend time, atomic commit, idempotency, unknown outcomes; run conformance |
+| Change scheduling / state transitions | [internal/scheduler/scheduler.go](../../internal/scheduler/scheduler.go), [protocol/apply.go](../../protocol/apply.go) | Shared scheduler core; exercise model and race tests |
 
 ## Diagrams
 
@@ -46,7 +46,7 @@ Choose New or NewShared; identify who runs work.
 
 ![Runtime overview](previews/overview.png)
 
-Implementation: [airlock.go](../../airlock.go), [distributed.go](../../distributed.go), [driver.go](../../driver.go)
+Implementation: [airlock.go](../../airlock.go), [distributed.go](../../distributed.go), [protocol/driver.go](../../protocol/driver.go)
 
 Tests: [airlock_contract_test.go](../../airlock_contract_test.go), [shared_options_test.go](../../shared_options_test.go)
 
@@ -70,7 +70,7 @@ Understand request fairness, priority turns and head-of-line blocking.
 
 ![Fair scheduling and protected heads](previews/scheduler.png)
 
-Implementation: [priority.go](../../priority.go), [airlock.go](../../airlock.go), [examples/isolation/example.go](../../examples/isolation/example.go)
+Implementation: [internal/scheduler/priority.go](../../internal/scheduler/priority.go), [internal/scheduler/scheduler.go](../../internal/scheduler/scheduler.go), [examples/isolation/example.go](../../examples/isolation/example.go)
 
 Tests: [priority_test.go](../../priority_test.go), [local_model_test.go](../../local_model_test.go)
 
@@ -82,9 +82,9 @@ Trace persistent states, cancellation tombstones and retention.
 
 ![Authoritative request lifecycle](previews/request-states.png)
 
-Implementation: [driver_state.go](../../driver_state.go), [driver.go](../../driver.go)
+Implementation: [protocol/apply.go](../../protocol/apply.go), [protocol/state.go](../../protocol/state.go), [protocol/driver.go](../../protocol/driver.go)
 
-Tests: [driver_state_test.go](../../driver_state_test.go), [driver_model_test.go](../../driver_model_test.go)
+Tests: [protocol/driver_state_test.go](../../protocol/driver_state_test.go), [protocol/driver_model_test.go](../../protocol/driver_model_test.go)
 
 ### 05 · Client lease lifecycle
 
@@ -112,13 +112,13 @@ Tests: [distributed_test.go](../../distributed_test.go), [distributed_concurrenc
 
 ### 07 · Driver atomicity and persistence
 
-Locate the atomic boundary and the actual snapshot writer.
+Locate the atomic boundary and the actual state writer.
 
 [HTML](.archify/architecture-driver-boundaries-20261024-152114/driver-boundaries.html) · [JSON](.archify/architecture-driver-boundaries-20261024-152114/candidate.json)
 
 ![Driver atomicity and persistence](previews/driver-boundaries.png)
 
-Implementation: [driver.go](../../driver.go), [driver_optimistic.go](../../driver_optimistic.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
+Implementation: [protocol/driver.go](../../protocol/driver.go), [protocol/window.go](../../protocol/window.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
 
 Tests: [internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/window_test.go](../../driver/redis/window_test.go)
 
@@ -139,9 +139,9 @@ Tests: [driver/memory/examples/lifecycle/main_test.go](../../driver/memory/examp
 - Diagrams explain code behavior, not measured throughput or an SLA. Sequence positions encode order, not elapsed time.
 - The backend lifecycle preserves the full set of state-changing paths and has several crossing routes; use HTML node focus to follow them. Common observations and other state-preserving operations are omitted.
 - The client Lease diagram describes local validity separately. Invalidity does not confirm backend release, and terminal accounting cannot forcibly stop application work.
-- The driver diagram shows I/O ownership; its cards describe Memory / PostgreSQL calls to Transition. Redis uses the optimistic wrapper.
+- The driver diagram shows I/O ownership; its cards describe Memory calls to ApplySnapshot and PostgreSQL calls to ApplyCommand inside protocol. Redis uses the optimistic wrapper ApplyOptimistic.
 - Supervision comes from a runnable application example; `runJob` is not an SDK API. Acquisition failure starts no work; actual execution determines the ordering of cancellation and completion.
-- Proposals, the unmerged PostgreSQL relational branch, deployment topologies and performance waterfalls are not presented as implemented architecture.
+- Proposals, deployment topologies and performance waterfalls are not presented as implemented architecture.
 
 ## Maintenance and verification
 

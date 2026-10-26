@@ -5,13 +5,13 @@
 ## 1. 契约与存储解耦
 
 Driver 仍为 Submit/Observe/Cancel/Renew/Release，Shared/Lease 的用户调用不变。
-底层不必使用 Transition，也不必保存快照。本次将参考算法提取为
-TransitionState(*DriverState, time.Time, Command)，原 Transition 只负责 JSON 编解码，
+底层不必使用参考状态机，也不必保存快照。本次将参考算法提取为结构化入口
+（现名 protocol.ApplyCommand（*protocol.State, time.Time, Command）），JSON 编解码独立为快照适配，
 memory/Redis 保留现有格式和路径。结构化入口要求独占输入状态，允许修改输入，不能与别的
 操作共享 maps/records；返回 nil 不持久化，非 nil 即使伴随业务错误也要提交。
 
-这样复用的是调度与生命周期算法，不是存储布局。DriverState/DriverRecord 是可选的核心
-辅助类型，其 Version 表示调度状态版本，不强制任何后端使用同名列。
+这样复用的是调度与生命周期算法，不是存储布局。protocol.State/protocol.Record（当时名为
+DriverState/DriverRecord）是可选的核心辅助类型，现随状态机一起位于 protocol 包，其 Version 表示调度状态版本，不强制任何后端使用同名列。
 
 ## 2. 两张表，租约并入请求
 

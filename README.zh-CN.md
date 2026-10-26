@@ -12,7 +12,7 @@ Airlock 是一个**提供完整源码注释的 SDK**，方便编码 agent 理解
 注释覆盖包、类型、接口、函数、方法、字段、常量和变量，说明参数约束、并发与生命周期规则，以及错误处理方式。
 集成时，请结合示例阅读所固定版本的源码注释。
 
-可从[本地 API](airlock.go)、[共享 API](distributed.go)和[驱动契约](driver.go)开始。
+可从[本地 API](airlock.go)、[共享 API](distributed.go)和[驱动契约](protocol/driver.go)开始。
 
 ## 选择使用入口
 
@@ -23,6 +23,18 @@ Airlock 是一个**提供完整源码注释的 SDK**，方便编码 agent 理解
 | 测试或演示 Shared 租约 API | `NewShared(memory.New(), options)` | [Memory 示例](driver/memory) |
 
 普通本地准入不需要 driver。核心运行时仅依赖标准库，远端 driver 的依赖单独安装。
+
+## 包结构
+
+| 包 | 职责 |
+| --- | --- |
+| `airlock`（根包） | 应用 API：`New(Config)`、`Airlock`、`Permit`、`TryAcquire`、`Stats`，以及基于注入 driver 的 `NewShared`/`Shared`/`Lease` |
+| `airlock/protocol` | 共享准入协议：`Driver` 契约、请求/租约身份、状态、协议错误与校验，以及可选的参考状态机（`ApplyCommand`、`ApplySnapshot`、`ApplyOptimistic`） |
+| `airlock/internal/scheduler` | 本地准入与参考状态机共用的调度核心：有界队列、租户 FIFO、轮转、优先级组、保护队首 |
+| `driver/memory`、`driver/postgres`、`driver/redis` | 实现 `protocol.Driver` 的独立后端模块 |
+
+依赖只向下：`protocol` 不导入根包，internal/scheduler 两者都不导入。队列和
+waiter 细节保持内部；driver 只需满足协议契约，不强制使用参考状态机。
 
 ## 架构图集
 
@@ -401,9 +413,13 @@ driver 契约、租约客户端和 memory 参考实现已提供，PostgreSQL 和
 
 后端作者可阅读独立的[自定义 driver 指南](docs/guides/drivers.zh-CN.md)、
 [协议取舍](docs/decisions/005-driver-contract.md)和[模块说明](MODULES.md)。
+driver 实现 [`protocol` 包](protocol)的 `protocol.Driver`；其中的参考状态机是可选的。
 Redis 与 PostgreSQL 是独立模块，各自 README 说明部署要求和故障边界。
 
-PostgreSQL 使用资源表与请求表分开存储；`EnsureSchema` 创建缺失的表并检查必需列。
+PostgreSQL 使用资源表与请求表分开存储，基于结构化 `protocol.State` 评估命令并做
+差异写入；`EnsureSchema` 创建缺失的表并检查必需列。Redis 用协议的乐观提交时间
+窗口保护快照 compare-and-swap。memory driver 通过 `protocol.ApplySnapshot` 维护
+完整 JSON 快照。
 
 `NewShared` 构造时不访问后端，不接管连接。旧名称 `NewDistributed`、`Distributed`、
 `DistributedOptions` 保留为已弃用的兼容入口或别名。旧构造函数同样使用 NewShared 的

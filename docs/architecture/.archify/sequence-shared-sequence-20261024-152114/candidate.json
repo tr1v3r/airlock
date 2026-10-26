@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "revision": "75ab0c4ed5f6a137d988b983e07dd94d6f2305fa",
       "link_mode": "local-only"
     }
   },
@@ -21,13 +21,13 @@
       "sources": [
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 22,
-          "end_line": 41
+          "line": 25,
+          "end_line": 44
         },
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 167,
-          "end_line": 180
+          "line": 177,
+          "end_line": 190
         }
       ]
     },
@@ -39,13 +39,13 @@
       "sources": [
         {
           "path": "distributed.go",
-          "line": 90,
-          "end_line": 185
+          "line": 138,
+          "end_line": 249
         },
         {
           "path": "distributed.go",
-          "line": 233,
-          "end_line": 272
+          "line": 311,
+          "end_line": 353
         }
       ]
     },
@@ -56,32 +56,32 @@
       "sublabel": "原子边界内执行",
       "sources": [
         {
-          "path": "driver.go",
-          "line": 14,
-          "end_line": 31
+          "path": "protocol/driver.go",
+          "line": 42,
+          "end_line": 63
         },
         {
           "path": "driver/postgres/postgres.go",
-          "line": 123,
-          "end_line": 172
+          "line": 108,
+          "end_line": 150
         }
       ]
     },
     {
       "id": "machine",
       "type": "backend",
-      "label": "Transition",
-      "sublabel": "纯状态转换",
+      "label": "ApplyCommand / ApplySnapshot",
+      "sublabel": "纯状态转换（protocol 包，可选）",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 40,
-          "end_line": 89
+          "path": "protocol/apply.go",
+          "line": 28,
+          "end_line": 84
         },
         {
-          "path": "driver_state.go",
-          "line": 92,
-          "end_line": 187
+          "path": "protocol/apply.go",
+          "line": 88,
+          "end_line": 177
         }
       ]
     }

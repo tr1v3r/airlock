@@ -7,8 +7,8 @@ to it. Each diagram keeps its candidate and HTML in a timestamped `.archify` fol
 
 ## Reproduce
 
-The current artifacts were generated with **Archify 3.2.0**, Node 26.11.1 and
-Chrome on macOS. Node and Chrome are documentation tooling only, not Airlock
+The current artifacts were generated with **Archify 3.2.0**, Node 24.20.0 and
+Chrome 155 on macOS. Node and Chrome are documentation tooling only, not Airlock
 runtime dependencies. Install/provide Archify separately; the Go module does not
 download it. From the repository root:
 
@@ -60,10 +60,10 @@ This drawing distinguishes `Rejected` (a stored queue rejection) from protocol
 errors that do not create that status. The client Lease view is a separate state
 space and must never be merged with authoritative backend status.
 
-The pinned implementation snapshot is `beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d`.
-The PR base `045c387eabd1913988884c98a31b43e40f67570a` adds SDK comments and README
-routing. This documentation-only change does not alter Go behavior or claim new
-backend integration/performance results.
+The pinned implementation snapshot is `75ab0c4ed5f6a137d988b983e07dd94d6f2305fa`,
+the package-structure refactor that moved the shared admission protocol into
+`protocol/` and the scheduling core into `internal/scheduler/`. Evidence line
+numbers follow that snapshot.
 
 ## Viewer attribution
 

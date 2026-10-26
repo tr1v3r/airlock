@@ -1,16 +1,16 @@
 {
   "archify_version": "3.2.0",
-  "source_revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
-  "automated_browser_scope": "Four desktop light-theme viewports; dark-theme endpoints; READ/Still state.",
-  "preview_capture": "Full-page Chrome screenshot at 1440 CSS pixels wide; light theme; no screenshot cropping.",
-  "index_checks": "No horizontal overflow at 1440 and 390 CSS pixels; all images loaded.",
+  "source_revision": "75ab0c4ed5f6a137d988b983e07dd94d6f2305fa",
+  "automated_browser_scope": "Archify 3.2.0 finalize browser-check gate passed for all eight diagrams (receipts under .archify/*/review-2026-10-26T06-19-46-200Z, verified against the rebuilt candidate and HTML bytes).",
+  "preview_capture": "Full-page Chrome screenshot at 1440 CSS pixels wide; light color scheme; no screenshot cropping.",
+  "index_checks": "No horizontal overflow at 1440 and 390 CSS pixels; all 8 preview images loaded at 1440 (lazy below-fold images defer at 390 by design).",
   "diagrams": [
     {
       "slug": "overview",
       "candidate": ".archify/architecture-overview-20261024-152114/candidate.json",
-      "candidate_sha256": "2594aa1a94909a89592f339e6c4564d85e1110df3673ff5ff21a4fa9ec52bd1b",
+      "candidate_sha256": "9ee126bdc80ea50018930a1e1b1dd2b3be0d7d48268b064203634e058af6be33",
       "html": ".archify/architecture-overview-20261024-152114/overview.html",
-      "html_sha256": "ebd97d0442e9dfa2dcf65e06d2723de015102aeaa35bb5f674d10c63d5e71065",
+      "html_sha256": "92022bce7697a8f5adf02da9964f63244de1b4d9cb614acd5eb96625f80f0a10",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -18,16 +18,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/overview.png",
-      "preview_sha256": "08cd41f4e38dfd6f915fc2cb45aac3aca1e2e777e4abe73857cea7d1f17db988",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "9ad7a46d2c8ea0bd7dab059eabac3df504c6f7b91e8daca6a3b0a912e130ca45",
+      "manual_review": "Not perceptually reviewed this cycle (no image inspection performed). Automated render verification in Chrome: light theme active, capture height equals document scroll height, zero legacy TransitionState/TransitionOptimistic/DriverState/DriverRecord matches, 2 Apply* identifier matches in rendered text.",
       "route_advisory": {}
     },
     {
       "slug": "local-admission",
       "candidate": ".archify/workflow-local-admission-20261024-152114/candidate.json",
-      "candidate_sha256": "43f0bb808ffb9c3e86a14423eee14611ddb70c7cae7e27bc09023c715580b222",
+      "candidate_sha256": "72d1867854ab79e00186cb1c58abf3ddf154790f4edb2f943c6a3439703a479c",
       "html": ".archify/workflow-local-admission-20261024-152114/local-admission.html",
-      "html_sha256": "ad69b71cd790c741fb7fab14e77ecbf976e835c6becded97b1b6a6954b865696",
+      "html_sha256": "b3f1e718f19407e4331890f7b455c93fc5dd94dec96b0d8de5917b90144ef2b9",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -35,16 +35,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/local-admission.png",
-      "preview_sha256": "46ecb6125ab5969f6b9cbb79bec27a0e47c4ade743f57abfdec594c3acc5be6b",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "c4ddcb725e0e893afa5db0b754052106d2bbaf245993e8b1c68adcd16e67ef0f",
+      "manual_review": "Not perceptually reviewed this cycle (no image inspection performed). Automated render verification in Chrome: light theme active, capture height equals document scroll height, zero legacy TransitionState/TransitionOptimistic/DriverState/DriverRecord matches, no Apply* identifiers expected in this diagram.",
       "route_advisory": {}
     },
     {
       "slug": "scheduler",
       "candidate": ".archify/workflow-scheduler-20261024-152114/candidate.json",
-      "candidate_sha256": "f28101183e9c60229a475d0335660ee89278e78fd9edf2c3c2b250c1ff13e7ad",
+      "candidate_sha256": "fde096e2f522f1f1e89349280d1b3fea476f110bc929643b654151bb7109bee0",
       "html": ".archify/workflow-scheduler-20261024-152114/scheduler.html",
-      "html_sha256": "31be44ed5b01528e98e6a7d82bb4ae57e52b5ce2fc5e4e7942baf482ab937fcd",
+      "html_sha256": "3ee3928d262e65119f8a0f68644dd2fe0c2a62fb79d1d6a5f969db5200b2cee7",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -52,16 +52,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/scheduler.png",
-      "preview_sha256": "8528d6a46c0e427c450242c58cdd724bb7a339b5e8048f0b86f7aeea5889b1ca",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "b5afec89ccc92d337bf94d45a698b5c264bcb2827baac47f4efe4d41c278f99a",
+      "manual_review": "Not perceptually reviewed this cycle (no image inspection performed). Automated render verification in Chrome: light theme active, capture height equals document scroll height, zero legacy TransitionState/TransitionOptimistic/DriverState/DriverRecord matches, no Apply* identifiers expected in this diagram.",
       "route_advisory": {}
     },
     {
       "slug": "request-states",
       "candidate": ".archify/lifecycle-request-states-20261024-152114/candidate.json",
-      "candidate_sha256": "2f772e33ee481b4d6ab73e723fb37240d80884d40f1be8085aeb541757f0ace2",
+      "candidate_sha256": "25dadedac7d5f81cde0342af9d93134aff834af628a426c4dc61ca1da1bdbb1d",
       "html": ".archify/lifecycle-request-states-20261024-152114/request-states.html",
-      "html_sha256": "da24dbc0008cda69e62b801bbf09aa77db619015ad871bc9afe2adad33884113",
+      "html_sha256": "1c6d35f7065430525ad0801f40c3c51966a37597fea30b55075b995eee0ab8fa",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -69,8 +69,8 @@
         "browser-check": "pass"
       },
       "preview": "previews/request-states.png",
-      "preview_sha256": "db97525c043a960d2860dd86ffda46bacdb9de107d276be01a83f4c7a62d113f",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "5366c5eabf0ed23219c33c36705f017f3e1dc20f98d65b04c5cde9718d585b5b",
+      "manual_review": "Not perceptually reviewed this cycle (no image inspection performed). Automated render verification in Chrome: light theme active, capture height equals document scroll height, zero legacy TransitionState/TransitionOptimistic/DriverState/DriverRecord matches, 1 Apply* identifier matches in rendered text.",
       "route_advisory": {
         "resolvedCrossovers": 16,
         "routesOverSuggestedStretch": 1
@@ -79,9 +79,9 @@
     {
       "slug": "lease-states",
       "candidate": ".archify/lifecycle-lease-states-20261024-152114/candidate.json",
-      "candidate_sha256": "6ebe84c00527c2a086f21bafc7372d86d7ba3c2d484ce63a9ae0abc510d48892",
+      "candidate_sha256": "9a1bf5aba4e9849f08be5ab649cfd43508d29244856f8ffafb6eb868d256d7f5",
       "html": ".archify/lifecycle-lease-states-20261024-152114/lease-states.html",
-      "html_sha256": "089b22de5aca0c3d9ba542955a02791ad93c1974d26e52c085c299b955c3dfd4",
+      "html_sha256": "dd740cafba0e1ecfb382a291ed1abda30fcd20c58d51c5550df3fc7688d677f3",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -89,16 +89,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/lease-states.png",
-      "preview_sha256": "d88fa807473d523c7b9ed32d20498b048228464bbb6f9bf13cc3dcf6e36b5c24",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "7b585f22b4e7d4d9dff2db2d3b33ff2b3511c5d0dbe1240e450bad6be77609f9",
+      "manual_review": "Not perceptually reviewed this cycle (no image inspection performed). Automated render verification in Chrome: light theme active, capture height equals document scroll height, zero legacy TransitionState/TransitionOptimistic/DriverState/DriverRecord matches, no Apply* identifiers expected in this diagram.",
       "route_advisory": {}
     },
     {
       "slug": "shared-sequence",
       "candidate": ".archify/sequence-shared-sequence-20261024-152114/candidate.json",
-      "candidate_sha256": "22b2d7def94ddbb3cb97b6039b9222538bb9089ed078210a483dcc3e10a4f368",
+      "candidate_sha256": "8d42e696dcf9499d8f31127ecbc464cefef1f780bc7dd896b0a465d5a3f8f44d",
       "html": ".archify/sequence-shared-sequence-20261024-152114/shared-sequence.html",
-      "html_sha256": "19158e0c66e666e5b591ea174f86e9e439cad1da214cd11bfd44e0c0f3ed2eb9",
+      "html_sha256": "aefd8b79600ee2177e07bb4baf38f4ad35464c551c07f8637b692994ac913361",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -106,16 +106,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/shared-sequence.png",
-      "preview_sha256": "f6f85ca3d2f3d5319f38cb6264a7bb68c28237244c793e4ea8821e2c137366ba",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "3c08ba2984f3d42ec0f33fd3dc4120d153afe061ab59b026e77287b21c0358bd",
+      "manual_review": "Not perceptually reviewed this cycle (no image inspection performed). Automated render verification in Chrome: light theme active, capture height equals document scroll height, zero legacy TransitionState/TransitionOptimistic/DriverState/DriverRecord matches, 4 Apply* identifier matches in rendered text.",
       "route_advisory": {}
     },
     {
       "slug": "driver-boundaries",
       "candidate": ".archify/architecture-driver-boundaries-20261024-152114/candidate.json",
-      "candidate_sha256": "1cc95c01e09e5ace48a1e4f525c8d2472add125f9cea63866a4f026a1467e0c7",
+      "candidate_sha256": "f2d498be1c307bf40db598f0ba50658d60f3493dee8a7de18e30d14f1fade94e",
       "html": ".archify/architecture-driver-boundaries-20261024-152114/driver-boundaries.html",
-      "html_sha256": "1cec97283c7ad13ad2f0f335725ae244554aaa2529de2ed5615746920a89aaec",
+      "html_sha256": "331f882d13741cc175423d32fa3fcdc1d454b92297a4e04c8f58a96a862df523",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -123,16 +123,16 @@
         "browser-check": "pass"
       },
       "preview": "previews/driver-boundaries.png",
-      "preview_sha256": "3d6ccaa0027cee64ed8f066ff1ac59d6f9ff781284e0fba12ab36654d2d98f55",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "fc41fc41063b00a1952c9d5f52004698746983ba4a7d90e8e2edddd67cae00b9",
+      "manual_review": "Not perceptually reviewed this cycle (no image inspection performed). Automated render verification in Chrome: light theme active, capture height equals document scroll height, zero legacy TransitionState/TransitionOptimistic/DriverState/DriverRecord matches, 9 Apply* identifier matches in rendered text.",
       "route_advisory": {}
     },
     {
       "slug": "application-lifecycle",
       "candidate": ".archify/workflow-application-lifecycle-20261024-152114/candidate.json",
-      "candidate_sha256": "56e66b1cbc5d1060072387760fe5b6166f967ba36c2e4f867382b445a6048f6d",
+      "candidate_sha256": "5de3f649cc4ec944ab5ecdb3c2ef8a72d27bc8730bb67ead4ccd4a679ba54ecb",
       "html": ".archify/workflow-application-lifecycle-20261024-152114/application-lifecycle.html",
-      "html_sha256": "d9114ddd3d139fb4dd4c1f8c8c3fba9af4201b0febeeaaf931f89439a3d4469d",
+      "html_sha256": "1ab4b0772eacd82b7391d27821bbd572daef21dfcef2feb311dcc36327f3da1b",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -140,8 +140,8 @@
         "browser-check": "pass"
       },
       "preview": "previews/application-lifecycle.png",
-      "preview_sha256": "1a806f52a0aba6aa073bce511d12b3b98e27e76895b5c3d211deba00f0004721",
-      "manual_review": "Full-page light-theme preview inspected at 1440 CSS pixels; diagram and node index checked.",
+      "preview_sha256": "2aff7e38c0b3fa7579039425a2d1bab897a2c866ade3af9ee1ab843e68ac444a",
+      "manual_review": "Not perceptually reviewed this cycle (no image inspection performed). Automated render verification in Chrome: light theme active, capture height equals document scroll height, zero legacy TransitionState/TransitionOptimistic/DriverState/DriverRecord matches, no Apply* identifiers expected in this diagram.",
       "route_advisory": {}
     }
   ]

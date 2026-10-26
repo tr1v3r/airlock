@@ -11,7 +11,7 @@
     "sources": [
       "airlock.go",
       "distributed.go",
-      "driver.go"
+      "protocol/driver.go"
     ],
     "tests": [
       "airlock_contract_test.go",
@@ -48,8 +48,8 @@
     "question": "为什么还有空闲 token 却不能放行？",
     "question_en": "Understand request fairness, priority turns and head-of-line blocking.",
     "sources": [
-      "priority.go",
-      "airlock.go",
+      "internal/scheduler/priority.go",
+      "internal/scheduler/scheduler.go",
       "examples/isolation/example.go"
     ],
     "tests": [
@@ -68,12 +68,13 @@
     "question": "哪些状态能续租、取消和回收？",
     "question_en": "Trace persistent states, cancellation tombstones and retention.",
     "sources": [
-      "driver_state.go",
-      "driver.go"
+      "protocol/apply.go",
+      "protocol/state.go",
+      "protocol/driver.go"
     ],
     "tests": [
-      "driver_state_test.go",
-      "driver_model_test.go"
+      "protocol/driver_state_test.go",
+      "protocol/driver_model_test.go"
     ],
     "preview": "previews/request-states.png"
   },
@@ -118,15 +119,15 @@
   {
     "slug": "driver-boundaries",
     "type": "architecture",
-    "title": "驱动实现：原子边界与快照持久化",
+    "title": "驱动实现：原子边界与状态持久化",
     "candidate": ".archify/architecture-driver-boundaries-20261024-152114/candidate.json",
     "html": ".archify/architecture-driver-boundaries-20261024-152114/driver-boundaries.html",
     "title_en": "Driver atomicity and persistence",
     "question": "自定义驱动必须在哪里保证原子性？",
-    "question_en": "Locate the atomic boundary and the actual snapshot writer.",
+    "question_en": "Locate the atomic boundary and the actual state writer.",
     "sources": [
-      "driver.go",
-      "driver_optimistic.go",
+      "protocol/driver.go",
+      "protocol/window.go",
       "driver/postgres/postgres.go",
       "driver/redis/scripts.go"
     ],

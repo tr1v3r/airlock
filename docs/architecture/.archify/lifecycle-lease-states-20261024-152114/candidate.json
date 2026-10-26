@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "revision": "75ab0c4ed5f6a137d988b983e07dd94d6f2305fa",
       "link_mode": "local-only"
     }
   },
@@ -27,8 +27,8 @@
       "sources": [
         {
           "path": "distributed.go",
-          "line": 148,
-          "end_line": 159
+          "line": 197,
+          "end_line": 212
         }
       ]
     },
@@ -40,18 +40,18 @@
       "sources": [
         {
           "path": "distributed.go",
-          "line": 150,
-          "end_line": 158
+          "line": 202,
+          "end_line": 211
         },
         {
           "path": "distributed.go",
-          "line": 214,
-          "end_line": 226
+          "line": 289,
+          "end_line": 302
         },
         {
           "path": "distributed.go",
-          "line": 233,
-          "end_line": 255
+          "line": 307,
+          "end_line": 334
         }
       ]
     },
@@ -63,8 +63,8 @@
       "sources": [
         {
           "path": "distributed.go",
-          "line": 233,
-          "end_line": 255
+          "line": 307,
+          "end_line": 334
         }
       ]
     },
@@ -76,18 +76,18 @@
       "sources": [
         {
           "path": "distributed.go",
-          "line": 205,
-          "end_line": 219
+          "line": 279,
+          "end_line": 296
         },
         {
           "path": "distributed.go",
-          "line": 248,
-          "end_line": 250
+          "line": 326,
+          "end_line": 328
         },
         {
           "path": "distributed.go",
-          "line": 258,
-          "end_line": 272
+          "line": 336,
+          "end_line": 353
         }
       ]
     },
@@ -99,8 +99,8 @@
       "sources": [
         {
           "path": "distributed.go",
-          "line": 258,
-          "end_line": 272
+          "line": 336,
+          "end_line": 353
         }
       ]
     },
@@ -112,8 +112,8 @@
       "sources": [
         {
           "path": "distributed.go",
-          "line": 260,
-          "end_line": 272
+          "line": 340,
+          "end_line": 353
         }
       ]
     }

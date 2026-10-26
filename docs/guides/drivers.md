@@ -36,20 +36,22 @@ authorizes work, even if the write may have committed.
 ## Reuse the state machine and preserve the atomic boundary
 
 Storage layout is a driver choice: SQL tables, snapshots, or another representation
-are all allowed when the same atomic contract holds. The reference helpers are optional.
-`TransitionState(state, backendNow, command)` accepts a structured `DriverState`
-with separate `DriverRecord` entries; PG maps these to relational rows. It takes
+are all allowed when the same atomic contract holds. The reference helpers in the
+[`protocol` package](../../protocol) are optional. `protocol.ApplyCommand(state,
+backendNow, command)` accepts a structured `protocol.State` with separate
+`protocol.Record` entries; PG maps these to relational rows. It takes
 exclusive ownership of the input maps/records, which must not be reused even on
 error. Persist every nonnil returned state, including on business errors.
 
-`Transition(snapshot, backendNow, command)` computes a new snapshot, Result and
-business error without I/O. Command/Operation/ValidateCommand are implementation
+`protocol.ApplySnapshot(snapshot, backendNow, command)` decodes an opaque JSON
+snapshot, computes the next snapshot, Result and
+business error without I/O, and re-encodes it. Command/Operation/ValidateCommand are implementation
 helpers, not the public Driver call interface. Direct callers must provide a
 complete ResourceConfig; only NewShared resolves default configuration.
 
 Serialize the whole resource's read, transition and commit. Use backend time after
-obtaining exclusive access; optimistic backends must enforce the time window
-returned by TransitionOptimistic in the atomic publication step. Commit a non-nil
+obtaining exclusive access; optimistic backends must enforce the `protocol.CommitWindow`
+returned by `protocol.ApplyOptimistic` in the atomic publication step. Commit a non-nil
 next snapshot even with a business error: rejection records and expiry/scheduling
 changes are still authoritative. Return a usable result only after successful
 commit, and honor context cancellation. No fallback to a separate local pool.
