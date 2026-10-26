@@ -188,27 +188,33 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 	if err := airlock.ValidateCommand(command); err != nil {
 		return airlock.Result{}, err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()
 	key := d.key(command.Request.Resource)
+
 	for attempt := 0; ; attempt++ {
 		if command.Kind == airlock.Observe {
 			if result, ready, err := d.observe(ctx, command.Request); ready || err != nil {
 				return result, err
 			}
 		}
+
 		raw, err := d.eval(ctx, readScript, key)
 		if err != nil {
 			return airlock.Result{}, fmt.Errorf("airlock/redis: read: %w", err)
 		}
+
 		snapshot, exists, now, err := decodeRead(raw)
 		if err != nil {
 			return airlock.Result{}, err
 		}
+
 		state, decodeErr := airlock.DecodeState(snapshot)
 		if decodeErr != nil {
 			return airlock.Result{}, decodeErr
 		}
+
 		nextState, result, window, transitionErr := airlock.Transition(state, now, command)
 		var next []byte
 		if nextState != nil {
@@ -221,6 +227,7 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 		if next == nil {
 			return result, transitionErr
 		}
+
 		lower, err := micro(window.NotBefore)
 		if err != nil {
 			return airlock.Result{}, err
@@ -229,28 +236,37 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 		if err != nil {
 			return airlock.Result{}, err
 		}
+
 		expected := "0"
 		if exists {
 			expected = "1"
 		}
+
 		projection, err := index(nextState)
 		if err != nil {
 			return airlock.Result{}, err
 		}
-		raw, err = d.eval(ctx, casScript, key, expected, string(snapshot), string(next), lower, upper, string(projection))
+		raw, err = d.eval(
+			ctx, casScript, key,
+			expected, string(snapshot), string(next),
+			lower, upper, string(projection),
+		)
 		if err != nil {
 			return airlock.Result{}, fmt.Errorf("airlock/redis: compare and swap: %w", err)
 		}
+
 		committed, ok := raw.(int64)
 		if !ok || (committed != 0 && committed != 1) {
 			return airlock.Result{}, errors.New("airlock/redis: malformed CAS response")
 		}
+
 		if committed == 1 {
 			if err := ctx.Err(); err != nil {
 				return airlock.Result{}, err
 			}
 			return result, transitionErr
 		}
+
 		timer := time.NewTimer(time.Duration(1+min(attempt, 9)) * time.Millisecond)
 		select {
 		case <-ctx.Done():
