@@ -75,8 +75,34 @@ its sharing scope is the driver instance, with separate state per Resource.
 
 ### Reuse one driver for multiple independent Resources
 
+First choose one backend and set its namespace explicitly. For PostgreSQL,
+`db` is your application-owned `*sql.DB`; `postgres` is
+`github.com/tr1v3r/airlock/driver/postgres`. Create the schema during deployment.
+
 ```go
-// Reuse an initialized PostgreSQL or Redis driver.
+namespace := "order-service"
+driver, err := postgres.New(db, namespace)
+if err != nil {
+    return err
+}
+```
+
+For Redis, use this alternative initialization. `client` is your configured
+`go-redis` client (with `ContextTimeoutEnabled: true`); `redisdriver` is an alias
+for `github.com/tr1v3r/airlock/driver/redis`.
+
+```go
+namespace := "order-service"
+driver, err := redisdriver.New(client, namespace)
+if err != nil {
+    return err
+}
+```
+
+Then reuse the chosen driver for both Resources below. Both pools belong to
+namespace `order-service`; `customer-A` identifies a tenant within each pool.
+
+```go
 newPool := func(resource string, capacity int) (*airlock.Shared, error) {
     return airlock.NewShared(driver, airlock.SharedOptions{
         Resource: resource,
@@ -107,8 +133,9 @@ as described in section 3.
 
 The executable [multi-resource example](../../driver/memory/example_test.go) uses
 one memory driver and holds all 4 export tokens while acquiring all 8 image tokens.
-It needs no server; substitute your initialized PostgreSQL or Redis driver for
-`memory.New()` to use the same construction pattern with a remote backend.
+It needs no server and demonstrates Resource isolation only: memory has no namespace
+parameter. To exercise the namespace as well, replace `memory.New()` with one of
+the PostgreSQL or Redis initializations above and provide the corresponding backend.
 
 ```sh
 cd driver/memory

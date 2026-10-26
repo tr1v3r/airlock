@@ -68,8 +68,33 @@ Resource 拥有独立状态。
 
 ### 同一个 driver 管理多个独立 Resource
 
+先选择一种后端，显式设置 namespace。PostgreSQL 的 `db` 是应用持有的 `*sql.DB`，
+`postgres` 对应 `github.com/tr1v3r/airlock/driver/postgres`；建表在部署阶段完成。
+
 ```go
-// 复用已初始化的 PostgreSQL 或 Redis driver.
+namespace := "order-service"
+driver, err := postgres.New(db, namespace)
+if err != nil {
+    return err
+}
+```
+
+如果使用 Redis，则改用以下初始化代码。`client` 是已经配置好的 go-redis 客户端
+（开启 `ContextTimeoutEnabled: true`），`redisdriver` 是
+`github.com/tr1v3r/airlock/driver/redis` 的导入别名。
+
+```go
+namespace := "order-service"
+driver, err := redisdriver.New(client, namespace)
+if err != nil {
+    return err
+}
+```
+
+然后复用所选后端的 driver 创建下面两个 Resource。两个容量池都属于 namespace
+`order-service`，`customer-A` 则标识各自容量池中的租户。
+
+```go
 newPool := func(resource string, capacity int) (*airlock.Shared, error) {
     return airlock.NewShared(driver, airlock.SharedOptions{
         Resource: resource,
@@ -98,7 +123,9 @@ if err != nil {
 
 可执行的[多资源示例](../../driver/memory/example_test.go)复用一个 memory driver，
 在持有全部 4 个导出 token 的同时申请全部 8 个图片 token，无需外部服务。
-把 `memory.New()` 替换为已初始化的 PostgreSQL 或 Redis driver，即可将相同的构造方式用于远端后端。
+这个无需外部服务的示例仅演示 Resource 隔离，memory 本身没有 namespace 参数。
+要同时使用 namespace，把 `memory.New()` 替换为上面的 PostgreSQL 或 Redis 初始化代码，
+并准备对应后端即可。
 
 ```sh
 cd driver/memory
