@@ -44,7 +44,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 实现：[airlock.go](../../airlock.go), [distributed.go](../../distributed.go), [driver.go](../../driver.go)
 
-测试：[airlock_contract_test.go](../../airlock_contract_test.go), [shared_options_test.go](../../shared_options_test.go)
+测试：[airlock_test.go](../../airlock_test.go), [shared_options_test.go](../../shared_options_test.go)
 
 ### 02 · 本地准入：快速路径、排队与取消竞争
 
@@ -80,7 +80,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 实现：[shared_state.go](../../shared_state.go), [driver.go](../../driver.go)
 
-测试：[shared_state_test.go](../../shared_state_test.go), [driver_model_test.go](../../driver_model_test.go)
+测试：[shared_state_test.go](../../shared_state_test.go), [shared_state_property_test.go](../../shared_state_property_test.go)
 
 ### 05 · 客户端 Lease：有效期与不可逆失效
 
@@ -92,7 +92,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 实现：[distributed.go](../../distributed.go)
 
-测试：[distributed_concurrency_test.go](../../distributed_concurrency_test.go), [distributed_clock_test.go](../../distributed_clock_test.go)
+测试：[shared_concurrency_test.go](../../shared_concurrency_test.go), [shared_clock_test.go](../../shared_clock_test.go)
 
 ### 06 · Shared 调用链：排队、观察与租约交付
 
@@ -104,7 +104,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 实现：[distributed.go](../../distributed.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/redis.go](../../driver/redis/redis.go)
 
-测试：[distributed_test.go](../../distributed_test.go), [distributed_concurrency_test.go](../../distributed_concurrency_test.go)
+测试：[shared_test.go](../../shared_test.go), [shared_concurrency_test.go](../../shared_concurrency_test.go)
 
 ### 07 · 驱动实现：原子边界与快照持久化
 
@@ -116,7 +116,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 实现：[driver.go](../../driver.go), [driver_transition.go](../../driver_transition.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
 
-测试：[internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/window_test.go](../../driver/redis/window_test.go)
+测试：[internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/cas_test.go](../../driver/redis/cas_test.go)
 
 ### 08 · 应用监督流程：停止任务后再释放租约
 

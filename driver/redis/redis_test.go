@@ -13,6 +13,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	goredis "github.com/redis/go-redis/v9"
+
 	"github.com/tr1v3r/airlock"
 	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
@@ -380,4 +381,20 @@ func TestPriorityCursorSurvivesClientReplacement(t *testing.T) {
 		}
 		mustExecute(t, d, airlock.Command{Kind: airlock.Release, Request: r, LeaseID: got.LeaseID})
 	}
+}
+
+func transitionSnapshot(data []byte, now time.Time, cmd airlock.Command) ([]byte, airlock.Result, error) {
+	state, err := airlock.DecodeState(data)
+	if err != nil {
+		return nil, airlock.Result{}, err
+	}
+	next, result, _, err := airlock.Transition(state, now, cmd)
+	if next == nil {
+		return nil, result, err
+	}
+	encoded, codecErr := airlock.EncodeState(next)
+	if codecErr != nil {
+		return nil, airlock.Result{}, codecErr
+	}
+	return encoded, result, err
 }
