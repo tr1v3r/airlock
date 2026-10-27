@@ -50,13 +50,21 @@ slot. The key is a hash: `state` holds the authoritative JSON snapshot, `meta`
 holds observation metadata, and `r:<request-id>` holds each indexed request.
 Missing keys and hashes missing their snapshot are distinguished; empty, corrupt,
 and wrong-type state fails closed. State keys never expire and retain config/cursor
-even when idle. All participants must use the same immutable resource configuration.
+even when idle; the separate update-lock keys described below have a TTL. All
+participants must use the same immutable resource configuration.
 
 Mutations and due maintenance first contend for
 `airlock:{same-resource-hash}:update-lock`, a separate string key in the same
 Cluster slot. Like an owner-checked lease, acquisition uses `SET NX PX` with a
 fresh random owner token. A loser backs off without loading or computing the
 full snapshot. `Submit`, `Cancel`, `Renew` and `Release` all use this path.
+
+With warm connections and script caches, a contention-free operation that publishes
+state without retry takes four Redis round trips: acquire lock → read snapshot →
+commit → release lock. A read-only Observe takes one; Observe performing full
+maintenance normally takes six, including the initial and under-lock projection
+reads. Script loading, redirects and retries add requests. The update lock reduces
+duplicate computation under contention while adding round trips to uncontended writes.
 
 After acquisition, Lua reads the snapshot and Redis `TIME`; Go computes the shared
 transition. The commit script checks **current lock ownership and CommitWindow
@@ -70,8 +78,11 @@ lock expires cannot publish even if the snapshot has not changed.
 
 After each acquired attempt, a separate owner-checking Lua script deletes only
 that updater's lock, including on cancellation or an error. Cleanup uses a fresh,
-bounded context; failure leaves the lock to expire and never changes the command
-outcome. An uncertain acquisition returns an error without replay or state work;
+bounded context, with a budget of `min(operation timeout, 100ms)`. Return can
+therefore follow the caller deadline or operation timeout by up to that cleanup
+budget. Unlock errors neither roll back committed state nor turn an uncertain
+command into success. The operation's final context check still applies, and an
+unremoved lock expires via TTL. An uncertain acquisition returns an error without replay or state work;
 its possibly installed lock also expires. No lock-renewal goroutine runs: choose
 an update TTL long enough for the bounded snapshot computation and commit. A
 confirmed expiry discards the candidate, releases any remaining ownership and
@@ -131,8 +142,8 @@ the limiter. An acquisition context only bounds waiting, not the delivered lease
 Unknown renewals invalidate the local lease. Retry cleanup with the same lease;
 never replace an ambiguous request with a new identity to assume capacity.
 
-Resource keys are permanent. Administrative removal or capacity changes require
-quiescing all clients and active work. Retention/MaxRecords bound per-resource
+State keys are permanent; update-lock keys expire. Administrative removal or
+capacity changes require quiescing all clients and active work. Retention/MaxRecords bound per-resource
 recovery history, not the total number of resource keys. Grant/queue weights,
 priority selection, protected heads, and terminal idempotency use the core driver
 contract. Priority turns count requests, not resource time, and provide no latency

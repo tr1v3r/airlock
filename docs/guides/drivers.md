@@ -57,12 +57,20 @@ NewShared resolves defaults.
 
 The commit window includes original and resulting deadlines. In-place renewal
 must retain the original lease expiry as a publication bound. Drivers with a
-non-expiring lock may ignore the window while retaining exclusive access through commit. An
-expiring update lease, as used by Redis, must atomically check owner and window
-at publication. Redis does not compare the previous snapshot. Optimistic custom
+non-expiring lock may ignore the window while retaining exclusive access through
+commit. An expiring update lease, as used by Redis, must atomically check owner
+and window at publication. Redis does not compare the previous snapshot. Optimistic custom
 drivers must instead compare their previously read state and enforce the window.
-Only confirmed ownership/comparison/window misses permit rereading and
-recomputing; transport errors remain ambiguous outcomes.
+Known lock contention permits retrying acquisition without loading or computing
+the full snapshot. Confirmed ownership/comparison/window misses permit rereading
+and recomputing; transport errors remain ambiguous outcomes.
+
+Redis bounds state work and lock contention with `WithOperationTimeout` (default
+five seconds), or the caller's earlier deadline. After acquiring the lock, cleanup
+uses an independent context with a budget of `min(operation timeout, 100ms)`, so
+return can follow the deadline by up to that additional budget. Owner-checked
+unlock failure leaves TTL cleanup; it neither undoes committed state nor makes an
+uncertain commit successful. The final operation-context check still applies.
 
 The reference state machine folds boundary collection into its existing record
 passes, preserving the same window; see the [equivalence and benchmark notes](../benchmarks/commit-window/README.md).
