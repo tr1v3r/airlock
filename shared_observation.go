@@ -29,13 +29,7 @@ func (s *SharedState) NextMaintenance() time.Time {
 	var next time.Time
 
 	for _, rec := range s.Records {
-		at := rec.Until
-		if rec.Status != Queued && rec.Status != Granted {
-			at = rec.Finished.Add(s.Config.Retention)
-			if rec.Request.SubmitUntil.After(at) {
-				at = rec.Request.SubmitUntil
-			}
-		}
+		at := maintenanceAt(rec, s.Config.Retention)
 
 		if next.IsZero() || at.Before(next) {
 			next = at
@@ -92,4 +86,16 @@ func (o Observation) Observe(now time.Time, request Request) (result Result, rea
 		err = admissionError(rec.Failure)
 	}
 	return result, true, err
+}
+
+// maintenanceAt is the record's next expiry or terminal-retention boundary.
+func maintenanceAt(rec *DriverRecord, retention time.Duration) time.Time {
+	if rec.Status == Queued || rec.Status == Granted {
+		return rec.Until
+	}
+	at := rec.Finished.Add(retention)
+	if rec.Request.SubmitUntil.After(at) {
+		at = rec.Request.SubmitUntil
+	}
+	return at
 }

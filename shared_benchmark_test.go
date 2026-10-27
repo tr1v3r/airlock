@@ -85,7 +85,10 @@ func newBenchDriver(tb testing.TB, seed []byte) *benchDriver {
 	}
 	d := &benchDriver{gate: make(chan struct{}, 1), snapshot: seed, state: state, nowFunc: time.Now}
 	if state != nil {
-		d.observation = state.Observation()
+		d.observation, err = state.Observation()
+		if err != nil {
+			tb.Fatal(err)
+		}
 	}
 	return d
 }
@@ -130,7 +133,10 @@ func (d *benchDriver) execute(ctx context.Context, cmd Command) (Result, error) 
 		}
 		d.snapshot = data
 		d.state = next
-		d.observation = next.Observation()
+		d.observation, codecErr = next.Observation()
+		if codecErr != nil {
+			return Result{}, codecErr
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
@@ -346,7 +352,7 @@ type sharedBenchEnv struct {
 // ErrConfigConflict (requirement: fixture Config must match exactly).
 func newSharedBenchEnv(tb testing.TB, p sharedBenchParams) *sharedBenchEnv {
 	tb.Helper()
-	if p.workers < 1 || p.cycles < 1 || p.capacity < 1 || p.capacity > 10000 || p.maxQueued < 0 || p.maxQueued > 10000 {
+	if p.workers < 1 || p.cycles < 1 || p.capacity < 1 || p.maxQueued < 0 || p.maxQueued > 10000 {
 		tb.Fatal("invalid shared bench parameters")
 	}
 	cfg := ResourceConfig{

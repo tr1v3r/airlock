@@ -18,6 +18,7 @@ func RunResourceManagement(t *testing.T, driver airlock.Driver) {
 	if !ok {
 		t.Fatal("driver lacks resource management")
 	}
+	t.Run("native_int_capacity", func(t *testing.T) { nativeCapacity(t, driver) })
 	ctx := context.Background()
 	name := "resize-" + airlock.NewRequest(time.Now()).Owner
 	if _, err := manager.InspectResource(ctx, name); !errors.Is(err, airlock.ErrResourceNotFound) {
@@ -133,5 +134,67 @@ func RunResourceManagement(t *testing.T, driver airlock.Driver) {
 	}
 	if _, err := client.Resize(ctx, 8, 4); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// nativeCapacity verifies that weights are amounts, not record counts. The odd
+// native maximum also detects accidental floating-point conversion in Redis Lua.
+func nativeCapacity(t *testing.T, driver airlock.Driver) {
+	t.Helper()
+	manager := driver.(airlock.ResourceManager)
+	ctx := context.Background()
+	maximum := int(^uint(0) >> 1)
+	name := "native-" + airlock.NewRequest(time.Now()).Owner
+	cfg := airlock.ResourceConfig{Admission: airlock.Config{Capacity: maximum, MaxQueued: 8, MaxQueuedPerTenant: 8}, LeaseTTL: 30 * time.Second, MaxWait: 30 * time.Second, SubmitWindow: 30 * time.Second, Retention: time.Minute, MaxRecords: 64}
+	request := func(weight int) airlock.Request {
+		r := airlock.NewRequest(time.Now().Add(30 * time.Second))
+		r.Resource, r.Weight, r.Config, r.WaitUntil = name, weight, cfg, r.SubmitUntil
+		return r
+	}
+	large, small := request(maximum-1), request(1)
+	first, err := driver.Submit(ctx, large)
+	if err != nil || first.Status != airlock.Granted {
+		t.Fatal(first, err)
+	}
+	second, err := driver.Submit(ctx, small)
+	if err != nil || second.Status != airlock.Granted {
+		t.Fatal(second, err)
+	}
+	status, err := manager.InspectResource(ctx, name)
+	if err != nil || status.Capacity != maximum || status.Used != maximum {
+		t.Fatal(status, err)
+	}
+	status, err = manager.Resize(ctx, airlock.ResizeRequest{Resource: name, Capacity: 1, ExpectedVersion: 1})
+	if err != nil || status.Used != maximum {
+		t.Fatal(status, err)
+	}
+	if _, err := driver.Renew(ctx, airlock.LeaseRef{Request: large, ID: first.LeaseID}); err != nil {
+		t.Fatal(err)
+	}
+	for _, lease := range []airlock.LeaseRef{{Request: large, ID: first.LeaseID}, {Request: small, ID: second.LeaseID}} {
+		if _, err := driver.Release(ctx, lease); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg.Admission.Capacity = 1
+	client, err := airlock.NewShared(driver, airlock.SharedOptions{Resource: name, Config: cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Resize(ctx, maximum, 2); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := client.AcquireN(ctx, maximum)
+	if err != nil || lease.Weight() != maximum {
+		t.Fatal(lease, err)
+	}
+	if got, err := client.Inspect(ctx); err != nil || got.Used != maximum {
+		t.Fatal(got, err)
+	}
+	if err := lease.Release(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := client.Inspect(ctx); err != nil || got.Used != 0 {
+		t.Fatal(got, err)
 	}
 }

@@ -1,8 +1,10 @@
 package airlock
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -59,7 +61,7 @@ func TestResizeValidationAndWindow(t *testing.T) {
 	if next, _, _, err := Transition(nil, time.Now(), Command{Kind: Resize, Resize: ResizeRequest{Resource: "missing", Capacity: 1, ExpectedVersion: 1}}); next != nil || !errors.Is(err, ErrResourceNotFound) {
 		t.Fatal(next, err)
 	}
-	for _, r := range []ResizeRequest{{}, {Resource: "x", Capacity: 0, ExpectedVersion: 1}, {Resource: "x", Capacity: 10001, ExpectedVersion: 1}, {Resource: "x", Capacity: 1}} {
+	for _, r := range []ResizeRequest{{}, {Resource: "x", Capacity: 0, ExpectedVersion: 1}, {Resource: "x", Capacity: -1, ExpectedVersion: 1}, {Resource: "x", Capacity: 1}} {
 		if ValidateResize(r) == nil {
 			t.Fatal(r)
 		}
@@ -243,4 +245,111 @@ func TestResizePreservesPriorityTurnAfterProtectedRejection(t *testing.T) {
 	expectState(t, h.call(Observe, h1, "", nil), Granted)
 	expectState(t, h.call(Observe, low, "", nil), Granted)
 	expectState(t, h.call(Observe, h2, "", nil), Queued)
+}
+
+func TestNativeCapacityAndCheckedTotals(t *testing.T) {
+	for _, tc := range []struct {
+		used, weight, want int
+		invalid            bool
+	}{
+		{0, maxInt, maxInt, false}, {maxInt - 1, 1, maxInt, false},
+		{maxInt, 1, 0, true}, {-1, 1, 0, true}, {0, 0, 0, true}, {0, -1, 0, true},
+	} {
+		got, err := checkedWeight(tc.used, tc.weight)
+		if got != tc.want || (err != nil) != tc.invalid {
+			t.Fatal(tc, got, err)
+		}
+	}
+	cfg := stateTestConfig()
+	cfg.Admission.Capacity = maxInt
+	if err := validConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateResize(ResizeRequest{Resource: "large", Capacity: maxInt, ExpectedVersion: 1}); err != nil {
+		t.Fatal(err)
+	}
+	h := newStateHarness(t)
+	large := stateTestRequest(h.now, cfg, "large", maxInt-1)
+	small := stateTestRequest(h.now, cfg, "small", 1)
+	if err := validRequest(large); err != nil {
+		t.Fatal(err)
+	}
+	grant := h.call(Submit, large, "", nil)
+	other := h.call(Submit, small, "", nil)
+	waiting := stateTestRequest(h.now, cfg, "waiting", 1)
+	expectState(t, h.call(Submit, waiting, "", nil), Queued)
+	s := h.snapshot()
+	o, err := s.Observation()
+	if err != nil || o.Used != maxInt {
+		t.Fatal(o, err)
+	}
+	if got, err := o.Inspect(h.now, large.Resource); err != nil || got.Capacity != maxInt || got.Used != maxInt {
+		t.Fatal(got, err)
+	}
+	next, result, _, err := transitionOptimistic(h.data, h.now, Command{Kind: Resize, Resize: ResizeRequest{Resource: large.Resource, Capacity: 1, ExpectedVersion: 1}})
+	if err != nil || result.ResourceStatus.Used != maxInt {
+		t.Fatal(result, err)
+	}
+	h.data = next
+	h.call(Renew, large, grant.LeaseID, nil)
+	h.call(Release, large, grant.LeaseID, nil)
+	expectState(t, h.call(Observe, waiting, "", nil), Queued)
+	h.call(Release, small, other.LeaseID, nil)
+	expectState(t, h.call(Observe, waiting, "", nil), Granted)
+	// The count guard protects processing scale even at native-maximum capacity.
+	cfg.MaxRecords = 10001
+	if !errors.Is(validConfig(cfg), ErrInvalidConfig) {
+		t.Fatal("record bound removed")
+	}
+	cfg = stateTestConfig()
+	cfg.Admission.Capacity = maxInt
+	cfg.Admission.MaxQueued = 10001
+	if !errors.Is(validConfig(cfg), ErrInvalidConfig) {
+		t.Fatal("queue bound removed")
+	}
+}
+
+func TestOverflowingSnapshotAndProjectionFailClosed(t *testing.T) {
+	h := newStateHarness(t)
+	cfg := stateTestConfig()
+	cfg.Admission.Capacity = maxInt
+	r := stateTestRequest(h.now, cfg, "a", maxInt)
+	h.call(Submit, r, "", nil)
+	s := h.snapshot()
+	bad := stateTestRequest(h.now, cfg, "extra", 1)
+	s.Records[bad.ID] = &DriverRecord{Request: bad, Status: Granted, LeaseID: leaseIdentity(bad), Until: h.now.Add(cfg.LeaseTTL)}
+	if _, err := s.Observation(); !errors.Is(err, ErrCorruptState) {
+		t.Fatal("projection overflow accepted", err)
+	}
+	if next, _, _, err := Transition(&s, h.now, Command{Kind: Observe, Request: r}); next != nil || !errors.Is(err, ErrCorruptState) {
+		t.Fatal("restored sum overflow authorized", next, err)
+	}
+	if _, err := (*SharedState)(nil).Observation(); !errors.Is(err, ErrCorruptState) {
+		t.Fatal(err)
+	}
+	if _, err := (&SharedState{Records: map[string]*DriverRecord{"bad": nil}}).Observation(); !errors.Is(err, ErrCorruptState) {
+		t.Fatal(err)
+	}
+}
+
+func TestSnapshotIntegerWidth(t *testing.T) {
+	h := newStateHarness(t)
+	cfg := stateTestConfig()
+	cfg.Admission.Capacity = maxInt
+	request := stateTestRequest(h.now, cfg, "max", maxInt)
+	h.call(Submit, request, "", nil)
+	// The JSON codec must reject, rather than round or wrap, native max+1.
+	tooLarge := []byte(strconv.FormatUint(uint64(maxInt)+1, 10))
+	maximum := []byte(strconv.Itoa(maxInt))
+	for _, field := range []string{"Capacity", "Weight"} {
+		original := append([]byte(`"`+field+`":`), maximum...)
+		replacement := append([]byte(`"`+field+`":`), tooLarge...)
+		data := bytes.ReplaceAll(h.data, original, replacement)
+		if bytes.Equal(data, h.data) {
+			t.Fatalf("missing %s field", field)
+		}
+		if _, err := DecodeState(data); err == nil {
+			t.Fatalf("accepted overflowing %s", field)
+		}
+	}
 }

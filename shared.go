@@ -135,9 +135,6 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 	if n <= 0 {
 		return nil, ErrInvalidWeight
 	}
-	if n > 10000 {
-		return nil, ErrWeightExceedsCapacity
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

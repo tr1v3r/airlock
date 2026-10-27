@@ -81,7 +81,7 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 	}
 
 	if state != nil && (s.Version != 1 || s.Records == nil || s.Revision == 0 || s.Revision == ^uint64(0) ||
-		s.Time.IsZero() || now.Before(s.Time) || s.Capacity < 1 || s.Capacity > 10000 || s.CapacityVersion == 0) {
+		s.Time.IsZero() || now.Before(s.Time) || s.Capacity < 1 || s.CapacityVersion == 0) {
 		return nil, Result{}, ErrCorruptState
 	}
 	if cmd.Kind == Resize {
@@ -256,7 +256,11 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 	s.Revision++
 	out := Result{Revision: s.Revision}
 	if cmd.Kind == Resize {
-		out.ResourceStatus = s.Observation().ResourceStatus()
+		observation, err := s.Observation()
+		if err != nil {
+			return nil, Result{}, err
+		}
+		out.ResourceStatus = observation.ResourceStatus()
 	}
 	if rec != nil {
 		out.Status = rec.Status
@@ -406,7 +410,12 @@ func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 
 		switch r.Status {
 		case Granted:
-			g.used += r.Request.Weight
+			used, err := checkedWeight(g.used, r.Request.Weight)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			g.used = used
 			g.active++
 		case Queued, Cancelled, Released, Expired, Rejected:
 		}

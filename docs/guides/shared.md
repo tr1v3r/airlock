@@ -311,13 +311,23 @@ if err != nil {
 fmt.Println(status.Capacity, status.Used, status.CapacityVersion)
 ```
 
-`Config.Admission.Capacity` is the first-creation hint (1..10000). The first
+`Config.Admission.Capacity` is the positive first-creation hint. The first
 successful resource creation wins; later clients with the same queue/lease policy
 may use different hints. Construction performs no backend I/O. Current capacity
 and `CapacityVersion` are persisted separately; reconnecting never resets them.
 Hints are excluded from request identity and policy comparisons. New weights are
 validated against the backend's current capacity, so existing Shared clients can
 use expanded capacity without reconstruction.
+
+Capacity and request weight accept any positive Go `int`: up to `2^63-1` on
+64-bit processes and `2^31-1` on 32-bit processes. Participants must stay within
+the range supported by every client; out-of-range stored integers fail to decode
+or scan rather than being truncated. Capacity does not allocate one record per
+token. `MaxRecords` and `MaxQueued` remain capped at 10000; tenant/group limits
+also remain unchanged. PostgreSQL stores capacity and weight as `BIGINT`. Redis
+preserves their exact integer JSON text without Lua numeric conversion. Restoring
+state or building observation counters rejects an overflowing charged-weight sum
+with `ErrCorruptState`; legal shrink overcommit remains supported.
 
 Shrink never revokes grants or forbids their normal renewal/release. `Used` may
 exceed `Capacity` until holders release/expire; no new grants occur while over

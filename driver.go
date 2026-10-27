@@ -42,10 +42,11 @@ type Driver interface {
 // Durations are positive whole milliseconds. LeaseTTL, MaxWait and SubmitWindow
 // are at most one hour; Retention is at most 24 hours. MaxRecords bounds all
 // queued, granted and terminal records together (1..10000). No records are
-// evicted to admit new requests. Capacity and MaxQueued are at most 10000.
+// evicted to admit new requests. MaxQueued is at most 10000. Capacity and
+// weights use the positive range of Go int, not a record-count-based ceiling.
 type ResourceConfig struct {
 	// Admission fixes queue/priority policy. Capacity is a first-creation hint
-	// (1..10000), ignored when matching existing policies; use Resize to change
+	// (positive Go int), ignored when matching existing policies; use Resize to change
 	// an existing resource. MaxQueued is at most 10000.
 	Admission Config
 	// LeaseTTL is validity after grant or renewal, in whole milliseconds within (0, 1h].
@@ -77,7 +78,7 @@ type Request struct {
 	WaitUntil time.Time
 	// Tenant is UTF-8 without NUL, at most 256 bytes; empty selects the shared default tenant.
 	Tenant string
-	// Weight is the atomic token count, from 1 through 10000. New Submit is
+	// Weight is a positive Go int token count. New Submit is
 	// checked against the persisted current capacity, not the creation hint.
 	Weight int
 	// Config must match the resolved policy; its creation-capacity hint is not
@@ -206,7 +207,7 @@ func validSecret(s string) bool {
 
 // validConfig checks protocol bounds and the local scheduler policy without backend I/O.
 func validConfig(c ResourceConfig) error {
-	if c.Admission.Capacity > 10000 || c.Admission.MaxQueued > 10000 || c.MaxRecords < 1 || c.MaxRecords > 10000 {
+	if c.Admission.MaxQueued > 10000 || c.MaxRecords < 1 || c.MaxRecords > 10000 {
 		return ErrInvalidConfig
 	}
 
@@ -264,9 +265,6 @@ func validRequestFields(r Request) error {
 	}
 	if r.Weight <= 0 {
 		return ErrInvalidWeight
-	}
-	if r.Weight > 10000 {
-		return ErrWeightExceedsCapacity
 	}
 	return nil
 }

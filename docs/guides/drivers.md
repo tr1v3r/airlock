@@ -113,12 +113,17 @@ Config.Admission.Capacity. Compare configurations with EqualPolicy and normalize
 that hint before checking request identity. Preserve the current capacity through
 all business operations and restarts. Resize sweeps expiry without first dispatching
 under the old limit, removes oversized waiters, then dispatches under the new limit.
-Legal overcommit must survive restoration. `state.Observation()` builds one header
+Legal overcommit must survive restoration. `state.Observation()` returns a checked header and an error; it builds one header
 with current capacity/version, charged counters and the next maintenance boundary;
 publish it atomically with all affected request results. Inspect never runs Transition.
 Redis still requires atomic owner + CommitWindow checks, not old-snapshot comparison.
 PG updates capacity/version on airlock_resources with request deltas in one transaction.
 
-ValidateCommand checks the fixed weight range 1..10000, not live resource capacity.
+ValidateCommand checks positive Go `int` weight, not live resource capacity.
+Capacity and weight may reach the native `int` maximum; record and queue bounds
+remain 10000. Restore and projection building must check charged-sum overflow
+before addition and reject it with ErrCorruptState. Never publish a projection
+when Observation returns an error. Stored values must fit each participant's
+native integer width; reject out-of-range data instead of narrowing it.
 Every custom driver must enforce current capacity for a fresh Submit inside its atomic
 boundary (Transition does this), even if it does not implement ResourceManager.

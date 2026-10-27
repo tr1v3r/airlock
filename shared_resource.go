@@ -17,6 +17,7 @@ type ResourceManager interface {
 // ResizeRequest changes capacity without changing request identities or policy.
 // Retry the same absolute Capacity and ExpectedVersion after ambiguous outcomes;
 // never automatically adopt a newer version after a conflict.
+// Capacity accepts any positive Go int, whose width is process-dependent.
 type ResizeRequest struct {
 	Resource        string
 	Capacity        int
@@ -55,12 +56,12 @@ func ValidateResource(resource string) error {
 	return nil
 }
 
-// ValidateResize checks fixed capacity bounds and a mandatory expected version.
+// ValidateResize checks positive int capacity and a mandatory expected version.
 func ValidateResize(r ResizeRequest) error {
 	if err := ValidateResource(r.Resource); err != nil {
 		return err
 	}
-	if r.Capacity < 1 || r.Capacity > 10000 {
+	if r.Capacity < 1 {
 		return ErrInvalidConfig
 	}
 	if r.ExpectedVersion == 0 {
@@ -71,19 +72,35 @@ func ValidateResize(r ResizeRequest) error {
 
 // Observation builds a resource header from an exclusively owned committed state.
 // Compute once at publication; attach one Record when answering Observe.
-func (s *SharedState) Observation() Observation {
+// Invalid nil records or an unrepresentable charged sum fail closed.
+func (s *SharedState) Observation() (Observation, error) {
+	if s == nil {
+		return Observation{}, ErrCorruptState
+	}
 	o := Observation{Resource: s.Resource, Config: s.Config, Time: s.Time,
-		Revision: s.Revision, Capacity: s.Capacity, CapacityVersion: s.CapacityVersion,
-		NextMaintenance: s.NextMaintenance()}
+		Revision: s.Revision, Capacity: s.Capacity, CapacityVersion: s.CapacityVersion}
 	for _, rec := range s.Records {
+		if rec == nil {
+			return Observation{}, ErrCorruptState
+		}
+
+		at := maintenanceAt(rec, s.Config.Retention)
+		if o.NextMaintenance.IsZero() || at.Before(o.NextMaintenance) {
+			o.NextMaintenance = at
+		}
 		if rec.Status == Granted {
-			o.Used += rec.Request.Weight
+			used, err := checkedWeight(o.Used, rec.Request.Weight)
+			if err != nil {
+				return Observation{}, err
+			}
+
+			o.Used = used
 		}
 		if rec.Status == Queued {
 			o.Queued++
 		}
 	}
-	return o
+	return o, nil
 }
 
 // ResourceStatus extracts the committed counters without doing maintenance.
@@ -97,9 +114,9 @@ func (o Observation) Inspect(now time.Time, resource string) (ResourceStatus, er
 	if err := ValidateResource(resource); err != nil {
 		return ResourceStatus{}, err
 	}
-	if o.Resource != resource || o.Capacity < 1 || o.Capacity > 10000 || o.CapacityVersion == 0 ||
+	if o.Resource != resource || o.Capacity < 1 || o.CapacityVersion == 0 ||
 		o.Revision == 0 || o.Revision == ^uint64(0) || o.Time.IsZero() || now.Truncate(time.Millisecond).Before(o.Time) ||
-		o.Used < 0 || o.Used > 100000000 || o.Queued < 0 || o.Queued > 10000 {
+		o.Used < 0 || o.Queued < 0 || o.Queued > 10000 {
 		return ResourceStatus{}, ErrCorruptState
 	}
 	return o.ResourceStatus(), nil
@@ -151,4 +168,18 @@ func (d *Shared) Resize(ctx context.Context, capacity int, expectedVersion uint6
 		return ResourceStatus{}, err
 	}
 	return result, nil
+}
+
+// maxInt is the arithmetic boundary of the existing int-based public API.
+// Capacity/weight values do not allocate one record per token.
+const maxInt = int(^uint(0) >> 1)
+
+// checkedWeight rejects malformed restored/projection totals before adding.
+// Live grants instead check weight <= capacity-used before addition; both
+// operands are nonnegative ints, so that comparison and the resulting sum fit.
+func checkedWeight(used, weight int) (int, error) {
+	if used < 0 || weight <= 0 || weight > maxInt-used {
+		return 0, ErrCorruptState
+	}
+	return used + weight, nil
 }

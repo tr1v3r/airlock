@@ -93,9 +93,12 @@ owner/时间窗口重试保持原 ExpectedVersion；容量版本冲突不产生�
 SharedState.Capacity / CapacityVersion 独立于 Config.Admission.Capacity 的首次创建提示。
 用 EqualPolicy 比较不可变规则，请求身份比较前归一化提示；普通操作和重启都不能重置容量。
 Resize 清理过期时不先按旧容量调度，移除超重等待者后才按新容量调度；恢复必须允许合法超限。
-state.Observation() 生成当前容量/版本、占用与排队计数、下一维护时间，并与请求变化一致发布。
+state.Observation() 返回观察头和错误，生成当前容量/版本、占用与排队计数、下一维护时间，
+并与请求变化一致发布。已授予重量总和在加法前检查溢出，失败返回 ErrCorruptState，不得发布。
 Inspect 不运行 Transition。Redis 仍在 Lua 中检查 owner + CommitWindow，不比较旧快照；
 PG 在资源行事务中同时写容量、容量版本和请求差异。
 
-ValidateCommand 只校验重量固定范围 1..10000，不校验资源当前容量。自定义 driver 即使
+ValidateCommand 只校验重量为正 Go `int`，不校验资源当前容量。容量和重量可达本机 int 上限，
+记录和队列数仍最多 10000。存储整数必须能被每个参与者表示，超范围时拒绝读取，不得截断。
+自定义 driver 即使
 不实现 ResourceManager，也必须在原子边界内按当前容量检查新 Submit；Transition 已包含此规则。

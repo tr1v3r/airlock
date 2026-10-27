@@ -271,10 +271,17 @@ if err != nil {
 fmt.Println(status.Capacity, status.Used, status.CapacityVersion)
 ```
 
-`Config.Admission.Capacity` 是首次创建提示，范围 1..10000。首次成功创建者确定初始容量；
+`Config.Admission.Capacity` 是正数的首次创建提示。首次成功创建者确定初始容量；
 此后队列/租约策略相同的客户端可携带不同初始容量提示，重连不会重置容量。构造时仍不访问后端。
 当前容量与 CapacityVersion 单独持久化；提示不参与请求身份或不可变策略比较。新请求由后端按
 当前容量校验，旧 Shared 实例无需重建就能使用扩容后的容量。
+
+容量和请求重量支持任意正 Go `int`：64 位进程最大 `2^63-1`，32 位进程最大 `2^31-1`。
+所有参与者须使用彼此都能表示的范围；超出本机整数范围的存储数据会在解码或扫描时失败，
+不会截断。容量不会按令牌数分配记录；`MaxRecords`、`MaxQueued` 仍最多 10000，租户和
+优先级组的数量限制也不变。PostgreSQL 以 `BIGINT` 保存容量和重量，Redis 保留精确整数
+JSON 文本，Lua 不将这些字段转换为数字。恢复状态或构建观察计数时，已授予重量总和溢出
+返回 `ErrCorruptState`；缩容造成的合法超限仍受支持。
 
 缩容不撤销已有租约，也不阻止正常续租/释放；Used 可以暂时大于 Capacity，超限时不新增授予，
 等待释放或过期。超过新容量的排队请求持久化为 Rejected，Observe 恢复 ErrWeightExceedsCapacity；

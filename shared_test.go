@@ -134,7 +134,7 @@ func TestSharedAcquireArguments(t *testing.T) {
 	for _, tc := range []struct {
 		n   int
 		err error
-	}{{0, ErrInvalidWeight}, {-1, ErrInvalidWeight}, {10001, ErrWeightExceedsCapacity}} {
+	}{{0, ErrInvalidWeight}, {-1, ErrInvalidWeight}} {
 		if _, err := c.AcquireN(context.Background(), tc.n); !errors.Is(err, tc.err) {
 			t.Fatalf("weight %d: %v", tc.n, err)
 		}
