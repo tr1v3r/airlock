@@ -1,6 +1,6 @@
 {
   "archify_version": "3.2.0",
-  "source_revision": "ca393a3031c310c21515cec04e98b4f009f50e08",
+  "source_revision": "9fb6c6af01374f1e757afd3e60133398db2a93df",
   "automated_browser_scope": "Four desktop light-theme viewports; dark-theme endpoints; READ/Still state.",
   "preview_capture": "Full-page Chrome screenshot at 1440 CSS pixels wide; light theme; no screenshot cropping.",
   "index_checks": "No horizontal overflow at 1440 and 390 CSS pixels; all images loaded.",
@@ -205,6 +205,24 @@
       "preview_sha256": "5b9a1e8bec5f0426c1c4a5f019ebc817d7d1c2ca0693e0a93d234881769b8737",
       "manual_review": "Inspected regenerated full-page light-theme Chrome preview and a full-size middle viewport at 1440 CSS pixels. The decision reads “有可提交的新状态？” with “有 / 无” branches; labels and surrounding routes are clear. Finalize also passed real-browser light/dark desktop checks.",
       "route_advisory": {}
+    },
+    {
+      "slug": "resource-management",
+      "candidate": ".archify/sequence-resource-management-20261028-0245/candidate.json",
+      "candidate_sha256": "7c68682435c8fdb8ac370651a36d5c2e829316fc0466041745873f74e22b624a",
+      "html": ".archify/sequence-resource-management-20261028-0245/resource-management.html",
+      "html_sha256": "be31b31508cc9c408acd1caf314741ec9b490db15bccf869b59f0a251bf9c093",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/resource-management.png",
+      "preview_sha256": "dea28509676903bf14e8fef2ff81cdc3bd238abcbc68dabb2784f53e97444c0f",
+      "manual_review": "Automated finalize gates and real-browser check passed at revision 9fb6c6a; light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review.",
+      "route_advisory": {},
+      "source_revision": "9fb6c6af01374f1e757afd3e60133398db2a93df"
     }
   ],
   "source_revision_note": "Default revision for views 01–08; each diagram entry records its own pinned revision.",

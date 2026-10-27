@@ -139,13 +139,13 @@ Tests: [driver/memory/examples/lifecycle/main_test.go](../../driver/memory/examp
 
 ### 09 · PostgreSQL operations and transaction boundaries
 
-Trace the five operations, lock acquisition, full-state loading and delta writes.
+Trace the five business operations, lock acquisition, full-state loading and delta writes; Resize/Inspect reuse the same transaction boundary (see diagram 12).
 
-[HTML](.archify/workflow-pg-operations-20261027-140038/pg-operations.html) · [JSON](.archify/workflow-pg-operations-20261027-140038/candidate.json)
+[HTML](.archify/workflow-pg-operations-20261028-0245/pg-operations.html) · [JSON](.archify/workflow-pg-operations-20261028-0245/candidate.json)
 
 ![PostgreSQL operations and transaction boundaries](previews/pg-operations.png)
 
-Implementation: [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/postgres/observe.go](../../driver/postgres/observe.go), [driver/postgres/storage.go](../../driver/postgres/storage.go), [shared_state.go](../../shared_state.go)
+Implementation: [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/postgres/observe.go](../../driver/postgres/observe.go), [driver/postgres/storage.go](../../driver/postgres/storage.go), [driver/postgres/resource.go](../../driver/postgres/resource.go), [shared_state.go](../../shared_state.go)
 
 Tests: [driver/postgres/postgres_test.go](../../driver/postgres/postgres_test.go), [driver/postgres/storage_test.go](../../driver/postgres/storage_test.go), [driver/postgres/postgres_integration_test.go](../../driver/postgres/postgres_integration_test.go)
 
@@ -165,17 +165,29 @@ Tests: [driver/postgres/postgres_test.go](../../driver/postgres/postgres_test.go
 
 Follow read-only Observe, per-resource locking, owner/time guards and cleanup.
 
-[HTML](.archify/workflow-redis-operations-20261027-224623/redis-operations.html) · [JSON](.archify/workflow-redis-operations-20261027-224623/candidate.json)
+[HTML](.archify/workflow-redis-operations-20261028-0245/redis-operations.html) · [JSON](.archify/workflow-redis-operations-20261028-0245/candidate.json)
 
 ![Redis resource update lock and guarded commit workflow](previews/redis-operations.png)
 
-Implementation: [driver/redis/redis.go](../../driver/redis/redis.go), [driver/redis/observe.go](../../driver/redis/observe.go), [driver/redis/scripts.go](../../driver/redis/scripts.go), [driver/redis/update_lock.go](../../driver/redis/update_lock.go), [driver_transition.go](../../driver_transition.go), [shared_state.go](../../shared_state.go)
+Implementation: [driver/redis/redis.go](../../driver/redis/redis.go), [driver/redis/observe.go](../../driver/redis/observe.go), [driver/redis/resource.go](../../driver/redis/resource.go), [driver/redis/scripts.go](../../driver/redis/scripts.go), [driver/redis/update_lock.go](../../driver/redis/update_lock.go), [driver_transition.go](../../driver_transition.go), [shared_state.go](../../shared_state.go)
 
 Tests: [driver/redis/redis_test.go](../../driver/redis/redis_test.go), [driver/redis/commit_test.go](../../driver/redis/commit_test.go), [driver/redis/integration_test.go](../../driver/redis/integration_test.go), [shared_commit_window_test.go](../../shared_commit_window_test.go)
 
+### 12 · Shared resource management: Inspect and Resize
+
+Follow read-only Inspect projections and versioned Resize through the PG row-lock transaction and the Redis update-lock/Lua commit.
+
+[HTML](.archify/sequence-resource-management-20261028-0245/resource-management.html) · [JSON](.archify/sequence-resource-management-20261028-0245/candidate.json)
+
+![Shared resource management: Inspect and Resize](previews/resource-management.png)
+
+Implementation: [shared_resource.go](../../shared_resource.go), [shared_state.go](../../shared_state.go), [driver/postgres/resource.go](../../driver/postgres/resource.go), [driver/redis/resource.go](../../driver/redis/resource.go)
+
+Tests: [shared_resource_test.go](../../shared_resource_test.go), [internal/driverconformance/resource.go](../../internal/driverconformance/resource.go)
+
 ## Scope and reading limits
 
-- These pinned diagram snapshots precede versioned Shared Resize/Inspect and do not show the optional ResourceManager flow. Use the [current Shared guide](../guides/shared.md#shared-dynamic-capacity) for resource management.
+- Versioned Shared Resize/Inspect management is covered by diagram 12 (sequence) and by the updated PG/Redis operation cards; other diagrams remain pinned snapshots at their own revisions.
 
 - Diagrams explain code behavior, not measured throughput or an SLA. Sequence positions encode order, not elapsed time.
 - The backend lifecycle preserves the full set of state-changing paths and has several crossing routes; use HTML node focus to follow them. Common observations and other state-preserving operations are omitted.
