@@ -1,8 +1,9 @@
 // Package redis stores Airlock admission state in one persistent Redis key per
-// resource. It uses backend time and guarded compare-and-swap; it never executes
-// work or owns the injected client. Durability depends on the Redis deployment.
+// resource, plus a short-lived per-resource update lock. It uses backend time and
+// owner-checked commits within a time window. It never executes work or owns the
+// injected client. Durability depends on the Redis deployment.
 // Methods require non-nil contexts and follow airlock.Driver recovery rules.
-// Confirmed CAS conflicts may retry; ambiguous writes never authorize work.
+// Confirmed ownership/window misses may retry; ambiguous writes never authorize work.
 package redis
 
 import (
@@ -28,14 +29,17 @@ type Driver struct {
 	client goredis.UniversalClient
 	// namespace isolates resource hashes without exposing logical names in keys.
 	namespace string
-	// timeout bounds reads, CAS retries and contention backoff for one operation.
+	// timeout bounds reads, update-lock contention and guarded commit retries for one operation.
 	timeout time.Duration
+	// updateLockTTL bounds abandoned ownership; expired owners cannot commit.
+	updateLockTTL time.Duration
 }
 
 // Option configures the adapter before use.
 type Option func(*Driver) error
 
-// WithOperationTimeout bounds the complete operation, including CAS contention.
+// WithOperationTimeout bounds the operation, including update-lock contention.
+// Best-effort lock cleanup may take up to an additional 100 milliseconds.
 // The timeout must be positive. The default is five seconds; an earlier caller
 // deadline takes precedence.
 func WithOperationTimeout(timeout time.Duration) Option {
@@ -92,7 +96,7 @@ func New(client goredis.UniversalClient, namespace string, options ...Option) (*
 		return nil, errors.New("airlock/redis: invalid namespace")
 	}
 
-	d := &Driver{client: client, namespace: namespace, timeout: 5 * time.Second}
+	d := &Driver{client: client, namespace: namespace, timeout: 5 * time.Second, updateLockTTL: time.Second}
 
 	for _, option := range options {
 		if option == nil {
@@ -122,10 +126,19 @@ func (*noRetryCmd) NoRetry() bool { return true }
 
 // eval tries EVALSHA once, then EVAL only when NOSCRIPT proves no script ran.
 func (d *Driver) eval(ctx context.Context, script, key string, args ...any) (any, error) {
+	return d.evalKeys(ctx, script, []string{key}, args...)
+}
+
+// evalKeys declares every script key explicitly for Redis Cluster routing.
+func (d *Driver) evalKeys(ctx context.Context, script string, keys []string, args ...any) (any, error) {
 	hash := fmt.Sprintf("%x", sha1.Sum([]byte(script)))
 
 	for _, head := range []struct{ name, body string }{{"evalsha", hash}, {"eval", script}} {
-		argv := append([]any{head.name, head.body, 1, key}, args...)
+		argv := []any{head.name, head.body, len(keys)}
+		for _, key := range keys {
+			argv = append(argv, key)
+		}
+		argv = append(argv, args...)
 		cmd := &noRetryCmd{goredis.NewCmd(ctx, argv...)}
 		cmd.SetFirstKeyPos(3)
 		err := d.client.Process(ctx, cmd)
@@ -158,10 +171,10 @@ func micro(t time.Time) (int64, error) {
 }
 
 // decodeRead validates the atomic snapshot/existence/time reply before computing a transition.
-func decodeRead(raw any) ([]byte, bool, time.Time, error) {
+func decodeRead(raw any) ([]byte, time.Time, error) {
 	values, ok := raw.([]any)
 	if !ok || len(values) != 4 {
-		return nil, false, time.Time{}, errors.New("airlock/redis: malformed read response")
+		return nil, time.Time{}, errors.New("airlock/redis: malformed read response")
 	}
 
 	exists, ok := values[0].(int64)
@@ -169,29 +182,29 @@ func decodeRead(raw any) ([]byte, bool, time.Time, error) {
 	sec, okSec := values[2].(string)
 	us, okUs := values[3].(string)
 	if !ok || (exists != 0 && exists != 1) || !okState || !okSec || !okUs || (exists == 0 && state != "") {
-		return nil, false, time.Time{}, errors.New("airlock/redis: malformed read fields")
+		return nil, time.Time{}, errors.New("airlock/redis: malformed read fields")
 	}
 
 	seconds, e1 := strconv.ParseInt(sec, 10, 64)
 	micros, e2 := strconv.ParseInt(us, 10, 64)
 	if e1 != nil || e2 != nil || seconds <= 0 || seconds > maxExactMicro/1000000 || micros < 0 || micros >= 1000000 {
-		return nil, false, time.Time{}, errors.New("airlock/redis: invalid server time")
+		return nil, time.Time{}, errors.New("airlock/redis: invalid server time")
 	}
 
 	now := time.Unix(seconds, micros*1000).UTC()
 	if _, err := micro(now); err != nil {
-		return nil, false, time.Time{}, err
+		return nil, time.Time{}, err
 	}
 	if exists == 1 && state == "" {
-		return nil, false, time.Time{}, airlock.ErrCorruptState
+		return nil, time.Time{}, airlock.ErrCorruptState
 	}
-	return []byte(state), exists == 1, now, nil
+	return []byte(state), now, nil
 }
 
 // execute atomically evaluates a protocol command. Business rejections commit
 // maintenance changes. Transport/script errors return a zero Result and are not
 // retried: a write may have succeeded. Recover with the original request identity.
-// Only confirmed CAS conflicts or clock-window misses are recomputed.
+// Lock contention and confirmed ownership or clock-window misses retry.
 func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.Result, error) {
 	if err := ctx.Err(); err != nil {
 		return airlock.Result{}, err
@@ -214,74 +227,12 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 			}
 		}
 
-		raw, err := d.eval(ctx, readScript, key)
-		if err != nil {
-			return airlock.Result{}, fmt.Errorf("airlock/redis: read: %w", err)
-		}
-
-		snapshot, exists, now, err := decodeRead(raw)
-		if err != nil {
-			return airlock.Result{}, err
-		}
-
-		state, decodeErr := airlock.DecodeState(snapshot)
-		if decodeErr != nil {
-			return airlock.Result{}, decodeErr
-		}
-
-		nextState, result, window, transitionErr := airlock.Transition(state, now, command)
-		var next []byte
-		if nextState != nil {
-			var encodeErr error
-			next, encodeErr = airlock.EncodeState(nextState)
-			if encodeErr != nil {
-				return airlock.Result{}, encodeErr
+		result, retry, err := d.executeUpdate(ctx, command, key)
+		if !retry {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return airlock.Result{}, ctxErr
 			}
-		}
-
-		if next == nil {
-			return result, transitionErr
-		}
-
-		lower, err := micro(window.NotBefore)
-		if err != nil {
-			return airlock.Result{}, err
-		}
-
-		upper, err := micro(window.Before)
-		if err != nil {
-			return airlock.Result{}, err
-		}
-
-		expected := "0"
-		if exists {
-			expected = "1"
-		}
-
-		projection, err := index(nextState)
-		if err != nil {
-			return airlock.Result{}, err
-		}
-
-		raw, err = d.eval(
-			ctx, casScript, key,
-			expected, string(snapshot), string(next),
-			lower, upper, string(projection),
-		)
-		if err != nil {
-			return airlock.Result{}, fmt.Errorf("airlock/redis: compare and swap: %w", err)
-		}
-
-		committed, ok := raw.(int64)
-		if !ok || (committed != 0 && committed != 1) {
-			return airlock.Result{}, errors.New("airlock/redis: malformed CAS response")
-		}
-
-		if committed == 1 {
-			if err := ctx.Err(); err != nil {
-				return airlock.Result{}, err
-			}
-			return result, transitionErr
+			return result, err
 		}
 
 		timer := time.NewTimer(time.Duration(1+min(attempt, 9)) * time.Millisecond)
@@ -293,6 +244,94 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 		case <-timer.C:
 		}
 	}
+}
+
+// executeUpdate takes ownership before loading or computing a complete state.
+// Known lock/ownership/window misses retry; ambiguous writes never do.
+func (d *Driver) executeUpdate(ctx context.Context, command airlock.Command, key string) (airlock.Result, bool, error) {
+	owner := airlock.NewRequest(time.Now()).Owner
+	acquired, err := d.tryUpdateLock(ctx, key, owner)
+	if err != nil {
+		// Acquisition may have succeeded. Its TTL bounds abandoned ownership.
+		return airlock.Result{}, false, err
+	}
+	if !acquired {
+		return airlock.Result{}, true, nil
+	}
+	defer d.releaseUpdateLock(ctx, key, owner)
+
+	// Another owner may have completed maintenance while we waited. Recheck
+	// under the lock before transferring a snapshot or restoring the scheduler.
+	if command.Kind == airlock.Observe {
+		if result, ready, err := d.observe(ctx, command.Request); ready || err != nil {
+			return result, false, err
+		}
+	}
+
+	raw, err := d.eval(ctx, readScript, key)
+	if err != nil {
+		return airlock.Result{}, false, fmt.Errorf("airlock/redis: read: %w", err)
+	}
+
+	snapshot, now, err := decodeRead(raw)
+	if err != nil {
+		return airlock.Result{}, false, err
+	}
+
+	state, decodeErr := airlock.DecodeState(snapshot)
+	if decodeErr != nil {
+		return airlock.Result{}, false, decodeErr
+	}
+
+	nextState, result, window, transitionErr := airlock.Transition(state, now, command)
+	var next []byte
+	if nextState != nil {
+		var encodeErr error
+		next, encodeErr = airlock.EncodeState(nextState)
+		if encodeErr != nil {
+			return airlock.Result{}, false, encodeErr
+		}
+	}
+
+	if next == nil {
+		return result, false, transitionErr
+	}
+
+	lower, err := micro(window.NotBefore)
+	if err != nil {
+		return airlock.Result{}, false, err
+	}
+
+	upper, err := micro(window.Before)
+	if err != nil {
+		return airlock.Result{}, false, err
+	}
+
+	projection, err := index(nextState)
+	if err != nil {
+		return airlock.Result{}, false, err
+	}
+
+	raw, err = d.evalKeys(
+		ctx, commitScript, []string{key, updateLockKey(key)},
+		owner, string(next), lower, upper, string(projection),
+	)
+	if err != nil {
+		return airlock.Result{}, false, fmt.Errorf("airlock/redis: commit: %w", err)
+	}
+
+	committed, ok := raw.(int64)
+	if !ok || (committed != 0 && committed != 1) {
+		return airlock.Result{}, false, errors.New("airlock/redis: malformed commit response")
+	}
+
+	if committed == 1 {
+		if err := ctx.Err(); err != nil {
+			return airlock.Result{}, false, err
+		}
+		return result, false, transitionErr
+	}
+	return airlock.Result{}, true, nil
 }
 
 // Verify the Redis backend implements the public Driver contract.

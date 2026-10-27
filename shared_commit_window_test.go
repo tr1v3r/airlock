@@ -3,6 +3,7 @@ package airlock
 import (
 	"bytes"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -28,7 +29,7 @@ func TestCommitWindowBoundaries(t *testing.T) {
 
 func optimisticPlan(t *testing.T, data []byte, now time.Time, cmd Command) ([]byte, Result, CommitWindow, error) {
 	t.Helper()
-	next, res, window, err := transitionOptimistic(data, now, cmd)
+	next, res, window, err := equivalentWindowTransition(t, data, now, cmd)
 	reference, result, referenceErr := transitionSnapshot(data, now, cmd)
 	if !bytes.Equal(next, reference) || res != result || !errors.Is(err, referenceErr) {
 		t.Fatalf("optimistic evaluation differs from serial transition: %v vs %v", err, referenceErr)
@@ -325,5 +326,147 @@ func TestStructuredRenewRetainsOriginalCommitDeadline(t *testing.T) {
 	}
 	if !window.Before.Equal(originalExpiry) || window.Allows(originalExpiry) || !window.Allows(originalExpiry.Add(-time.Nanosecond)) {
 		t.Fatalf("renewal lost its original expiry bound: %+v", window)
+	}
+}
+
+// splitWindowTransition preserves the two-pass window algorithm from 3b2722f.
+// Only the state-machine engine is shared; nil disables its fused collection.
+// Keep the boundary formulas independent of the production collector.
+func splitWindowTransition(state *SharedState, now time.Time, cmd Command) (next *SharedState, result Result, window CommitWindow, err error) {
+	window.NotBefore = now.UTC()
+	boundary := func(at time.Time) {
+		if at.After(now) && (window.Before.IsZero() || at.Before(window.Before)) {
+			window.Before = at
+		}
+	}
+	collect := func(s *SharedState) {
+		if s == nil {
+			return
+		}
+
+		for _, rec := range s.Records {
+			if rec == nil {
+				continue
+			}
+			if rec.Status == Queued || rec.Status == Granted {
+				boundary(rec.Until)
+				continue
+			}
+
+			at := rec.Finished.Add(s.Config.Retention)
+			if rec.Request.SubmitUntil.After(at) {
+				at = rec.Request.SubmitUntil
+			}
+
+			boundary(at)
+		}
+	}
+	// Capture original expiry before renewal or sweeping mutates the input.
+	collect(state)
+	r := cmd.Request
+	boundary(r.SubmitUntil)
+	boundary(r.WaitUntil)
+	boundary(r.SubmitUntil.Add(-r.Config.SubmitWindow))
+	boundary(r.WaitUntil.Add(-r.Config.MaxWait))
+	next, result, err = transition(state, now, cmd, nil)
+	if next == nil {
+		return nil, result, CommitWindow{}, err
+	}
+
+	collect(next)
+	return
+}
+
+// equivalentWindowTransition runs independent copies because Transition owns
+// and mutates its input. It checks the whole observable contract, including nil
+// output, scheduling state, remaining time, business errors and the exact window.
+func equivalentWindowTransition(t testing.TB, data []byte, now time.Time, cmd Command) ([]byte, Result, CommitWindow, error) {
+	t.Helper()
+	state, err := DecodeState(data)
+	if err != nil {
+		return nil, Result{}, CommitWindow{}, err
+	}
+	reference, err := DecodeState(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, result, window, gotErr := Transition(state, now, cmd)
+	want, wantResult, wantWindow, wantErr := splitWindowTransition(reference, now, cmd)
+	if !reflect.DeepEqual(next, want) || result != wantResult || window != wantWindow ||
+		!errors.Is(gotErr, wantErr) || !errors.Is(wantErr, gotErr) {
+		t.Fatalf("fused window differs at %s kind=%s:\nresult=%+v / %+v\nwindow=%+v / %+v\nerror=%v / %v\nstate equal=%t", now, cmd.Kind, result, wantResult, window, wantWindow, gotErr, wantErr, reflect.DeepEqual(next, want))
+	}
+	if next == nil {
+		return nil, result, window, gotErr
+	}
+	encoded, err := EncodeState(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded, result, window, gotErr
+}
+
+func TestCommitWindowFusedEquivalence(t *testing.T) {
+	h := newStateHarness(t)
+	cfg := stateTestConfig()
+	cfg.Admission.MaxQueued, cfg.Admission.MaxQueuedPerTenant = 1, 1
+	released := stateTestRequest(h.now, cfg, "released", 3)
+	lease := h.call(Submit, released, "", nil)
+	h.call(Release, released, lease.LeaseID, nil)
+	cancelled := stateTestRequest(h.now, cfg, "cancelled", 1)
+	h.call(Cancel, cancelled, "", nil)
+	expired := stateTestRequest(h.now, cfg, "expired", 1)
+	expired.WaitUntil = h.now
+	h.call(Submit, expired, "", nil)
+	active := stateTestRequest(h.now, cfg, "active", 3)
+	h.call(Submit, active, "", nil)
+	queued := stateTestRequest(h.now, cfg, "waiting", 3)
+	h.call(Submit, queued, "", nil)
+	rejected := stateTestRequest(h.now, cfg, "rejected", 1)
+	h.call(Submit, rejected, "", ErrQueueFull)
+	absent := stateTestRequest(h.now, cfg, "absent", 1)
+	requests := []Request{released, cancelled, expired, active, queued, rejected, absent}
+	// Include exact boundaries, sub-millisecond times, non-UTC input and the
+	// stage where terminal history has been collected and output can be empty.
+	for _, offset := range []time.Duration{0, time.Microsecond, 999 * time.Microsecond, time.Second - time.Microsecond, time.Second, 10 * time.Second, 31 * time.Second} {
+		for _, request := range requests {
+			// Exercise raw non-UTC command boundaries as well as backend time.
+			request.SubmitUntil = request.SubmitUntil.In(time.FixedZone("request", -7200))
+			request.WaitUntil = request.WaitUntil.In(time.FixedZone("request", -7200))
+			for _, kind := range []Operation{Submit, Observe, Cancel, Renew, Release} {
+				for _, owner := range []string{leaseIdentity(request), "wrong"} {
+					now := h.now.Add(offset).In(time.FixedZone("test", 3600))
+					_, _, _, _ = equivalentWindowTransition(t, h.data, now, Command{Kind: kind, Request: request, LeaseID: owner})
+				}
+			}
+		}
+	}
+	future := stateTestRequest(h.now.Add(cfg.SubmitWindow), cfg, "future", 1)
+	for _, request := range []Request{absent, future} {
+		for _, kind := range []Operation{Submit, Observe, Cancel, Renew, Release, "invalid"} {
+			_, _, _, _ = equivalentWindowTransition(t, nil, h.now.Add(time.Microsecond), Command{Kind: kind, Request: request})
+		}
+	}
+
+	// Guard failures must still return a zero window even if some old record
+	// boundaries have already been encountered by the fused collector.
+	for name, mutate := range map[string]func(*SharedState){
+		"nil record":     func(s *SharedState) { s.Records[queued.ID] = nil },
+		"invalid record": func(s *SharedState) { s.Records[queued.ID].Request.Owner = "invalid" },
+		"bad queue":      func(s *SharedState) { s.Queues["waiting"] = []string{"missing"} },
+		"bad revision":   func(s *SharedState) { s.Revision = 0 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := h.snapshot()
+			mutate(&s)
+			data, err := EncodeState(&s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _, window, err := equivalentWindowTransition(t, data, h.now, Command{Kind: Observe, Request: active})
+			if err == nil || window != (CommitWindow{}) {
+				t.Fatal(window, err)
+			}
+		})
 	}
 }

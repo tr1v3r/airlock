@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -71,7 +72,7 @@ func TestConformance(t *testing.T) {
 
 func TestConstructor(t *testing.T) {
 	d, client, _ := fixture(t)
-	if d.timeout != 5*time.Second {
+	if d.timeout != 5*time.Second || d.updateLockTTL != time.Second {
 		t.Fatal(d.timeout)
 	}
 
@@ -97,7 +98,7 @@ func TestConstructor(t *testing.T) {
 		}
 	}
 
-	for _, opt := range []Option{nil, WithOperationTimeout(0), WithOperationTimeout(-time.Second)} {
+	for _, opt := range []Option{nil, WithOperationTimeout(0), WithOperationTimeout(-time.Second), WithUpdateLockTTL(0), WithUpdateLockTTL(-time.Second)} {
 		if _, err := New(client, "", opt); err == nil {
 			t.Fatal("accepted option")
 		}
@@ -209,8 +210,15 @@ func (h hook) ProcessHook(next goredis.ProcessHook) goredis.ProcessHook {
 	return func(ctx context.Context, cmd goredis.Cmder) error { return h.process(ctx, cmd, next) }
 }
 
-func isCAS(cmd goredis.Cmder) bool {
-	return (cmd.Name() == "eval" || cmd.Name() == "evalsha") && len(cmd.Args()) >= 9
+func isCommit(cmd goredis.Cmder) bool {
+	return isScript(cmd, commitScript)
+}
+
+func isScript(cmd goredis.Cmder, script string) bool {
+	if (cmd.Name() != "eval" && cmd.Name() != "evalsha") || len(cmd.Args()) < 2 {
+		return false
+	}
+	return cmd.Args()[1] == script || cmd.Args()[1] == fmt.Sprintf("%x", sha1.Sum([]byte(script)))
 }
 
 func TestLostWriteResponseNeverRetries(t *testing.T) {
@@ -232,7 +240,7 @@ func TestLostWriteResponseNeverRetries(t *testing.T) {
 				}
 
 				err := next(ctx, cmd)
-				if isCAS(cmd) && err == nil && cmd.(*noRetryCmd).Val() == int64(1) {
+				if isCommit(cmd) && err == nil && cmd.(*noRetryCmd).Val() == int64(1) {
 					commits.Add(1)
 					return io.ErrUnexpectedEOF
 				}
@@ -273,12 +281,13 @@ func TestLostWriteResponseNeverRetries(t *testing.T) {
 func TestScriptFailureAndMalformedResponse(t *testing.T) {
 	tests := []struct {
 		name     string
-		cas      bool
+		script   string
 		response any
 		err      error
 	}{
-		{"read transport", false, nil, io.ErrUnexpectedEOF}, {"read format", false, "bad", nil},
-		{"write transport", true, nil, io.ErrUnexpectedEOF}, {"write format", true, "bad", nil}, {"write code", true, int64(2), nil},
+		{"read transport", readScript, nil, io.ErrUnexpectedEOF}, {"read format", readScript, "bad", nil},
+		{"write transport", commitScript, nil, io.ErrUnexpectedEOF}, {"write format", commitScript, "bad", nil}, {"write code", commitScript, int64(2), nil},
+		{"lock transport", acquireUpdateLockScript, nil, io.ErrUnexpectedEOF}, {"lock format", acquireUpdateLockScript, "bad", nil}, {"lock code", acquireUpdateLockScript, int64(2), nil},
 	}
 
 	for _, test := range tests {
@@ -286,7 +295,7 @@ func TestScriptFailureAndMalformedResponse(t *testing.T) {
 			d, client, _ := fixture(t)
 			var calls int
 			client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
-				if isCAS(cmd) == test.cas {
+				if isScript(cmd, test.script) {
 					calls++
 					cmd.(*noRetryCmd).SetVal(test.response)
 					return test.err
@@ -302,11 +311,11 @@ func TestScriptFailureAndMalformedResponse(t *testing.T) {
 	}
 }
 
-func TestCASConflictRetryAndDeadline(t *testing.T) {
+func TestCommitGuardRetryAndDeadline(t *testing.T) {
 	for _, permanent := range []bool{false, true} {
 		t.Run(fmt.Sprint(permanent), func(t *testing.T) {
 			d, client, _ := fixture(t)
-			// Connection setup is not the CAS retry under test. Warm it before
+			// Connection setup is not the commit-guard retry under test. Warm it before
 			// applying the short deadline to the permanent-conflict case.
 			warmup, cancelWarmup := context.WithTimeout(context.Background(), time.Second)
 			if err := client.Ping(warmup).Err(); err != nil {
@@ -321,7 +330,7 @@ func TestCASConflictRetryAndDeadline(t *testing.T) {
 
 			var calls int
 			client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
-				if isCAS(cmd) {
+				if isCommit(cmd) {
 					calls++
 					if permanent || calls == 1 {
 						cmd.(*noRetryCmd).SetVal(int64(0))
@@ -335,7 +344,7 @@ func TestCASConflictRetryAndDeadline(t *testing.T) {
 			got, err := d.Submit(context.Background(), request())
 			if permanent {
 				// The operation context also sets the socket deadline. Either
-				// timeout can win, including during the read after a CAS miss.
+				// timeout can win, including during the read after a guard miss.
 				if (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, os.ErrDeadlineExceeded)) || got != (airlock.Result{}) {
 					t.Fatal(got, err)
 				}
@@ -359,7 +368,7 @@ func TestCancelledAfterCommit(t *testing.T) {
 	defer cancel()
 	client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
 		err := next(ctx, cmd)
-		if isCAS(cmd) && err == nil {
+		if isCommit(cmd) && err == nil {
 			cancel()
 		}
 		return err
@@ -373,7 +382,7 @@ func TestCancelledAfterCommit(t *testing.T) {
 
 func TestDecodeAndMicro(t *testing.T) {
 	for _, raw := range []any{nil, []any{}, []any{int64(2), "", "1", "0"}, []any{int64(0), "x", "1", "0"}, []any{int64(0), "", "x", "0"}, []any{int64(0), "", "1", "1000000"}, []any{int64(0), "", "9007199254", "999999"}, []any{int64(1), "", "1", "0"}, []any{int64(1), "x", 1, "0"}} {
-		if _, _, _, err := decodeRead(raw); err == nil {
+		if _, _, err := decodeRead(raw); err == nil {
 			t.Fatal(raw)
 		}
 	}
@@ -479,12 +488,15 @@ func TestObserveUsesOnlyRequestProjection(t *testing.T) {
 	}
 
 	before := client.HGetAll(ctx, d.key(r.Resource)).Val()
+	if ok, err := d.tryUpdateLock(ctx, d.key(r.Resource), "another-updater"); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
 	var calls int
 	client.AddHook(hook{process: func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
 		if cmd.Name() == "eval" || cmd.Name() == "evalsha" {
 			calls++
 			if len(cmd.Args()) != 5 {
-				t.Errorf("poll performed full-state read or CAS: %v", cmd.Args()[0])
+				t.Errorf("poll performed full-state read or commit: %v", cmd.Args()[0])
 			}
 		}
 		return next(ctx, cmd)

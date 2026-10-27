@@ -123,7 +123,7 @@ Locate the atomic boundary and the actual snapshot writer.
 
 Implementation: [driver.go](../../driver.go), [driver_transition.go](../../driver_transition.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
 
-Tests: [internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/cas_test.go](../../driver/redis/cas_test.go)
+Tests: [internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/commit_test.go](../../driver/redis/commit_test.go)
 
 ### 08 · Application-owned supervision
 

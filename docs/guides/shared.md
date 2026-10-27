@@ -63,7 +63,9 @@ PostgreSQL shares tables: resource metadata has primary key `(namespace, resourc
 and requests have primary key `(namespace, resource, id)`. Commands lock only the
 matching resource row with `FOR UPDATE` and read that resource's requests. Redis
 stores each resource at `airlock:{SHA256(namespace + "\0" + resource)}:state`, with
-independent snapshot CAS. Resources still share the backend's physical resources
+an independent `:update-lock` key in the same Cluster slot for state updates,
+with atomic commit-time ownership/time checks. Read-only Observe does
+not acquire this lock. Resources still share the backend's physical resources
 and connection pool; logical isolation does not guarantee performance isolation.
 
 Separate Driver objects do not imply separate capacity. Clients using the same

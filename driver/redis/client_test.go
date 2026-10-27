@@ -106,7 +106,7 @@ func TestDistributedUnknownRenewInvalidates(t *testing.T) {
 	dropped := false
 	client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
 		err := next(ctx, cmd)
-		if isCAS(cmd) && err == nil && !dropped && cmd.(*noRetryCmd).Val() == int64(1) {
+		if isCommit(cmd) && err == nil && !dropped && cmd.(*noRetryCmd).Val() == int64(1) {
 			dropped = true
 			return io.ErrUnexpectedEOF
 		}
