@@ -227,7 +227,7 @@ func runProtocolTrace(t testing.TB, trace []byte, priority bool) {
 		}
 
 		wantStatus, wantErr, commit := m.apply(now, cmd)
-		next, result, err := transitionSnapshot(data, now, cmd)
+		next, result, _, err := equivalentWindowTransition(t, data, now, cmd)
 		if !errors.Is(err, wantErr) || result.Status != wantStatus || (next != nil) != commit {
 			t.Fatalf("step %d instruction=%d kind=%s: status=%s err=%v committed=%t; want %s/%v/%t", step, instruction, kind, result.Status, err, next != nil, wantStatus, wantErr, commit)
 		}
@@ -406,7 +406,7 @@ func checkOptimisticWindow(t testing.TB, offset, span uint16, queued bool) {
 	}
 
 	now := s.Time.Add(time.Duration(offset%1000) * time.Microsecond)
-	next, result, window, err := transitionOptimistic(data, now, cmd)
+	next, result, window, err := equivalentWindowTransition(t, data, now, cmd)
 	plain, reference, referenceErr := transitionSnapshot(data, now, cmd)
 	if err != nil || referenceErr != nil || !bytes.Equal(next, plain) || result != reference {
 		t.Fatalf("optimistic differs from transition: %v/%v", err, referenceErr)

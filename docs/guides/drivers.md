@@ -64,6 +64,9 @@ drivers must instead compare their previously read state and enforce the window.
 Only confirmed ownership/comparison/window misses permit rereading and
 recomputing; transport errors remain ambiguous outcomes.
 
+The reference state machine folds boundary collection into its existing record
+passes, preserving the same window; see the [equivalence and benchmark notes](../benchmarks/commit-window/README.md).
+
 Serialize the whole resource's read, transition and commit. Use backend time after
 obtaining exclusive access; optimistic backends must enforce the time window
 returned by Transition in the atomic publication step. Commit a non-nil
