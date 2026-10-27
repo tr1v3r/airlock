@@ -200,7 +200,7 @@ SDK 不执行任务、不自动续租，也无法杀死忽略取消信号的工�
 | `Config.MaxWait` | 30s | 最大排队时间；调用者更早的 deadline 优先 |
 | `Config.SubmitWindow` | 5s | 初次请求允许提交的时间窗口 |
 | `Config.Retention` | 1m | 请求进入终态后的恢复记录保留时间 |
-| `Config.MaxRecords` | 10000 | 活跃、排队和保留终态记录的总上限 |
+| `Config.MaxRecords` | 1000000 | 活跃、排队和保留终态记录的总上限 |
 | `OperationTimeout` | 5s | 客户端每次后端调用的时间上限 |
 | `PollInterval` | 50ms | 排队期间两次查询之间的间隔 |
 | `ClockSkewAllowance` | 0 | 显式预留已知客户端/后端时钟偏差上界 |
@@ -278,7 +278,7 @@ fmt.Println(status.Capacity, status.Used, status.CapacityVersion)
 
 容量和请求重量支持任意正 Go `int`：64 位进程最大 `2^63-1`，32 位进程最大 `2^31-1`。
 所有参与者须使用彼此都能表示的范围；超出本机整数范围的存储数据会在解码或扫描时失败，
-不会截断。容量不会按令牌数分配记录；`MaxRecords`、`MaxQueued` 仍最多 10000，租户和
+不会截断。容量不会按令牌数分配记录；`MaxRecords`、`MaxQueued` 仍最多 1000000，租户和
 优先级组的数量限制也不变。PostgreSQL 以 `BIGINT` 保存容量和重量，Redis 保留精确整数
 JSON 文本，Lua 不将这些字段转换为数字。恢复状态或构建观察计数时，已授予重量总和溢出
 返回 `ErrCorruptState`；缩容造成的合法超限仍受支持。

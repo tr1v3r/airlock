@@ -103,7 +103,7 @@ func (d *Driver) loadResource(ctx context.Context, tx *sql.Tx, resource string, 
 		WHERE namespace=$1
 			AND resource=$2
 		ORDER BY tenant, queue_position NULLS LAST, id
-		LIMIT 10001
+		LIMIT 1000001
 	`, requestColumns, d.requestTable),
 		d.namespace, resource,
 	)

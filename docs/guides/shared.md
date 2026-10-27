@@ -224,7 +224,7 @@ implementation and uses the same defaults.
 | `Config.MaxWait` | 30s | Maximum queued lifetime; an earlier caller deadline wins |
 | `Config.SubmitWindow` | 5s | Window in which the initial request can be submitted |
 | `Config.Retention` | 1m | Recovery retention after reaching a terminal state |
-| `Config.MaxRecords` | 10000 | Bound on active, queued and retained terminal records together |
+| `Config.MaxRecords` | 1000000 | Bound on active, queued and retained terminal records together |
 | `OperationTimeout` | 5s | Maximum duration of each client-side backend call |
 | `PollInterval` | 50ms | Delay between queries while queued |
 | `ClockSkewAllowance` | 0 | Opt-in budget for a known client/backend clock-offset bound |
@@ -323,7 +323,7 @@ Capacity and request weight accept any positive Go `int`: up to `2^63-1` on
 64-bit processes and `2^31-1` on 32-bit processes. Participants must stay within
 the range supported by every client; out-of-range stored integers fail to decode
 or scan rather than being truncated. Capacity does not allocate one record per
-token. `MaxRecords` and `MaxQueued` remain capped at 10000; tenant/group limits
+token. `MaxRecords` and `MaxQueued` remain capped at 1000000; tenant/group limits
 also remain unchanged. PostgreSQL stores capacity and weight as `BIGINT`. Redis
 preserves their exact integer JSON text without Lua numeric conversion. Restoring
 state or building observation counters rejects an overflowing charged-weight sum

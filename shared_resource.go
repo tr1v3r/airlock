@@ -116,7 +116,7 @@ func (o Observation) Inspect(now time.Time, resource string) (ResourceStatus, er
 	}
 	if o.Resource != resource || o.Capacity < 1 || o.CapacityVersion == 0 ||
 		o.Revision == 0 || o.Revision == ^uint64(0) || o.Time.IsZero() || now.Truncate(time.Millisecond).Before(o.Time) ||
-		o.Used < 0 || o.Queued < 0 || o.Queued > 10000 {
+		o.Used < 0 || o.Queued < 0 || o.Queued > maxCountLimit {
 		return ResourceStatus{}, ErrCorruptState
 	}
 	return o.ResourceStatus(), nil

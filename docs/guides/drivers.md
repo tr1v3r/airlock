@@ -121,7 +121,7 @@ PG updates capacity/version on airlock_resources with request deltas in one tran
 
 ValidateCommand checks positive Go `int` weight, not live resource capacity.
 Capacity and weight may reach the native `int` maximum; record and queue bounds
-remain 10000. Restore and projection building must check charged-sum overflow
+remain 1000000. Restore and projection building must check charged-sum overflow
 before addition and reject it with ErrCorruptState. Never publish a projection
 when Observation returns an error. Stored values must fit each participant's
 native integer width; reject out-of-range data instead of narrowing it.

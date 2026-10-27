@@ -19,7 +19,7 @@ type SharedOptions struct {
 	// Config fixes queue/lease policy; Admission.Capacity is a first-creation hint.
 	// Current capacity is backend-owned and changes via Resize. Zero protocol fields
 	// default to LeaseTTL=30s, MaxWait=30s, SubmitWindow=5s, Retention=1m, and
-	// MaxRecords=10000. All clients must use the same resolved queue/lease policy.
+	// MaxRecords=1000000. All clients must use the same resolved queue/lease policy.
 	Config ResourceConfig
 	// OperationTimeout bounds each backend call; zero defaults to 5s.
 	// Nonzero values must be positive and at most one minute.

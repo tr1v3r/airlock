@@ -692,7 +692,7 @@ func TestSharedDefaultsInteroperateWithExplicitConfig(t *testing.T) {
 		Config: ResourceConfig{
 			Admission: Config{Capacity: 2}, LeaseTTL: 30 * time.Second,
 			MaxWait: 30 * time.Second, SubmitWindow: 5 * time.Second,
-			Retention: time.Minute, MaxRecords: 10000,
+			Retention: time.Minute, MaxRecords: 1000000,
 		},
 		OperationTimeout: 5 * time.Second, PollInterval: 50 * time.Millisecond,
 	}
@@ -727,7 +727,7 @@ func TestSharedProtocolOverridesAndValidation(t *testing.T) {
 		"records":             func(o *SharedOptions) { o.Config.MaxRecords = -1 },
 		"fractional duration": func(o *SharedOptions) { o.Config.LeaseTTL = time.Nanosecond },
 		"lease bound":         func(o *SharedOptions) { o.Config.LeaseTTL = 2 * time.Hour },
-		"record bound":        func(o *SharedOptions) { o.Config.MaxRecords = 10001 },
+		"record bound":        func(o *SharedOptions) { o.Config.MaxRecords = 1000001 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			invalid := SharedOptions{Resource: "jobs", Config: ResourceConfig{Admission: Config{Capacity: 2}}}

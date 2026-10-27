@@ -41,13 +41,13 @@ type Driver interface {
 // ResourceConfig fixes admission, expiry and recovery bounds for a resource.
 // Durations are positive whole milliseconds. LeaseTTL, MaxWait and SubmitWindow
 // are at most one hour; Retention is at most 24 hours. MaxRecords bounds all
-// queued, granted and terminal records together (1..10000). No records are
-// evicted to admit new requests. MaxQueued is at most 10000. Capacity and
+// queued, granted and terminal records together (1..1000000). No records are
+// evicted to admit new requests. MaxQueued is at most 1000000. Capacity and
 // weights use the positive range of Go int, not a record-count-based ceiling.
 type ResourceConfig struct {
 	// Admission fixes queue/priority policy. Capacity is a first-creation hint
 	// (positive Go int), ignored when matching existing policies; use Resize to change
-	// an existing resource. MaxQueued is at most 10000.
+	// an existing resource. MaxQueued is at most 1000000.
 	Admission Config
 	// LeaseTTL is validity after grant or renewal, in whole milliseconds within (0, 1h].
 	LeaseTTL time.Duration
@@ -57,7 +57,7 @@ type ResourceConfig struct {
 	SubmitWindow time.Duration
 	// Retention keeps terminal outcomes after completion; GC also waits for SubmitUntil. Range: (0, 24h].
 	Retention time.Duration
-	// MaxRecords caps queued, granted and terminal history together, from 1 through 10000.
+	// MaxRecords caps queued, granted and terminal history together, from 1 through 1000000.
 	MaxRecords int
 }
 
@@ -205,9 +205,12 @@ func validSecret(s string) bool {
 	return e == nil && len(b) == 16 && strings.ToLower(s) == s
 }
 
+// maxCountLimit is the protocol ceiling for per-resource record and queue counts.
+const maxCountLimit = 1000000
+
 // validConfig checks protocol bounds and the local scheduler policy without backend I/O.
 func validConfig(c ResourceConfig) error {
-	if c.Admission.MaxQueued > 10000 || c.MaxRecords < 1 || c.MaxRecords > 10000 {
+	if c.Admission.MaxQueued > maxCountLimit || c.MaxRecords < 1 || c.MaxRecords > maxCountLimit {
 		return ErrInvalidConfig
 	}
 

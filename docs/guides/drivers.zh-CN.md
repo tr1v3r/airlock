@@ -99,6 +99,6 @@ Inspect 不运行 Transition。Redis 仍在 Lua 中检查 owner + CommitWindow�
 PG 在资源行事务中同时写容量、容量版本和请求差异。
 
 ValidateCommand 只校验重量为正 Go `int`，不校验资源当前容量。容量和重量可达本机 int 上限，
-记录和队列数仍最多 10000。存储整数必须能被每个参与者表示，超范围时拒绝读取，不得截断。
+记录和队列数仍最多 1000000。存储整数必须能被每个参与者表示，超范围时拒绝读取，不得截断。
 自定义 driver 即使
 不实现 ResourceManager，也必须在原子边界内按当前容量检查新 Submit；Transition 已包含此规则。

@@ -297,13 +297,13 @@ func TestNativeCapacityAndCheckedTotals(t *testing.T) {
 	h.call(Release, small, other.LeaseID, nil)
 	expectState(t, h.call(Observe, waiting, "", nil), Granted)
 	// The count guard protects processing scale even at native-maximum capacity.
-	cfg.MaxRecords = 10001
+	cfg.MaxRecords = 1000001
 	if !errors.Is(validConfig(cfg), ErrInvalidConfig) {
 		t.Fatal("record bound removed")
 	}
 	cfg = stateTestConfig()
 	cfg.Admission.Capacity = maxInt
-	cfg.Admission.MaxQueued = 10001
+	cfg.Admission.MaxQueued = 1000001
 	if !errors.Is(validConfig(cfg), ErrInvalidConfig) {
 		t.Fatal("queue bound removed")
 	}

@@ -5,7 +5,7 @@
 ## 1. 在构造入口补默认值，不修改 driver 协议
 
 `NewShared` 只要求资源名和有效的准入配置；在校验和复制之前，为零值补齐：
-LeaseTTL=30s、MaxWait=30s、SubmitWindow=5s、Retention=1m、MaxRecords=10000、
+LeaseTTL=30s、MaxWait=30s、SubmitWindow=5s、Retention=1m、MaxRecords=1000000、
 OperationTimeout=5s、PollInterval=50ms。负值、超出协议上限和不合法精度仍拒绝。
 不改变 SharedOptions 的字段结构，不新增与 Config.Admission 重叠的配置入口。
 
@@ -18,7 +18,7 @@ OperationTimeout=5s、PollInterval=50ms。负值、超出协议上限和不合�
 30s 租约为显式续租留出余量，同时限制无人续租的遗留授权期限；不是允许任务忽略失效运行 30s。
 30s 等待是默认上限，ctx 可收紧。5s 提交窗口配合 5s 操作上限限制迟到请求。
 1m 终态保留为恢复提供窗口；历史记录只能在提交窗口也结束后回收。
-10000 条是协议允许的最大记录上限，按需使用而非预分配，避免默认上限小于某些显式容量设置。
+1000000 条是协议允许的最大记录上限，按需使用而非预分配，避免默认上限小于某些显式容量设置。
 但它不是“足够所有负载”的承诺：高请求率仍可能 ErrHistoryFull，整资源快照成本随记录数增长。
 50ms 轮询降低空查频率但增加结果可见延迟；实际负载应测量后调整。
 

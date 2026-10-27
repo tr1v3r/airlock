@@ -40,9 +40,9 @@ func TestDriverConfigValidation(t *testing.T) {
 	cases := map[string]func(*ResourceConfig){
 		"capacity negative": func(c *ResourceConfig) { c.Admission.Capacity = -1 },
 		"capacity zero":     func(c *ResourceConfig) { c.Admission.Capacity = 0 },
-		"queue upper":       func(c *ResourceConfig) { c.Admission.MaxQueued = 10001 },
+		"queue upper":       func(c *ResourceConfig) { c.Admission.MaxQueued = maxCountLimit + 1 },
 		"records zero":      func(c *ResourceConfig) { c.MaxRecords = 0 },
-		"records upper":     func(c *ResourceConfig) { c.MaxRecords = 10001 },
+		"records upper":     func(c *ResourceConfig) { c.MaxRecords = maxCountLimit + 1 },
 		"lease zero":        func(c *ResourceConfig) { c.LeaseTTL = 0 },
 		"wait negative":     func(c *ResourceConfig) { c.MaxWait = -time.Second },
 		"fractional":        func(c *ResourceConfig) { c.Retention = time.Second + time.Nanosecond },
@@ -67,9 +67,9 @@ func TestDriverConfigValidation(t *testing.T) {
 	c.MaxWait = time.Hour
 	c.SubmitWindow = time.Hour
 	c.Retention = 24 * time.Hour
-	c.MaxRecords = 10000
+	c.MaxRecords = maxCountLimit
 	c.Admission.Capacity = maxInt
-	c.Admission.MaxQueued = 10000
+	c.Admission.MaxQueued = maxCountLimit
 	if err := validConfig(c); err != nil {
 		t.Fatal(err)
 	}
