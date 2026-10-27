@@ -21,7 +21,10 @@ import (
 // dimension. Protocol parameters mirror the root harness exactly (same
 // LeaseTTL/Retention/PollInterval/MaxRecords and the same per-point window
 // derivation, duplicated below) so cycles_per_s and latency percentiles are
-// comparable between the internal benchDriver and this reference driver. The
+// interpretable between the internal benchDriver and this reference driver.
+// Both use cached Observation reads, but root skips the resource lookup mutex
+// and this module may pin a different core revision (inspect go list -m all).
+// Equal timings are not an invariant. The
 // worker pattern is likewise duplicated: root test files are not importable.
 //
 // Benchtime guidance, as in the root harness: contended cells reach steady
@@ -70,18 +73,11 @@ func memoryBenchCeilMillis(d time.Duration) time.Duration {
 	return d
 }
 
-// memoryBenchWindows derives SubmitWindow, MaxWait and OperationTimeout for
-// one matrix point, mirroring the root harness's sharedBenchWindows: a Submit
-// must win the gate behind up to W-1 peer transitions, so the window is 4x
-// W*transition(records) (covering accumulation and calibration drift), with
-// the empirical 10ms floor (the protocol itself only requires a positive
-// whole-millisecond window) and a 35s ceiling. The contended flag adds the
-// queue-depth MaxWait term (1.25 * W^2 * transition(records), ~5x margin over
-// the W^2*tc/4 worst waiter; see the root harness for the model and its
-// empirical check), because ~3 gate round trips do not cover a deep queue's
-// steady-state drain. OperationTimeout covers one gate backlog plus slack
-// under the one-minute protocol cap. With H=0 the record input is in-flight
-// plus accumulated traffic (~3W).
+// memoryBenchWindows uses the same conservative safety budgets as the root
+// harness. SubmitWindow covers a backlog of full transitions; contended MaxWait
+// retains the historical W-squared allowance even though ordinary Observe now
+// reads cached metadata. These are deadline budgets, not latency predictions.
+// The module's pinned core may differ from the working root; report both versions.
 func memoryBenchWindows(workers int, contended bool) (submitWindow, maxWait, operationTimeout time.Duration) {
 	gate := time.Duration(workers) * memoryBenchTransitionEstimate(3*workers)
 	submitWindow = memoryBenchCeilMillis(max(memoryBenchSubmitWindowFloor, min(4*gate, memoryBenchSubmitWindowCeil)))

@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# bench-shared.sh — Shared 基准矩阵执行器(task-3)。
+# bench-shared.sh — Shared 基准矩阵执行器。
 #
 # 逐 cell 执行 root 模块内部 benchDriver 矩阵(BenchmarkShared{Uncontended,
 # Contended},子基准斜杠命名 W=%d/H=%d)与 driver/memory 对照矩阵
 # (BenchmarkMemoryShared*,W 维度),再用 scripts/bench_shared_report.py 解析
 # raw 输出为 bench-results/shared-bench.csv 与 summary.md 骨架。
 #
-# 硬性要求(bench-results/audit.md §4 + lead 补充条件,全部强制):
+# 执行约定:
 #   * bash + `set -euo pipefail`(对齐 scripts/check.sh 等的约定;pipefail 非
 #     POSIX,/bin/sh 为 dash 的系统上会直接报错);任何管道都不吞 go test 退出码。
 #   * 子基准正则用斜杠形式且每组件锚定,如 'BenchmarkSharedContended/W=64$/H=0$'
 #     (go 按 '/' 拆分后对各组件做非锚定子串匹配:只锚定末组件不够,'W=1' 会
 #     子串命中 'W=16'——实测证实;连字符形式则静默跑空)。
 #   * 全部固定 -benchtime=Nx(不用时间型);contended 深 cell(W>capacity=8)
-#     稳态要求 N>=4*W;预算超限时只砍 -count、绝不砍 N(砍 N 测的是爬坡段,
+#     采样预算要求 N>=4*W;预算超限时只砍 -count、绝不砍 N(砍 N 可能只测启动段,
 #     必须披露;砍 count 只损失置信度)。
 #   * 每 cell 独立 go test 调用(隔离失败面),输出 tee 到
 #     bench-results/raw/<family>_W<w>_H<h>_c<n>.txt,文件头含命令行+时间戳;
 #     失败输出含 ErrCorruptState 的 cell 恰好重试一次,写入 <name>.retry.txt
-#     (已知环境偶发:客户端墙钟后跳触发协议 fail-closed,设计行为;重试输出
+#     (时间倒退可触发 fail-closed,但不据此断言错误原因;重试输出
 #     留 corrupt-state dump 行,汇总进 summary「环境事件」节);重试仍败则记录
 #     并继续其余 cell,脚本最终以非零退出码提示有失败。
 #   * 每 family 显式 -timeout:contended 族 >= 2x 最坏派生 MaxWait(root 最坏
@@ -85,6 +85,25 @@ TIMEOUT_UNCONTENDED=${TIMEOUT_UNCONTENDED:-20m}
 TIMEOUT_MEMORY=${TIMEOUT_MEMORY:-20m}
 TIMEOUT_RACE=${TIMEOUT_RACE:-10m}
 
+# Bind resumable cells to source bytes, including uncommitted edits and module pins.
+BENCH_FINGERPRINT=$(python3 - <<'PYHASH'
+import hashlib
+import pathlib
+import subprocess
+h = hashlib.sha256()
+paths = subprocess.check_output([
+    "git", "ls-files", "-z", "--", "*.go", "go.mod", "go.sum",
+    "driver/*/go.mod", "driver/*/go.sum", "scripts/bench-shared.sh",
+    "scripts/bench_shared_report.py",
+]).split(b"\0")
+for raw in sorted(p for p in paths if p):
+    path = pathlib.Path(raw.decode())
+    h.update(raw + b"\0")
+    h.update(path.read_bytes())
+print(h.hexdigest())
+PYHASH
+)
+
 FAILED_CELLS=""
 
 log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
@@ -107,8 +126,8 @@ benchtime_for() {
 }
 
 # count_cap family W H — 特殊 cell 的 count 上限:
-#   全部 H=10000(LARGE 段,10-20 分钟/cell)与 W=256×H>=1000 contended
-#   (3/13/20 分钟/cell)用 count=1;其余为 COUNT。预算取舍:砍 count 保 N。
+#   H=10000(LARGE 段)与 W=256×H>=1000 contended 使用 count=1；
+#   其余为 COUNT。实际耗时取决于源码、硬件和运行负载。预算取舍:砍 count 保 N。
 count_cap() {
   if [ "$3" -ge 10000 ]; then echo 1
   elif [ "$1" = shared-contended ] && [ "$2" -ge 256 ] && [ "$3" -ge 1000 ]; then echo 1
@@ -124,10 +143,13 @@ timeout_for() {
 }
 
 # cell_valid file benchtime — 文件存在、头部记录了计划 benchtime、且含结果行
-# (ns/op)。失败/被杀/SKIP 的输出都没有结果行,续跑时会重跑该 cell。
+# (ns/op)，且源码指纹必须匹配。失败/被杀/SKIP 的输出在续跑时重跑。
 cell_valid() {
   [ -f "$1" ] || return 1
-  grep -q "# benchtime: $2" "$1" 2>/dev/null || return 1
+  grep -Fxq "# fingerprint: $BENCH_FINGERPRINT" "$1" 2>/dev/null || return 1
+  grep -Fxq "# benchtime: $2" "$1" 2>/dev/null || return 1
+  grep -q '^PASS$' "$1" 2>/dev/null || return 1
+  grep -q '^ok[[:space:]]' "$1" 2>/dev/null || return 1
   grep -q 'ns/op' "$1" 2>/dev/null || return 1
   return 0
 }
@@ -137,6 +159,7 @@ cell_valid() {
 run_once() {
   _out=$1; _dir=$2; _rx=$3; _bt=$4; _to=$5; _lg=$6
   {
+    echo "# fingerprint: $BENCH_FINGERPRINT"
     echo "# timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "# go: $(go version)"
     echo "# cwd: $_dir"
@@ -145,7 +168,7 @@ run_once() {
   } > "$_out"
   _st=0
   ( cd "$_dir" && GOWORK=off \
-      GOCACHE="$ROOT/.gocache/build" GOMODCACHE="$ROOT/.gocache/mod" \
+      GOCACHE="${GOCACHE:-$ROOT/.gocache/build}" GOMODCACHE="${GOMODCACHE:-$ROOT/.gocache/mod}" \
       GOFLAGS=-mod=readonly AIRLOCK_BENCH_LARGE="$_lg" \
       go test -run '^$' -bench "$_rx" -benchtime "$_bt" \
         -count 1 -timeout "$_to" ) 2>&1 | tee -a "$_out" || _st=$?
@@ -157,6 +180,7 @@ run_once() {
 race_once() {
   _out=$1; _dir=$2; _pat=$3
   {
+    echo "# fingerprint: $BENCH_FINGERPRINT"
     echo "# timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "# go: $(go version)"
     echo "# cwd: $_dir"
@@ -165,11 +189,11 @@ race_once() {
   } > "$_out"
   _st=0
   ( cd "$_dir" && GOWORK=off \
-      GOCACHE="$ROOT/.gocache/build" GOMODCACHE="$ROOT/.gocache/mod" \
+      GOCACHE="${GOCACHE:-$ROOT/.gocache/build}" GOMODCACHE="${GOMODCACHE:-$ROOT/.gocache/mod}" \
       GOFLAGS=-mod=readonly \
       go test -race -run "$_pat" -count 1 -timeout "$TIMEOUT_RACE" ) 2>&1 | tee -a "$_out" || _st=$?
   if [ "$_st" -ne 0 ] || ! grep -q '^ok ' "$_out"; then
-    log "RACE SMOKE FAILED ($_pat) — see $_out; aborting (race finding is blocking)"
+    log "RACE SMOKE FAILED ($_pat) — see $_out; aborting"
     exit 1
   fi
   log "race smoke ok: $_pat"
@@ -210,7 +234,7 @@ run_cell() {
       log "ok $_fam W=$_W H=$_H c=$_c @$_bt ${_el}s"
       plan_log "$_fam" "$_W" "$_H" "$_c" "$_bt" "${_mode}-ran"
     elif grep -q 'ErrCorruptState' "$_base" 2>/dev/null; then
-      log "RETRY $_fam W=$_W H=$_H c=$_c (ErrCorruptState, known wall-clock flake; dump 在 $_base)"
+      log "RETRY $_fam W=$_W H=$_H c=$_c (ErrCorruptState; inspect clock/state evidence; dump 在 $_base)"
       _st2=0
       run_once "$_retry" "$_dir" "$_rx" "$_bt" "$_to" "$_lg" || _st2=$?
       _el2=$(($(date +%s) - _t0))
@@ -242,6 +266,9 @@ section_enabled() {
 write_env() {
   {
     echo "- date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "- source fingerprint: $BENCH_FINGERPRINT"
+    echo "- root revision: $(git rev-parse HEAD)"
+    echo "- memory core: $(cd driver/memory && GOWORK=off go list -m github.com/tr1v3r/airlock)"
     echo "- go version: $(go version)"
     echo "- uname -sm: $(uname -sm)"
     echo "- cpu: $(sysctl -n machdep.cpu.brand_string 2>/dev/null || true)"
@@ -249,7 +276,7 @@ write_env() {
     echo "- load: $(uptime 2>/dev/null || true)"
     echo "- params: COUNT=$COUNT BENCHTIME=${BENCHTIME:-<builtin>} REGEX=${REGEX:-<none>} LARGE=$LARGE ONLY=${ONLY:-<default>} SMOKE_ONLY=$SMOKE_ONLY"
     echo "- timeouts: contended=$TIMEOUT_CONTENDED uncontended=$TIMEOUT_UNCONTENDED memory=$TIMEOUT_MEMORY race=$TIMEOUT_RACE"
-    echo "- gocache: \$worktree/.gocache/{build,mod}; GOWORK=off; GOFLAGS=-mod=readonly"
+    echo "- caches: GOCACHE=${GOCACHE:-$ROOT/.gocache/build}; GOMODCACHE=${GOMODCACHE:-$ROOT/.gocache/mod}; GOWORK=off; GOFLAGS=-mod=readonly"
   } > "$RESULTS/run-env.txt"
 }
 
@@ -272,7 +299,7 @@ log "bench-shared start: COUNT=$COUNT sections=$( [ "$SMOKE_ONLY" -eq 1 ] && ech
 if section_enabled smoke; then
   log "== race 冒烟段 =="
   race_once "$RAW/race-root.txt" "$ROOT" \
-    'TestSharedBenchmarkSmoke|TestSharedBenchBackwardClockFailsClosed'
+    '^TestSharedBench(markSmoke|BackwardClockFailsClosed|Observe|Windows)$'
   race_once "$RAW/race-memory.txt" "$ROOT/driver/memory" \
     'TestMemorySharedBenchmarkSmoke'
 fi

@@ -13,8 +13,8 @@ run-env.txt(环境块)。
     成对 (value unit);iterations 单独入 CSV 供 b.N 披露。
   * 固定 Nx 下 b.N==N;结果行 iterations 与计划 N 不一致 → 环境事件。
   * contended 深 cell(W>capacity=8)计划 N<4W → 自动披露「测得部分爬坡段」。
-  * 模型校验:uncontended ns/op ≈ 2×t_trans(steady_records),t_trans ≈
-    70µs + 3.5µs/record(audit §1.8 校准);偏离 >2× 或 <0.5× 标可疑。
+  * 历史全量 Observe 的吞吐模型已失效；只报告实测值与迭代预算，
+    不用固定微秒常数判断新实现性能是否正常。
 """
 
 from __future__ import annotations
@@ -143,12 +143,18 @@ def main() -> int:
     args = ap.parse_args()
 
     plan = load_plan(args.plan)
+    env_text = args.env_file.read_text(encoding="utf-8") if args.env_file.exists() else ""
+    match = re.search(r"^- source fingerprint: (.+)$", env_text, re.MULTILINE)
+    fingerprint = match.group(1) if match else None
 
     # cells: (fam,W,H,c) -> {"benchtime":N,"results":[...],"from_retry":bool}
     cells: dict[tuple, dict] = {}
     all_events: list[tuple[str, str]] = []
     retry_evidence: list[str] = []
     for f in sorted(args.raw_dir.glob("*.txt")):
+        if fingerprint and f"# fingerprint: {fingerprint}" not in f.read_text(encoding="utf-8").splitlines():
+            all_events.append((f.name, "STALE-SOURCE: 源码指纹不匹配，未计入本次报告"))
+            continue
         fm = FILE_RE.match(f.name)
         if not fm:
             bt, _res, evts = load_raw_file(f)
@@ -160,6 +166,10 @@ def main() -> int:
         key = (fam, int(fm.group("w")), int(fm.group("h")), int(fm.group("c")))
         bt, results, evts = load_raw_file(f)
         all_events.extend((f.name, e) for e in evts)
+        lines = f.read_text(encoding="utf-8").splitlines()
+        if results and ("PASS" not in lines or not any(re.match(r"^ok\s", line) for line in lines)):
+            all_events.append((f.name, "INCOMPLETE-RUN: 未成功完成的结果不计入报告"))
+            continue
         if fm.group("retry"):
             retry_evidence.append(f.name)
         # 防御:结果行的 W/H 必须与文件名一致,否则说明正则污染(如 'W=1'
@@ -239,21 +249,21 @@ def main() -> int:
     md.append("## 2. 参数与取舍\n")
     md.append("- benchtime 全部固定 `-benchtime=Nx`(不用时间型,cell 间 b.N 可比)。"
               "uncontended 与 memory:2000x;contended 小 H(W≤64 或 H≤128):2000x;"
-              "contended 深队列(W=256,H≥1000):1200x(≥4×256,满足深 cell 稳态规则 N≥4W)。\n")
+              "contended 深队列(W=256,H≥1000):1200x(≥4×256,满足深 cell 采样预算 N≥4W)。\n")
     count1 = sorted({(f, w, h) for (f, w, h, c) in cells if counts_done.get((f, w, h), 0) == 1
                      and f in ("shared-uncontended", "shared-contended")
                      and cells.get((f, w, h, 1), {}).get("benchtime") not in (100, None)})
     if count1:
         lst = ", ".join(f"{f.split('-')[1]} W={w}/H={h}" for f, w, h in count1)
         md.append(f"- count=1 的 cell(时长取舍,砍 count 保 N):{lst}。"
-                  "预算参考:W=256/H=1000@1200x≈3min、H=5000≈12min、H=10000-clamped≈18min;"
+                  "实际耗时随源码、硬件及负载变化;"
                   "其余 cell 默认 count=3(多 count 取中位)。\n")
-    md.append("- 显式 -timeout:contended 族 80m(≥2× 最坏派生 MaxWait ≈39min,"
+    md.append("- 显式 -timeout:contended 族默认 100m(≥2× 保守派生 MaxWait ≈47min,"
               "W=256×H=10000-clamped;go test 默认 10m 会在 H≥5000 深 cell 中途 panic);"
               "uncontended/memory 20m。\n")
     md.append("- 每 cell 独立 `go test -run '^$' -bench '<斜杠锚定正则>$' -count=1`,"
               "输出(含命令行+时间戳头部)tee 到 `bench-results/raw/`;ErrCorruptState 失败"
-              "单 cell 重试一次(已知墙钟后跳 fail-closed 偶发,dump 行保留在 raw)。\n")
+              "单 cell 重试一次(时钟倒退是可能原因，须检查 dump，失败 raw 保留)。\n")
 
     # ---- 透视表 ----
     md.append("## 3. 透视表(多 count 取中位)\n")
@@ -304,40 +314,26 @@ def main() -> int:
                   f"| {FAMILY_LABEL[fam]} | — | — |")
     md.append("")
 
-    # ---- 模型校验 ----
-    md.append("## 4. 模型校验(audit §1.8:2×t_trans)\n")
-    md.append("uncontended 每 cycle ≈ 2 次串行 transition,预期 ns/op ≈ "
-              "2×(70µs + 3.5µs×steady_records)。偏离 >2× 或 <0.5× 标 ⚠。\n")
-    md.append("| W | H | ns/op | steady_records | 预期 ns/op | 比率 | 标记 |")
-    md.append("|---|---|---|---|---|---|---|")
-    for fam in ("shared-uncontended",):
-        for (w, h) in sorted(agg[fam]):
-            p = agg[fam][(w, h)]
-            if "ns/op" not in p or "steady_records" not in p:
-                continue
-            expected = 2 * (70_000 + 3_500 * p["steady_records"])
-            ratio = p["ns/op"] / expected
-            flag = "⚠" if ratio > 2 or ratio < 0.5 else ""
-            md.append(f"| {w} | {h} | {fmt_ns(p['ns/op'])} | {p['steady_records']:,.0f} | "
-                      f"{fmt_ns(expected)} | {ratio:.2f}× | {flag} |")
-    md.append("")
-    md.append("contended 深 cell 对照(实测 cycles/s;门控串行上限 1/(2×t_trans(steady));"
-              "4S/W 为深队列吞吐经验式):\n")
-    md.append("| W | H | cycles/s | 1/(2·t_trans) | 4S/W | N | 4W | 爬坡披露 |")
-    md.append("|---|---|---|---|---|---|---|---|")
+    # ---- 排队测量预算 ----
+    md.append("## 4. 争用场景样本预算\n")
+    md.append("Observe 免维护期使用只读快路径；不再套用每次轮询都完整转换的历史模型。"
+              "N >= 4W 仅是采样预算规则，不保证稳态队列或性能上限。\n")
+    md.append("| W | H | cycles/s | N | 4W | 爬坡披露 |")
+    md.append("|---|---|---|---|---|---|")
     for (w, h) in sorted(agg.get("shared-contended", {})):
         p = agg["shared-contended"][(w, h)]
-        if "cycles_per_s" not in p or "steady_records" not in p:
+        if "cycles_per_s" not in p:
             continue
-        ceiling = 1 / (2 * (70e-6 + 3.5e-6 * p["steady_records"]))
         n = cells.get(("shared-contended", w, h, 1), {}).get("benchtime")
         ramp = "测得部分爬坡段" if (n is not None and w > CAPACITY and n < 4 * w) else ""
-        md.append(f"| {w} | {h} | {fmt_count(p['cycles_per_s'])} | {ceiling:,.1f} | "
-                  f"{4 * CAPACITY / w:,.3f} | {n or '—'} | {4 * w} | {ramp} |")
+        md.append(f"| {w} | {h} | {fmt_count(p['cycles_per_s'])} | "
+                  f"{n or '—'} | {4 * w} | {ramp} |")
     md.append("")
 
     # ---- memory 对照 ----
     md.append("## 5. memory 对照 vs root 内部 driver(H=0)\n")
+    md.append("两者采用只读 Observation，但 root 省略资源查找 mutex，嵌套模块可能固定"
+              "不同 core 版本；偏差是观测值，不是正确性阈值。请同时核对依赖版本。\n")
     md.append("| W | family | root cycles/s | memory cycles/s | 偏差 | root p99 | memory p99 |")
     md.append("|---|---|---|---|---|---|---|")
     for kind in ("uncontended", "contended"):
@@ -389,7 +385,7 @@ def main() -> int:
 
     # ---- 观察结论(种子)----
     md.append("## 7. 观察结论(分析员定稿)\n")
-    md.append("<!-- 机械种子如下;阶段 B 由分析员复核、解释并定稿 -->\n")
+    md.append("<!-- 以下仅为实测数值汇总；原因归属需结合采样和源码另行验证。 -->\n")
     def cyc(fam, w, h):
         return agg.get(fam, {}).get((w, h), {}).get("cycles_per_s")
 
@@ -400,20 +396,18 @@ def main() -> int:
             a, b = cyc(fam, w0, 0), cyc(fam, w1, 0)
             if a and b:
                 md.append(f"- {fam} H=0:吞吐 W={w0}→{w1} 为 {fmt_count(a)} → {fmt_count(b)} "
-                          f"cycles/s({b / a:.2f}×),{'饱和' if b / a < 1.5 else '未饱和'}形态。\n")
+                          f"cycles/s({b / a:.2f}×)。\n")
     p999_lo = agg.get("shared-contended", {}).get((1, 1000), {}).get("latency_p999_ns")
     p999_hi = agg.get("shared-contended", {}).get((256, 1000), {}).get("latency_p999_ns")
     if p999_lo and p999_hi:
         md.append(f"- contended H=1000:p999 W=1({fmt_ns(p999_lo)})→W=256({fmt_ns(p999_hi)})"
-                  f" 为 {p999_hi / p999_lo:,.0f}×(排队深度×服务时间)。\n")
+                  f" 为 {p999_hi / p999_lo:,.0f}×。\n")
     for fam in ("shared-uncontended", "shared-contended"):
         lo = agg.get(fam, {}).get((1, 0), {}).get("ns/op")
         hi = agg.get(fam, {}).get((256, 5000), {}).get("ns/op")
         if lo and hi:
             md.append(f"- {fam}:单 cycle 成本 H=0/W=1({fmt_ns(lo)})→H=5000/W=256"
-                      f"({fmt_ns(hi)})为 {hi / lo:,.0f}×;模型预期 ≈ "
-                      f"{(70e-6 + 3.5e-6 * 5512) / (70e-6 + 3.5e-6 * 2):,.0f}×"
-                      "(tc 随 records 线性)。\n")
+                      f"({fmt_ns(hi)})为 {hi / lo:,.0f}×。\n")
     for w in (1, 64, 256):
         u, c = cyc("shared-uncontended", w, 1000), cyc("shared-contended", w, 1000)
         if u and c:

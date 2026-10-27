@@ -14,17 +14,18 @@ import (
 	"time"
 )
 
-// This file benchmarks the Shared client layer (distributed.go) on top of a
-// driver that mirrors driver/memory semantics: one serialization gate per
-// resource plus the last committed encoded snapshot, decoding and re-encoding
-// the structured state around every transition. Each driver operation is
-// O(records) inside Transition plus codec, so the matrix varies W (long-lived
-// workers, one tenant each) and H (retained seed records).
+// This file benchmarks the Shared client layer (shared.go) with one
+// context-aware serialization gate, a committed encoded snapshot, and cached
+// Observation metadata, matching driver/memory's per-resource algorithm.
+// Writes and maintenance decode, transition and encode O(records) state;
+// Observe uses the cached request/header while no maintenance is due.
+// The matrix varies W (long-lived workers, one tenant each) and H (retained
+// seed records). The harness omits memory.Driver's resource lookup mutex.
 //
-// Scope: every cycle is one single-token AcquireFor plus Release (weight 1),
-// so cycles_per_s and the latency percentiles describe single-token admission
-// only. Multi-token AcquireN, Renew and ClockSkewAllowance behavior is owned
-// by the conformance and clock tests (distributed_*_test.go), not this matrix.
+// Scope: each cycle is one single-token AcquireFor plus Release. Acquire
+// latency excludes Release; cycle throughput includes it. AcquireN, Renew
+// and ClockSkewAllowance remain covered by conformance and shared_clock_test.go.
+// This is not a PostgreSQL/Redis benchmark or a throughput guarantee.
 //
 // Seed survival (the H dimension must persist for the whole run):
 //   - Terminal seeds set SubmitUntil one hour out. Reclamation deletes a
@@ -52,32 +53,22 @@ import (
 // skipped with a reason instead of producing invalid data; no cell in the
 // current W x H matrix triggers that skip (worst case derives ~47 minutes).
 //
-// ErrCorruptState conclusion (audit B2, sporadic ~2-5% on darwin): the
-// mechanism is the protocol's fail-closed backward-clock check. Transition
-// compares each operation's backend time against the snapshot's last
-// committed time after truncating both to whole milliseconds
-// (shared_state.go: now.Before(s.Time)), a pure wall-clock comparison, so a
-// client clock that steps backward by >= 1ms fails closed with
-// ErrCorruptState; sub-millisecond steps are usually absorbed by truncation.
-// TestSharedBenchBackwardClockFailsClosed proves this deterministically via
-// the injectable driver clock. This is by design: benchDriver/memory.Driver
-// read a local clock, while the postgres and redis drivers evaluate time
-// after locking on the backend side and have no such exposure. The harness
-// keeps the real clock by default for representativeness; matrix execution
-// (task-3) handles the residual flake with per-cell retry and disclosure,
-// and fail() dumps the snapshot/clock evidence whenever ErrCorruptState
-// appears so future occurrences are immediately attributable.
+// Backend wall-clock regression can fail closed with ErrCorruptState.
+// TestSharedBenchBackwardClockFailsClosed demonstrates that mechanism with an
+// injected clock; it does not attribute every corruption error to clock steps.
+// PostgreSQL/Redis use backend clocks, which can also regress. The runner keeps
+// failed output when retrying once, and fail() records clock/state diagnostics.
 
-// benchDriver mirrors driver/memory for one bench resource: a buffered
-// channel of one serializes context-aware transitions, and the committed
-// encoded snapshot survives between operations, paying the same decode and
-// encode cost per transition as the reference driver. The initial snapshot is
-// injectable so fixtures can pin the retained-record count H.
+// benchDriver mirrors memory.Driver's per-resource execution, including read-only
+// Observe. Seed decoding and projection construction happen before benchmark timing.
 type benchDriver struct {
 	// gate serializes transitions for the resource with context-aware waiting.
 	gate chan struct{}
 	// snapshot is the last committed encoded state; gate protects access.
 	snapshot []byte
+	// state and observation are immutable committed projections, protected by gate.
+	state       *SharedState
+	observation Observation
 	// nowFunc supplies the backend evaluation time. The default time.Now
 	// mirrors memory.Driver and keeps the harness representative of
 	// clock-reading drivers; tests inject a stepped clock to prove the
@@ -86,8 +77,18 @@ type benchDriver struct {
 }
 
 // newBenchDriver prepares a driver over an optional committed seed snapshot.
-func newBenchDriver(seed []byte) *benchDriver {
-	return &benchDriver{gate: make(chan struct{}, 1), snapshot: seed, nowFunc: time.Now}
+func newBenchDriver(tb testing.TB, seed []byte) *benchDriver {
+	tb.Helper()
+	state, err := DecodeState(seed)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	d := &benchDriver{gate: make(chan struct{}, 1), snapshot: seed, state: state, nowFunc: time.Now}
+	if state != nil {
+		d.observation = Observation{Resource: state.Resource, Config: state.Config, Time: state.Time,
+			Revision: state.Revision, NextMaintenance: state.NextMaintenance()}
+	}
+	return d
 }
 
 // execute serializes the resource and runs the shared durable state machine.
@@ -107,6 +108,17 @@ func (d *benchDriver) execute(ctx context.Context, cmd Command) (Result, error) 
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
+	if cmd.Kind == Observe && d.state != nil {
+		o := d.observation
+		o.Record = d.state.Records[cmd.Request.ID]
+		if result, ready, err := o.Observe(d.nowFunc(), cmd.Request); ready || err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return Result{}, ctxErr
+			}
+			return result, err
+		}
+	}
+
 	state, err := DecodeState(d.snapshot)
 	if err != nil {
 		return Result{}, err
@@ -118,6 +130,9 @@ func (d *benchDriver) execute(ctx context.Context, cmd Command) (Result, error) 
 			return Result{}, codecErr
 		}
 		d.snapshot = data
+		d.state = next
+		d.observation = Observation{Resource: next.Resource, Config: next.Config, Time: next.Time,
+			Revision: next.Revision, NextMaintenance: next.NextMaintenance()}
 	}
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
@@ -133,7 +148,7 @@ func (d *benchDriver) Submit(ctx context.Context, request Request) (Result, erro
 	return d.execute(ctx, Command{Kind: Submit, Request: request})
 }
 
-// Observe returns the request outcome after advancing expiry and scheduling.
+// Observe reads committed results and advances expiry/scheduling only when due.
 func (d *benchDriver) Observe(ctx context.Context, request Request) (Result, error) {
 	return d.execute(ctx, Command{Kind: Observe, Request: request})
 }
@@ -182,7 +197,7 @@ const (
 )
 
 // Protocol timing rationale (shared with driver/memory's comparison file so
-// the two matrices are comparable):
+// the two matrices use the same safety budgets):
 //
 //   LeaseTTL 30s  > hold: leases are released immediately after their latency
 //                  sample, and no seed holders exist. 30s also covers the
@@ -233,20 +248,13 @@ func benchCeilMillis(d time.Duration) time.Duration {
 // a bigger window retains more history, which the steady_records metric makes
 // visible rather than hiding.
 //
-// MaxWait for the uncontended family just covers ~3 gate round trips (2x
-// SubmitWindow with a 30s floor). For the contended family that is not
-// enough: queue depth dominates. Model (bench-auditor, empirically confirmed
-// by BenchmarkSharedContended/W=256/H=0: predicted mean cycle W^2*tc/8 =
-// 7.9s vs measured 5.96s): the gate stays saturated because W queued workers
-// offer an Observe every PollInterval, so Submit/Release only receive about
-// 1/(k+2) of the service share (k polls per cycle). A waiter at depth d is
-// granted after ~d/capacity slot turnovers, each costing a full gate round
-// trip W*tc, giving a worst-case wait of about W^2*(k+2)*tc/4. MaxWait
-// therefore takes max(30s, 2x SubmitWindow, 1.25 * W^2 * tc(records+3W));
-// the 1.25 factor sits mid-range of the 1.0-1.5 constant band and keeps a
-// ~5x margin over the plain W^2*tc/4 worst case (W^2*tc/8 mean). At the
-// matrix extremes this stays under 50 minutes, below both the protocol's 1h
-// cap and sharedBenchMaxWaitSkipThreshold, so no current cell skips.
+// MaxWait is a conservative safety budget, not a latency prediction. Keep
+// the historical 1.25*W^2*transition(records) allowance for contended cells:
+// Observe is now cheaper between maintenance boundaries, but all calls still
+// wait for the same gate, and due maintenance/writes remain O(records).
+// The old full-transition polling cost model is not an estimate of current
+// throughput. The window constants are historical upper-budget heuristics;
+// new machines and revisions must be measured rather than assumed equivalent.
 //
 // OperationTimeout bounds one driver call, so it covers one gate backlog
 // plus slack, capped at the one-minute protocol limit (W=256 at the largest
@@ -389,7 +397,7 @@ func newSharedBenchEnv(tb testing.TB, p sharedBenchParams) *sharedBenchEnv {
 	}
 	cfg.MaxWait = maxWait
 	cfg.SubmitWindow = submitWindow
-	driver := newBenchDriver(benchSeedSnapshot(tb, p.resource, cfg, terminals))
+	driver := newBenchDriver(tb, benchSeedSnapshot(tb, p.resource, cfg, terminals))
 	client, err := NewShared(driver, SharedOptions{Resource: p.resource, Config: cfg,
 		OperationTimeout: operationTimeout, PollInterval: sharedBenchPollInterval})
 	if err != nil {
@@ -631,7 +639,115 @@ func TestSharedBenchmarkSmoke(t *testing.T) {
 	}
 }
 
-// TestSharedBenchWindows pins the window derivation (the audit-B1 fix): every
+// TestSharedBenchObserve pins fast reads, publication refresh and maintenance
+// fallback so the benchmark cannot silently revert to full-transition polling.
+func TestSharedBenchObserve(t *testing.T) {
+	cfg := ResourceConfig{Admission: Config{Capacity: 1, MaxQueued: 2, MaxQueuedPerTenant: 2},
+		LeaseTTL: time.Second, MaxWait: 2 * time.Second, SubmitWindow: 2 * time.Second,
+		Retention: 2 * time.Second, MaxRecords: 100}
+	fixture := func(t *testing.T) (*benchDriver, *time.Time, Request) {
+		t.Helper()
+		now := time.Unix(1800000000, 0).UTC()
+		d := newBenchDriver(t, nil)
+		d.nowFunc = func() time.Time { return now }
+		r := NewRequest(now.Add(2 * time.Second))
+		r.Resource, r.Tenant, r.Weight, r.WaitUntil, r.Config = "observe-bench", "a", 1, r.SubmitUntil, cfg
+		return d, &now, r
+	}
+	assertRead := func(t *testing.T, d *benchDriver, r Request, want Status) Result {
+		t.Helper()
+		before, revision := string(d.snapshot), d.state.Revision
+		got, err := d.Observe(context.Background(), r)
+		if err != nil || got.Status != want || got.Revision != revision || string(d.snapshot) != before {
+			t.Fatalf("read-only Observe: result=%+v err=%v revision=%d", got, err, revision)
+		}
+		return got
+	}
+
+	t.Run("fast reads and refreshed grants", func(t *testing.T) {
+		d, _, holder := fixture(t)
+		grant, err := d.Submit(context.Background(), holder)
+		if err != nil || grant.Status != Granted {
+			t.Fatalf("submit holder: %+v %v", grant, err)
+		}
+		waiter := holder
+		identity := NewRequest(holder.SubmitUntil)
+		waiter.ID, waiter.Owner, waiter.Tenant = identity.ID, identity.Owner, "b"
+		if result, err := d.Submit(context.Background(), waiter); err != nil || result.Status != Queued {
+			t.Fatalf("submit waiter: %+v %v", result, err)
+		}
+		assertRead(t, d, holder, Granted)
+		assertRead(t, d, waiter, Queued)
+		if _, err := d.Release(context.Background(), LeaseRef{Request: holder, ID: grant.LeaseID}); err != nil {
+			t.Fatal(err)
+		}
+		next := assertRead(t, d, waiter, Granted)
+		if next.LeaseID == "" || next.Remaining != cfg.LeaseTTL {
+			t.Fatalf("stale grant projection: %+v", next)
+		}
+		if _, err := d.Release(context.Background(), LeaseRef{Request: waiter, ID: next.LeaseID}); err != nil {
+			t.Fatal(err)
+		}
+		assertRead(t, d, waiter, Released)
+	})
+
+	t.Run("due maintenance", func(t *testing.T) {
+		d, now, r := fixture(t)
+		if _, err := d.Submit(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+		revision := d.state.Revision
+		*now = now.Add(cfg.LeaseTTL)
+		got, err := d.Observe(context.Background(), r)
+		if err != nil || got.Status != Expired || got.Revision != revision+1 {
+			t.Fatalf("maintenance skipped: %+v %v", got, err)
+		}
+		assertRead(t, d, r, Expired)
+	})
+
+	t.Run("seed and missing request", func(t *testing.T) {
+		seed := benchSeedSnapshot(t, "observe-seed", cfg, 8)
+		d := newBenchDriver(t, seed)
+		now := d.state.Time
+		d.nowFunc = func() time.Time { return now }
+		for _, rec := range d.state.Records {
+			r := rec.Request
+			r.Config = cfg
+			assertRead(t, d, r, Cancelled)
+			break
+		}
+		r := NewRequest(now.Add(2 * time.Second))
+		r.Resource, r.Weight, r.WaitUntil, r.Config = "observe-seed", 1, r.SubmitUntil, cfg
+		revision := d.state.Revision
+		if _, err := d.Observe(context.Background(), r); !errors.Is(err, ErrNotFound) || d.state.Revision != revision+1 {
+			t.Fatalf("missing request did not use full transition: %v", err)
+		}
+	})
+
+	t.Run("conflict and cancellation", func(t *testing.T) {
+		d, now, r := fixture(t)
+		if _, err := d.Submit(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+		before := string(d.snapshot)
+		conflict := r
+		conflict.Owner = NewRequest(r.SubmitUntil).Owner
+		if _, err := d.Observe(context.Background(), conflict); !errors.Is(err, ErrRequestConflict) {
+			t.Fatalf("request conflict: %v", err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		d.nowFunc = func() time.Time { cancel(); return *now }
+		if result, err := d.Observe(ctx, r); !errors.Is(err, context.Canceled) || result != (Result{}) {
+			t.Fatalf("cancelled probe authorized work: %+v %v", result, err)
+		}
+		if string(d.snapshot) != before {
+			t.Fatal("failed fast read changed committed state")
+		}
+	})
+}
+
+// TestSharedBenchWindows pins the conservative window derivation: every
 // output is a whole millisecond (protocol requirement), SubmitWindow stays
 // within its documented floor/ceiling, OperationTimeout respects the one-minute
 // cap, MaxWait equals exactly the documented formula (the uncontended floors
@@ -731,20 +847,10 @@ func (c *benchBackwardClock) now() time.Time {
 	return time.Now()
 }
 
-// TestSharedBenchBackwardClockFailsClosed proves the audit-B2 mechanism: the
-// sporadic ErrCorruptState seen on darwin is the driver contract's fail-closed
-// backward-clock check, not state corruption. Transition truncates each
-// operation's backend time to whole milliseconds and compares it against the
-// snapshot's last committed time (shared_state.go: now.Before(s.Time)), so a
-// clock that steps backward by at least 1ms necessarily crosses a millisecond
-// boundary below the committed time and fails closed; a sub-millisecond
-// backward step can be absorbed by truncation (both times flooring into the
-// same millisecond), which is why the production sightings are sporadic
-// rather than constant. The stepped clock fails the release of the second
-// cycle here (the first transition after the jump), and the committed
-// snapshot survives because Transition returns no new state on this error.
+// TestSharedBenchBackwardClockFailsClosed verifies that a deliberate backward
+// clock step rejects a transition without replacing the committed snapshot.
 func TestSharedBenchBackwardClockFailsClosed(t *testing.T) {
-	d := newBenchDriver(nil)
+	d := newBenchDriver(t, nil)
 	d.nowFunc = (&benchBackwardClock{jumpAfter: 3, step: 2 * time.Millisecond}).now
 	cfg := ResourceConfig{
 		Admission:    Config{Capacity: 1},

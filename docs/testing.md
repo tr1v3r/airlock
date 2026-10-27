@@ -172,23 +172,46 @@ AIRLOCK_BENCH_LARGE=1 GOWORK=off go test -run '^$' \
   -bench '^BenchmarkTransitionScale$/^R=1000$/^M=(0|1000)$/^Q=0$' -benchmem -benchtime=3x .
 ```
 
-The Shared matrix benchmark (`shared_benchmark_test.go` in the root module plus
-the black-box `driver/memory` comparison) measures client-layer cycle
-throughput and Acquire-tail latency across workers W, retained history H, and
-uncontended/contended families, on single-token AcquireFor/Release cycles.
-Run it through `scripts/bench-shared.sh` (race smoke first, then the audited
-per-cell matrix with fixed `-benchtime=Nx`; contended cells need `N >= 4*W`
-to reach steady queue depth; plain time-based benchtime truncates the
-shallow-queue ramp and inflates throughput). Raw output, CSV, summary and the
-methodology audit land in `bench-results/`, which is gitignored local
-evidence, not committed content.
+### Shared client benchmark matrix / Shared 客户端基准矩阵
 
-Shared 矩阵基准(根模块 `shared_benchmark_test.go` 加 `driver/memory` 黑盒对照)
-测量客户端层周期吞吐与 Acquire 尾延迟,维度为 W×H×(无争用/争用),周期为单 token
-的 AcquireFor+Release。经 `scripts/bench-shared.sh` 执行(先 race 冒烟,再按审计
-结论逐 cell 固定 `-benchtime=Nx`;争用族需 `N >= 4*W` 才到稳态排队深度,时间型
-benchtime 会截在浅队列爬坡段、虚增吞吐)。原始输出、CSV、汇总与方法学审计落在
-`bench-results/`(已 gitignore 的本地证据,不入库)。
+`shared_benchmark_test.go` measures single-token AcquireFor/Release cycles
+across workers W, retained terminal seeds H, and uncontended/contended families.
+Acquire latency excludes Release; cycle throughput includes it. The internal
+driver follows memory.Driver's per-resource algorithm: cached Observation reads
+between maintenance boundaries; complete decode/Transition/encode for writes
+and due maintenance. It retains the resource gate even on fast reads.
+The black-box `driver/memory` comparison starts with H=0. Root omits the real
+driver's resource-lookup mutex, and the nested module uses its pinned core;
+inspect `go list -m all` in each module before comparing results. Equal costs
+are not an invariant. These are not PostgreSQL/Redis performance measurements.
+
+Run `bash scripts/bench-shared.sh --smoke-only` for race smoke and small cells,
+or `bash scripts/bench-shared.sh` for the full matrix. The full matrix is
+opt-in; normal CI runs ordinary harness tests, not all benchmark cells.
+Use fixed `-benchtime=Nx`; contended cells require at least `N >= 4*W` by the
+sampling-budget rule. This avoids very short startup-only runs but does not
+prove a steady queue depth. The W-squared deadline allowance is a conservative
+historical safety budget, not a performance prediction for read-only Observe.
+Raw output, CSV and summaries live in ignored `bench-results/`. Resume only
+accepts results with the current source fingerprint and requested iteration count;
+old full-transition polling measurements must be regenerated. A clock-injection
+test proves that backward time fails closed; it does not establish the cause
+of every ErrCorruptState. Failed outputs remain available after any retry.
+
+根模块矩阵按 W（并发 worker）、H（保留的终态种子记录）和无争用/争用场景，
+测量单 token 的 AcquireFor/Release 周期。Acquire 延迟不含 Release，周期吞吐包含。
+内部驱动与 memory.Driver 使用相同的资源内算法：免维护期读取缓存 Observation；
+写入和到期维护才完整解码、转换、编码。快路径仍持有资源 gate。
+真实 memory 驱动对照从 H=0 开始；根模块省略资源查找 mutex，嵌套模块还使用自己
+固定的 core 版本，比较前分别查看 `go list -m all`，不能要求两者耗时相等。
+这套矩阵不代表 PostgreSQL/Redis 的实际性能。
+
+`--smoke-only` 执行 race 冒烟和小规模基准，完整矩阵由使用者主动运行；普通 CI
+只执行相关测试。争用场景使用固定 Nx，按样本预算规则要求 N 至少为 4W；这能避免
+仅测极短启动阶段，但不保证队列已达到稳态。W² 等待窗口保留为保守安全预算，
+不能沿用为只读 Observe 的性能预测。输出保存在忽略的 `bench-results/`；续跑仅
+复用源码指纹和迭代数匹配的结果，旧的全量 Observe 数据必须重跑。时钟注入测试
+只证明时间倒退会失败关闭，不把所有 ErrCorruptState 都归因于时钟；重试保留失败输出。
 
 ## Isolated service fixtures and ownership
 
