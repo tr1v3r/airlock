@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -71,7 +72,7 @@ func TestConformance(t *testing.T) {
 
 func TestConstructor(t *testing.T) {
 	d, client, _ := fixture(t)
-	if d.timeout != 5*time.Second {
+	if d.timeout != 5*time.Second || d.updateLockTTL != time.Second {
 		t.Fatal(d.timeout)
 	}
 
@@ -97,7 +98,7 @@ func TestConstructor(t *testing.T) {
 		}
 	}
 
-	for _, opt := range []Option{nil, WithOperationTimeout(0), WithOperationTimeout(-time.Second)} {
+	for _, opt := range []Option{nil, WithOperationTimeout(0), WithOperationTimeout(-time.Second), WithUpdateLockTTL(0), WithUpdateLockTTL(-time.Second)} {
 		if _, err := New(client, "", opt); err == nil {
 			t.Fatal("accepted option")
 		}
@@ -210,7 +211,14 @@ func (h hook) ProcessHook(next goredis.ProcessHook) goredis.ProcessHook {
 }
 
 func isCAS(cmd goredis.Cmder) bool {
-	return (cmd.Name() == "eval" || cmd.Name() == "evalsha") && len(cmd.Args()) >= 9
+	return isScript(cmd, casScript)
+}
+
+func isScript(cmd goredis.Cmder, script string) bool {
+	if (cmd.Name() != "eval" && cmd.Name() != "evalsha") || len(cmd.Args()) < 2 {
+		return false
+	}
+	return cmd.Args()[1] == script || cmd.Args()[1] == fmt.Sprintf("%x", sha1.Sum([]byte(script)))
 }
 
 func TestLostWriteResponseNeverRetries(t *testing.T) {
@@ -273,12 +281,13 @@ func TestLostWriteResponseNeverRetries(t *testing.T) {
 func TestScriptFailureAndMalformedResponse(t *testing.T) {
 	tests := []struct {
 		name     string
-		cas      bool
+		script   string
 		response any
 		err      error
 	}{
-		{"read transport", false, nil, io.ErrUnexpectedEOF}, {"read format", false, "bad", nil},
-		{"write transport", true, nil, io.ErrUnexpectedEOF}, {"write format", true, "bad", nil}, {"write code", true, int64(2), nil},
+		{"read transport", readScript, nil, io.ErrUnexpectedEOF}, {"read format", readScript, "bad", nil},
+		{"write transport", casScript, nil, io.ErrUnexpectedEOF}, {"write format", casScript, "bad", nil}, {"write code", casScript, int64(2), nil},
+		{"lock transport", acquireUpdateLockScript, nil, io.ErrUnexpectedEOF}, {"lock format", acquireUpdateLockScript, "bad", nil}, {"lock code", acquireUpdateLockScript, int64(2), nil},
 	}
 
 	for _, test := range tests {
@@ -286,7 +295,7 @@ func TestScriptFailureAndMalformedResponse(t *testing.T) {
 			d, client, _ := fixture(t)
 			var calls int
 			client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
-				if isCAS(cmd) == test.cas {
+				if isScript(cmd, test.script) {
 					calls++
 					cmd.(*noRetryCmd).SetVal(test.response)
 					return test.err
@@ -479,6 +488,9 @@ func TestObserveUsesOnlyRequestProjection(t *testing.T) {
 	}
 
 	before := client.HGetAll(ctx, d.key(r.Resource)).Val()
+	if ok, err := d.tryUpdateLock(ctx, d.key(r.Resource), "another-updater"); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
 	var calls int
 	client.AddHook(hook{process: func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
 		if cmd.Name() == "eval" || cmd.Name() == "evalsha" {

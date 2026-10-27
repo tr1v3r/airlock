@@ -16,9 +16,13 @@ const readScript = `
 // casScript compares snapshot/time guards, prepares derived request records, then
 // publishes the authoritative state and metadata together in its final HSET.
 const casScript = `
-	if #KEYS ~= 1 or (#ARGV ~= 5 and #ARGV ~= 6) then return redis.error_reply('invalid arguments') end
+	if #KEYS ~= 2 or (#ARGV ~= 6 and #ARGV ~= 7) then return redis.error_reply('invalid arguments') end
 	if ARGV[1] ~= '0' and ARGV[1] ~= '1' then return redis.error_reply('invalid existence') end
 	if #ARGV[3] == 0 then return redis.error_reply('empty snapshot') end
+	if #ARGV[#ARGV] == 0 then return redis.error_reply('empty lock owner') end
+	-- Check ownership inside the same atomic operation that publishes state.
+	-- A paused process cannot commit after expiry, even if the snapshot is unchanged.
+	if redis.call('GET', KEYS[2]) ~= ARGV[#ARGV] then return 0 end
 
 	local function integer(s)
 		if not string.match(s, '^%d+$') then return nil end
@@ -53,7 +57,7 @@ const casScript = `
 	if now < lower or (upper ~= 0 and now >= upper) then return 0 end
 
 	local index = nil
-	if #ARGV == 6 then
+	if #ARGV == 7 then
 		index = cjson.decode(ARGV[6])
 		if type(index) ~= 'table' or type(index.Meta) ~= 'string' or type(index.Records) ~= 'table' then
 			return redis.error_reply('invalid observation index')
@@ -90,4 +94,19 @@ const observeScript = `
 	local now = redis.call('TIME')
 
 	return {values[1] or '', values[2] or '', now[1], now[2]}
+`
+
+// acquireUpdateLockScript installs a bounded owner lease without refreshing an
+// existing owner's TTL. The integer response distinguishes contention from I/O errors.
+const acquireUpdateLockScript = `
+	if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then return 1 end
+	return 0
+`
+
+// releaseUpdateLockScript never deletes a lock belonging to a newer updater.
+const releaseUpdateLockScript = `
+	if redis.call('GET', KEYS[1]) == ARGV[1] then
+		return redis.call('DEL', KEYS[1])
+	end
+	return 0
 `

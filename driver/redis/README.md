@@ -35,8 +35,10 @@ Cluster read-only/replica routing is rejected. Socket deadline updates must rema
 enabled: raw `ReadTimeout`/`WriteTimeout=-2` (and other disabling negative values)
 are rejected after go-redis normalizes the options. Raw `-1` is accepted: it
 disables the configured socket timeout but still applies context deadlines.
-`WithOperationTimeout` bounds the
-whole operation (default five seconds); earlier caller deadlines prevail.
+`WithOperationTimeout` bounds the operation (default five seconds), including update-lock contention; earlier caller
+deadlines prevail. Best-effort lock cleanup may add at most 100ms after cancellation
+or timeout. `WithUpdateLockTTL` sets the update lease (default one second), rounded
+up to whole milliseconds; it does not change the application lease TTL.
 Do not mutate client options or install hooks that retry ambiguous operations.
 
 ## Atomicity, time, and retries
@@ -47,26 +49,44 @@ without NUL, at most 256 bytes. The hash tag gives every operation one Cluster
 slot. The key is a hash: `state` holds the authoritative JSON snapshot, `meta`
 holds observation metadata, and `r:<request-id>` holds each indexed request.
 Missing keys and hashes missing their snapshot are distinguished; empty, corrupt,
-and wrong-type state fails closed. Keys never expire and retain config/cursor even
-when idle. All participants must use the same immutable resource configuration.
+and wrong-type state fails closed. State keys never expire and retain config/cursor
+even when idle. All participants must use the same immutable resource configuration.
 
-For mutations and due maintenance, a Lua read atomically obtains the snapshot
-and Redis `TIME`; Go computes the shared transition. Lua compares the exact old
-snapshot and checks the commit window, including lease expiry, waiting/submission
+Mutations and due maintenance first contend for
+`airlock:{same-resource-hash}:update-lock`, a separate string key in the same
+Cluster slot. Like an owner-checked lease, acquisition uses `SET NX PX` with a
+fresh random owner token. A loser backs off without loading or computing the
+full snapshot. `Submit`, `Cancel`, `Renew` and `Release` all use this path.
+
+After acquisition, Lua reads the snapshot and Redis `TIME`; Go computes the shared
+transition. The commit script checks **current lock ownership, the exact old
+snapshot and CommitWindow together**, including lease expiry, waiting/submission
 deadlines and history cleanup. Time retains microsecond precision within Lua's
-exact integer range.
+exact integer range. The lock reduces duplicate computation; it does not replace
+CAS or time guards. A paused updater whose lock expires cannot publish even if
+the snapshot has not changed.
+
+After each acquired attempt, a separate owner-checking Lua script deletes only
+that updater's lock, including on cancellation or an error. Cleanup uses a fresh,
+bounded context; failure leaves the lock to expire and never changes the command
+outcome. An uncertain acquisition returns an error without replay or state work;
+its possibly installed lock also expires. No lock-renewal goroutine runs: choose
+an update TTL long enough for the bounded snapshot computation and commit. A
+confirmed expiry discards the candidate, releases any remaining ownership and
+retries from a fresh read within the operation deadline. The lock covers driver
+state updates only and is never held while application work runs.
 
 The script prepares request indexes tagged with a unique candidate token, then
 publishes the snapshot and matching observation header together in its final
-`HSET`. There is no command after that publication. A preparation error cannot
+`HSET`. Within the commit script, no command follows that publication. A preparation error cannot
 authorize work: missing or token-mismatched projections fall back to the
 authoritative snapshot. Tokens are independent of Revision so different failed
 candidates for the same revision cannot be mistaken for a committed result.
 Redis scripts do not roll back earlier writes.
 
-Only explicit comparison/time-window misses trigger bounded, context-aware
-backoff and a fresh computation. Each script command disables go-redis network
-retries using `Cmder.NoRetry`; a definite `NOSCRIPT` permits `EVAL` fallback.
+Only known lock contention or explicit ownership/comparison/time-window misses
+trigger bounded, context-aware backoff (1–10ms). Each script command disables
+go-redis network retries using `Cmder.NoRetry`; a definite `NOSCRIPT` permits `EVAL` fallback.
 Cluster's explicit `MOVED`/`ASK` routing still works. Transport or script errors
 return a zero result: the write may already have succeeded. In particular, an
 uncertain renewal is not repeated inside the adapter. Business rejections still
@@ -75,16 +95,21 @@ commit expiry and scheduling changes. No connection is held during business work
 An ordinary `Observe` atomically reads only `meta`, the selected request and
 backend time. Before the next lease/queue expiry or history collection boundary,
 it returns the committed result without reading the full snapshot, restoring the
-scheduler, changing Revision or executing CAS. Missing projections or due
-maintenance fall back to the ordinary transition; confirmed CAS losers recheck
-the projection before recomputing.
+scheduler, acquiring the update lock, changing Revision or executing CAS. Missing
+projections or due maintenance attempt the update lock. Observe rechecks the
+projection after acquiring ownership: if another updater already performed
+maintenance, it releases the lock and returns the committed result without full
+state work. Contenders also recheck the projection between attempts, so they can
+return a new result without acquiring the lock themselves.
 
 Mutations still read/write the bounded snapshot and maintain the request index,
 with O(records) work and additional memory. No Pub/Sub or worker is introduced.
 The core client's default polling interval remains 50ms per queued acquisition;
 this change reduces each poll's cost, not the number of polling callers.
-Independent resources use different keys but share backend CPU/network/pool
-capacity. Arrival at the backend determines queue order, not polling frequency.
+Independent resources use different state and update-lock keys but share backend
+CPU/network/pool capacity. Queue admission order follows successful state
+transitions; the update lock does not promise FIFO ownership. Call start order
+and polling frequency do not guarantee grant order.
 
 ## Operational limits
 
@@ -124,7 +149,8 @@ AIRLOCK_REDIS_CLUSTER_ADDRS=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002 GOWORK=
 For container Cluster fixtures whose announced addresses are not host-routable,
 set `AIRLOCK_REDIS_CLUSTER_MAPPING=containerIP:6379=127.0.0.1:port,...`. This is a
 test-only dial mapping. Tests exercise the shared conformance suite, CAS races,
-expiry guards, cache reload, lost write responses, and client lease lifecycle.
+expiry guards, lock contention/expiry/owner checks, read-only polling under an
+update lock, cache reload, lost write responses, and client lease lifecycle.
 Default tests use miniredis; real standalone and Cluster tests are opt-in.
 
 The public operations are `Submit`, `Observe`, `Cancel`, `Renew`, and `Release`.

@@ -57,7 +57,9 @@ Tenant 用于共享容量内的公平分配，不代表独立容量池，也不�
 
 PostgreSQL 共用数据表：资源元数据的主键为 `(namespace, resource)`，请求表的主键为
 `(namespace, resource, id)`。命令用 `FOR UPDATE` 锁定对应资源行，并读取该资源的请求。
-Redis 把每个资源存放在 `airlock:{SHA256(namespace + "\0" + resource)}:state`，分别执行快照 CAS。
+Redis 把每个资源存放在 `airlock:{SHA256(namespace + "\0" + resource)}:state`，更新时竞争
+同一 Cluster slot 内独立的 `:update-lock`，提交时仍校验归属、快照 CAS 和时间窗口。
+只读 Observe 不抢这把锁。
 不同资源仍共享后端物理资源和连接池；逻辑隔离不代表性能隔离。
 
 创建不同 Driver 对象本身不会隔离容量。使用同一 PostgreSQL 数据库/表/namespace/resource，

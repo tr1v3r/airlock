@@ -104,6 +104,72 @@ func integrationSuite(t *testing.T, cluster bool) {
 		mustExecute(t, second, airlock.Command{Kind: airlock.Release, Request: r, LeaseID: a.LeaseID})
 	})
 
+	t.Run("update_lock_blocks_writes_not_reads", func(t *testing.T) {
+		other := integrationClient(t, cluster)
+		first := factory(t).(*Driver)
+		second, err := New(other, namespace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx := context.Background()
+		r := request()
+		r.Resource = airlock.NewRequest(time.Now()).Owner
+		grant := mustExecute(t, first, submit(r))
+		key := first.key(r.Resource)
+		if ok, err := first.tryUpdateLock(ctx, key, "busy-updater"); err != nil || !ok {
+			t.Fatal(ok, err)
+		}
+		defer first.releaseUpdateLock(ctx, key, "busy-updater")
+		observed := mustExecute(t, second, airlock.Command{Kind: airlock.Observe, Request: r})
+		if observed.LeaseID != grant.LeaseID || observed.Revision != grant.Revision {
+			t.Fatal(observed)
+		}
+		bounded, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
+		defer cancel()
+		if result, err := second.Renew(bounded, airlock.LeaseRef{Request: r, ID: grant.LeaseID}); err == nil || result != (airlock.Result{}) {
+			t.Fatal("write bypassed update lock", result, err)
+		}
+		independent := request()
+		independent.Resource = airlock.NewRequest(time.Now()).Owner
+		mustExecute(t, second, submit(independent))
+		first.releaseUpdateLock(ctx, key, "busy-updater")
+		mustExecute(t, second, airlock.Command{Kind: airlock.Release, Request: r, LeaseID: grant.LeaseID})
+		if client.Exists(ctx, updateLockKey(key)).Val() != 0 {
+			t.Fatal("completed command left lock")
+		}
+	})
+
+	t.Run("expired_owner_cannot_commit_or_unlock_successor", func(t *testing.T) {
+		d := factory(t).(*Driver)
+		ctx := context.Background()
+		key := d.key(airlock.NewRequest(time.Now()).Owner)
+		d.updateLockTTL = time.Millisecond
+		if ok, err := d.tryUpdateLock(ctx, key, "expired-owner"); err != nil || !ok {
+			t.Fatal(ok, err)
+		}
+		// Redis must expire this lease itself; no administrative DEL is used.
+		deadline := time.Now().Add(time.Second)
+		for client.Exists(ctx, updateLockKey(key)).Val() != 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("update lock did not expire")
+			}
+			time.Sleep(time.Millisecond)
+		}
+		d.updateLockTTL = time.Second
+		if ok, err := d.tryUpdateLock(ctx, key, "successor"); err != nil || !ok {
+			t.Fatal(ok, err)
+		}
+		defer d.releaseUpdateLock(ctx, key, "successor")
+		raw, err := d.evalKeys(ctx, casScript, []string{key, updateLockKey(key)}, "0", "", "stale", 0, 0, "expired-owner")
+		if err != nil || raw != int64(0) || client.Exists(ctx, key).Val() != 0 {
+			t.Fatal("expired owner published", raw, err)
+		}
+		d.releaseUpdateLock(ctx, key, "expired-owner")
+		if owner := client.Get(ctx, updateLockKey(key)).Val(); owner != "successor" {
+			t.Fatal("expired owner removed successor", owner)
+		}
+	})
+
 	t.Run("script_cache_flush", func(t *testing.T) {
 		// Use only an isolated test server: flushing script cache affects all users.
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
