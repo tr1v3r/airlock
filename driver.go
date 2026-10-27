@@ -12,8 +12,9 @@ import (
 )
 
 // Driver provides atomic admission operations for a resource. Implementations must
-// serialize all operations, use backend time after obtaining exclusive access
-// (or enforce the Transition publication window with atomic CAS),
+// serialize mutations, use backend time after obtaining exclusive access
+// (or enforce its publication window while atomically checking update-lock
+// ownership or comparing the previously read state),
 // atomically persist lifecycle/scheduling changes even on business rejection,
 // and honor ctx. Storage layout and use of the reference helpers are optional. Transport errors are ambiguous and never authorize work.
 // Drivers do not own injected connections, execute work, or fall back locally.
@@ -24,7 +25,8 @@ import (
 type Driver interface {
 	// Submit admits or queues the whole request; retries do not refresh an existing lease.
 	Submit(context.Context, Request) (Result, error)
-	// Observe advances expiry and scheduling, then returns the request's current outcome.
+	// Observe returns the current outcome, advancing expiry and scheduling when due.
+	// A read-only observation need not increment Revision.
 	Observe(context.Context, Request) (Result, error)
 	// Cancel terminates a queued or granted request, including cancellation before submission.
 	Cancel(context.Context, Request) (Result, error)
@@ -93,7 +95,7 @@ type Operation string
 const (
 	// Submit admits a request or returns its existing outcome without refreshing TTL.
 	Submit Operation = "submit"
-	// Observe reads and advances expiry and scheduling; polling order is not grant order.
+	// Observe reads outcomes and advances due maintenance; polling order is not grant order.
 	Observe Operation = "observe"
 	// Cancel terminates queued or granted requests, or creates a tombstone before Submit.
 	Cancel Operation = "cancel"
@@ -178,7 +180,11 @@ func NewRequest(until time.Time) Request {
 }
 
 // randomID generates a lowercase 128-bit cryptographic identity.
-func randomID() string { b := make([]byte, 16); _, _ = rand.Read(b); return hex.EncodeToString(b) }
+func randomID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 // validSecret accepts exactly 16 bytes encoded as lowercase hexadecimal.
 func validSecret(s string) bool {
@@ -191,29 +197,35 @@ func validConfig(c ResourceConfig) error {
 	if c.Admission.Capacity > 10000 || c.Admission.MaxQueued > 10000 || c.MaxRecords < 1 || c.MaxRecords > 10000 {
 		return ErrInvalidConfig
 	}
+
 	for _, d := range []time.Duration{c.LeaseTTL, c.MaxWait, c.SubmitWindow, c.Retention} {
 		if d <= 0 || d%time.Millisecond != 0 {
 			return ErrInvalidConfig
 		}
 	}
+
 	if c.LeaseTTL > time.Hour || c.MaxWait > time.Hour || c.SubmitWindow > time.Hour || c.Retention > 24*time.Hour {
 		return ErrInvalidConfig
 	}
+
 	if p := c.Admission.Priority; p != nil {
 		if len(p.TenantGroups) > 10000 {
 			return ErrInvalidConfig
 		}
+
 		for tenant, group := range p.TenantGroups {
 			if len(tenant) > 256 || len(group) > 256 || !validText(tenant) || !validText(group) {
 				return ErrInvalidConfig
 			}
 		}
+
 		for _, group := range p.Groups {
 			if len(group.Name) > 256 || !validText(group.Name) {
 				return ErrInvalidConfig
 			}
 		}
 	}
+
 	_, err := New(c.Admission)
 	return err
 }
@@ -231,7 +243,11 @@ func validRequest(r Request) error {
 // multiply restoration cost by the number of configured tenant mappings.
 func validRequestFields(r Request) error {
 	prefix := strconv.FormatInt(r.SubmitUntil.UnixMilli(), 10) + "-"
-	if r.Resource == "" || !validText(r.Resource) || !validText(r.Tenant) || len(r.Resource) > 256 || len(r.Tenant) > 256 || !validSecret(r.Owner) || !strings.HasPrefix(r.ID, prefix) || !validSecret(strings.TrimPrefix(r.ID, prefix)) || r.SubmitUntil.UnixMilli() <= 0 || !r.SubmitUntil.Equal(r.SubmitUntil.Truncate(time.Millisecond)) || !r.WaitUntil.Equal(r.WaitUntil.Truncate(time.Millisecond)) || r.WaitUntil.After(r.SubmitUntil.Add(r.Config.MaxWait)) {
+	if r.Resource == "" || !validText(r.Resource) || !validText(r.Tenant) || len(r.Resource) > 256 ||
+		len(r.Tenant) > 256 || !validSecret(r.Owner) || !strings.HasPrefix(r.ID, prefix) ||
+		!validSecret(strings.TrimPrefix(r.ID, prefix)) || r.SubmitUntil.UnixMilli() <= 0 ||
+		!r.SubmitUntil.Equal(r.SubmitUntil.Truncate(time.Millisecond)) ||
+		!r.WaitUntil.Equal(r.WaitUntil.Truncate(time.Millisecond)) || r.WaitUntil.After(r.SubmitUntil.Add(r.Config.MaxWait)) {
 		return ErrInvalidRequest
 	}
 	if r.Weight <= 0 {
@@ -250,6 +266,7 @@ func ValidateCommand(cmd Command) error {
 	if err := validRequest(cmd.Request); err != nil {
 		return err
 	}
+
 	switch cmd.Kind {
 	case Submit, Observe, Cancel, Renew, Release:
 		return nil

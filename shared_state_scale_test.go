@@ -16,18 +16,23 @@ func scaleSnapshot(tb testing.TB, records, mappings, queued int) (durableSnapsho
 	if records < 1 || queued < 0 || queued >= records {
 		tb.Fatal("invalid scale fixture dimensions")
 	}
+
 	now := time.Unix(2000, 0).UTC()
 	cfg := ResourceConfig{Admission: Config{Capacity: 1, MaxQueued: 10000, MaxQueuedPerTenant: 10000},
 		LeaseTTL: time.Hour, MaxWait: time.Hour, SubmitWindow: time.Hour, Retention: time.Hour, MaxRecords: 10000}
 	if mappings > 0 {
 		p := &PriorityPolicy{Groups: []PriorityGroup{{Name: "all", Turns: 1, MaxQueued: 10000}}, DefaultGroup: "all", TenantGroups: make(map[string]string, mappings)}
+
 		for i := 0; i < mappings; i++ {
 			p.TenantGroups[fmt.Sprintf("tenant-%05d", i)] = "all"
 		}
+
 		cfg.Admission.Priority = p
 	}
+
 	s := durableSnapshot{Version: 1, Resource: "scale", Config: cfg, Records: make(map[string]*durableRecord, records), Queues: make(map[string][]string), Revision: 1, Time: now, Rotations: [][]string{{}}}
 	var cmd Command
+
 	for i := 0; i < records; i++ {
 		r := Request{Resource: s.Resource, ID: fmt.Sprintf("%d-%032x", now.Add(time.Hour).UnixMilli(), i+1), Owner: fmt.Sprintf("%032x", i+1), SubmitUntil: now.Add(time.Hour), WaitUntil: now.Add(time.Hour), Weight: 1, Config: cfg}
 		rec := &durableRecord{Request: r, Status: Cancelled, Finished: now}
@@ -39,11 +44,13 @@ func scaleSnapshot(tb testing.TB, records, mappings, queued int) (durableSnapsho
 			rec.Status, rec.Finished, rec.Until = Queued, time.Time{}, r.WaitUntil
 			s.Queues["waiting"] = append(s.Queues["waiting"], r.ID)
 		}
+
 		s.Records[r.ID] = rec
 		if i == 0 {
 			cmd = Command{Kind: Observe, Request: r}
 		}
 	}
+
 	if queued > 0 {
 		s.Rotations[0] = []string{"waiting"}
 	}
@@ -53,9 +60,11 @@ func scaleSnapshot(tb testing.TB, records, mappings, queued int) (durableSnapsho
 func scaleBytes(tb testing.TB, records, mappings, queued int) ([]byte, time.Time, Command) {
 	tb.Helper()
 	s, cmd := scaleSnapshot(tb, records, mappings, queued)
+
 	for _, r := range s.Records {
 		r.Request.Config = ResourceConfig{}
 	}
+
 	data, err := json.Marshal(s)
 	if err != nil {
 		tb.Fatal(err)
@@ -114,6 +123,7 @@ func benchmarkTransitionScale(b *testing.B, optimistic bool) {
 		recordCounts = append(recordCounts, 1000, 10000)
 		mappingCounts = append(mappingCounts, 1000, 10000)
 	}
+
 	for _, records := range recordCounts {
 		for _, mappings := range mappingCounts {
 			for _, queued := range []int{0, records - 1} {
@@ -121,6 +131,7 @@ func benchmarkTransitionScale(b *testing.B, optimistic bool) {
 					data, now, cmd := scaleBytes(b, records, mappings, queued)
 					b.ReportAllocs()
 					b.ResetTimer()
+
 					for i := 0; i < b.N; i++ {
 						var next []byte
 						var result Result
@@ -130,10 +141,12 @@ func benchmarkTransitionScale(b *testing.B, optimistic bool) {
 						} else {
 							next, result, err = transitionSnapshot(data, now, cmd)
 						}
+
 						if err != nil || len(next) == 0 || result.Revision != 2 {
 							b.Fatalf("invalid transition: %+v %v", result, err)
 						}
 					}
+
 					b.StopTimer()
 					b.ReportMetric(float64(len(data)), "snapshot_bytes")
 				})
@@ -148,4 +161,44 @@ func BenchmarkTransitionScale(b *testing.B) {
 
 func BenchmarkTransitionOptimisticScale(b *testing.B) {
 	benchmarkTransitionScale(b, true)
+}
+
+// BenchmarkCommitWindowTransition compares the frozen split-pass algorithm and
+// fused collection on the same structured workloads. No JSON/network work is
+// timed. Observe leaves records unchanged; Renew's target is reset in O(1), so
+// every iteration sees the same input and history never grows. Queue structures
+// are read from the fixture and replaced only on the returned snapshot header.
+func BenchmarkCommitWindowTransition(b *testing.B) {
+	for _, records := range []int{8, 128, 1000, 10000} {
+		for _, kind := range []Operation{Observe, Renew} {
+			for _, implementation := range []struct {
+				name string
+				run  func(*SharedState, time.Time, Command) (*SharedState, Result, CommitWindow, error)
+			}{{"split", splitWindowTransition}, {"fused", Transition}} {
+				b.Run(fmt.Sprintf("R=%d/%s/%s", records, kind, implementation.name), func(b *testing.B) {
+					s, cmd := scaleSnapshot(b, records, 0, records/2)
+					cmd.Kind = kind
+					cmd.LeaseID = s.Records[cmd.Request.ID].LeaseID
+					if kind == Observe {
+						cmd.Request = s.Records[s.Queues["waiting"][0]].Request
+					}
+					for _, record := range s.Records {
+						record.Request.Config = ResourceConfig{}
+					}
+					target := s.Records[cmd.Request.ID]
+					original := *target
+					now := s.Time.Add(123 * time.Microsecond)
+					b.ReportAllocs()
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						*target = original
+						next, result, window, err := implementation.run(&s, now, cmd)
+						if next == nil || err != nil || result.Revision != 2 || window.NotBefore != now {
+							b.Fatalf("invalid transition: %+v %+v %v", result, window, err)
+						}
+					}
+				})
+			}
+		}
+	}
 }

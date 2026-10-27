@@ -19,14 +19,17 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	var wg sync.WaitGroup
 	// Join any started work even if a subsequent acquisition fails.
 	defer wg.Wait()
+
 	for _, tenant := range []string{"A", "B", "A", "B"} {
 		permit, err := g.AcquireFor(ctx, tenant)
 		if err != nil {
 			return err
 		}
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -36,6 +39,7 @@ func run(ctx context.Context) error {
 			fmt.Println("working for tenant", tenant)
 		}()
 	}
+
 	return nil
 }
 

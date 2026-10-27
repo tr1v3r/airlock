@@ -19,11 +19,13 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	// Omit a tenant ID for the default tenant; acquire both tokens atomically.
 	initial, err := lock.AcquireN(ctx, 2)
 	if err != nil {
 		return err
 	}
+
 	initial.Release() // Returns both tokens, exactly once.
 
 	jobs := []struct {
@@ -35,11 +37,13 @@ func run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	// Join started work even if a later acquisition fails.
 	defer wg.Wait()
+
 	for _, job := range jobs {
 		permit, err := lock.AcquireNFor(ctx, job.tenant, job.tokens)
 		if err != nil {
 			return err
 		}
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -49,6 +53,7 @@ func run(ctx context.Context) error {
 			fmt.Printf("tenant %s: working with %d tokens\n", job.tenant, job.tokens)
 		}()
 	}
+
 	wg.Wait()
 	stats := lock.Stats()
 	fmt.Printf("finished: %d tokens, %d active permits\n", stats.InUse, stats.ActivePermits)

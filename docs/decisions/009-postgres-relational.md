@@ -15,7 +15,8 @@ memory/Redis 通过 DecodeState、EncodeState 处理快照，PostgreSQL 直接�
 
 ## 2. 两张表，租约并入请求
 
-resources 保存不可变 config、组内租户轮转 rotations、cursor、protected、revision、observed_ms。
+resources 保存不可变 config、组内租户轮转 rotations、cursor、protected、revision、observed_ms
+和 next_maintenance_ms。
 config 与 rotations 使用 JSONB，前者是嵌套策略，后者只是组/租户顺序，不含请求/租约记录。
 requests 将租户、权重、状态、身份、期限和 queue_position 拆为普通列；每个请求最多产生一个
 租约，没有独立的租约生命周期，因此不引入第三张表及其连接、删除顺序。
@@ -31,9 +32,10 @@ FIFO 位置采用稳定 bigint 序号，读取按 tenant、queue_position 排序
 事务锁住资源后，仍读取最多 MaxRecords 个保留请求，构造结构化状态，运行纯调度算法；
 读取设 10001 上限以识别超过协议最大 10000 的损坏状态。
 计算前保留请求的值副本，计算后比较，只插入/更新变化的行，删除符合回收条件的终态行。
-普通 Observe 更新资源 revision/time，不重写请求；单租约 Renew 不改写其他请求。
+未到维护边界的 Observe 已优化为资源元数据与目标请求的一次无锁查询，不改变 revision/time。
+到期后取得资源锁并重新检查，必要时才加载全量状态；单租约 Renew 不改写其他请求。
 
-仍是 O(保留记录数) 的读取、内存与调度，热点资源也仍串行；不能仅凭拆表宣称更高吞吐。
+修改和到期维护仍是 O(保留记录数) 的读取、内存与调度，热点资源的写入仍串行；不能仅凭拆表宣称更高吞吐。
 变化较多时会有多条 SQL 和更多往返，未必比一次快照写更快。本 PR 验证持久化结构、写入范围
 及契约正确性，没有给出吞吐改善百分比。后续热点优化需要实测，再考虑批量写入、索引驱动清理
 或增量调度接口，不通过缩小扫描范围遗漏过期释放/公平顺序。

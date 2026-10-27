@@ -28,6 +28,7 @@ func ExampleNew() {
 	if err := driver.EnsureSchema(context.Background()); err != nil {
 		log.Fatal(err)
 	}
+
 	client, err := airlock.NewShared(driver, airlock.SharedOptions{
 		Resource: "workers",
 		Config: airlock.ResourceConfig{
@@ -37,10 +38,12 @@ func ExampleNew() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	lease, err := client.AcquireNFor(context.Background(), "online", 2)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	// Do bounded work here; stop when lease.Done closes, or renew explicitly.
 	// Release only after work has actually stopped. The driver runs no workers.
 	cleanup, cancel := context.WithTimeout(context.Background(), time.Second)

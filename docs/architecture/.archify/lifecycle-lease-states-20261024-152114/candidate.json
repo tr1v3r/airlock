@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "revision": "ca393a3031c310c21515cec04e98b4f009f50e08",
       "link_mode": "local-only"
     }
   },
@@ -26,9 +26,9 @@
       "sublabel": "校验身份与 Remaining",
       "sources": [
         {
-          "path": "distributed.go",
-          "line": 148,
-          "end_line": 159
+          "path": "shared.go",
+          "line": 184,
+          "end_line": 195
         }
       ]
     },
@@ -39,19 +39,14 @@
       "sublabel": "以调用起点估计期限",
       "sources": [
         {
-          "path": "distributed.go",
-          "line": 150,
-          "end_line": 158
+          "path": "shared.go",
+          "line": 184,
+          "end_line": 194
         },
         {
-          "path": "distributed.go",
-          "line": 214,
-          "end_line": 226
-        },
-        {
-          "path": "distributed.go",
-          "line": 233,
-          "end_line": 255
+          "path": "shared.go",
+          "line": 288,
+          "end_line": 294
         }
       ]
     },
@@ -62,9 +57,9 @@
       "sublabel": "仍受旧期限约束",
       "sources": [
         {
-          "path": "distributed.go",
-          "line": 233,
-          "end_line": 255
+          "path": "shared.go",
+          "line": 299,
+          "end_line": 331
         }
       ]
     },
@@ -75,19 +70,19 @@
       "sublabel": "Done 关闭；不可复活",
       "sources": [
         {
-          "path": "distributed.go",
-          "line": 205,
-          "end_line": 219
+          "path": "shared.go",
+          "line": 265,
+          "end_line": 274
         },
         {
-          "path": "distributed.go",
-          "line": 248,
-          "end_line": 250
+          "path": "shared.go",
+          "line": 313,
+          "end_line": 325
         },
         {
-          "path": "distributed.go",
-          "line": 258,
-          "end_line": 272
+          "path": "shared.go",
+          "line": 337,
+          "end_line": 342
         }
       ]
     },
@@ -98,9 +93,9 @@
       "sublabel": "后端可能已经提交",
       "sources": [
         {
-          "path": "distributed.go",
-          "line": 258,
-          "end_line": 272
+          "path": "shared.go",
+          "line": 333,
+          "end_line": 349
         }
       ]
     },
@@ -111,9 +106,9 @@
       "sublabel": "Released / Expired / Cancelled",
       "sources": [
         {
-          "path": "distributed.go",
-          "line": 260,
-          "end_line": 272
+          "path": "shared.go",
+          "line": 343,
+          "end_line": 349
         }
       ]
     }
@@ -190,6 +185,7 @@
       "title": "显式监督",
       "items": [
         "没有自动续租；Renew / Release 串行执行。",
+        "ClockSkewAllowance 只提前本地期限，不延长租约有效性。",
         "调用 Acquire 的 context 取消不会撤销已经交付的 Lease。"
       ]
     }

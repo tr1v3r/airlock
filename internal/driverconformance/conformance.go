@@ -45,6 +45,7 @@ func Run(t *testing.T, factory func(*testing.T) airlock.Driver) {
 		{"concurrent_renew_and_release", concurrentRenewRelease},
 		{"pre_cancelled_operations_do_not_mutate", cancelledOperations},
 	}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := airlock.ResourceConfig{
@@ -87,6 +88,7 @@ func (h *harness) execute(kind airlock.Operation, request airlock.Request, lease
 		// Keep the stress run bounded without turning this into a latency SLA.
 		timeout = 20 * time.Second
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return Invoke(ctx, h.driver, airlock.Command{Kind: kind, Request: request, LeaseID: lease})
@@ -126,6 +128,7 @@ func idempotency(h *harness) {
 	if first.LeaseID != retry.LeaseID || retry.Remaining > first.Remaining || retry.Revision <= first.Revision {
 		h.t.Fatalf("retry changed grant identity/TTL/revision: first=%+v retry=%+v", first, retry)
 	}
+
 	for _, change := range []func(*airlock.Request){
 		func(r *airlock.Request) { r.Owner = airlock.NewRequest(time.Now()).Owner },
 		func(r *airlock.Request) { r.Weight = 1 },
@@ -136,6 +139,7 @@ func idempotency(h *harness) {
 		change(&conflict)
 		h.wantError(airlock.Submit, conflict, "", airlock.ErrRequestConflict)
 	}
+
 	conflict := r
 	conflict.Config.Admission.Capacity++
 	h.wantError(airlock.Submit, conflict, "", airlock.ErrConfigConflict)
@@ -176,8 +180,10 @@ func weightValidation(h *harness) {
 		if weight > h.cfg.Admission.Capacity {
 			want = airlock.ErrWeightExceedsCapacity
 		}
+
 		h.wantError(airlock.Submit, h.request("a", weight), "", want)
 	}
+
 	h.must(airlock.Submit, h.request("b", h.cfg.Admission.Capacity), "", airlock.Granted)
 }
 
@@ -188,9 +194,11 @@ func protectedHead(h *harness) {
 	large, small := h.request("large", 3), h.request("small", 1)
 	h.must(airlock.Submit, large, "", airlock.Queued)
 	h.must(airlock.Submit, small, "", airlock.Queued)
+
 	for i := 0; i < 3; i++ {
 		h.must(airlock.Observe, small, "", airlock.Queued)
 	}
+
 	h.must(airlock.Release, holder, grant.LeaseID, airlock.Released)
 	h.must(airlock.Observe, small, "", airlock.Queued)
 	grant = h.must(airlock.Observe, large, "", airlock.Granted)
@@ -212,6 +220,7 @@ func queueBounds(h *harness) {
 	if got := h.wantError(airlock.Submit, rejected, "", airlock.ErrQueueFull); got.Status != airlock.Rejected {
 		h.t.Fatalf("queue rejection status=%s", got.Status)
 	}
+
 	h.must(airlock.Cancel, a, "", airlock.Cancelled)
 	h.wantError(airlock.Submit, rejected, "", airlock.ErrQueueFull)
 	h.must(airlock.Submit, h.request("c", 1), "", airlock.Queued)
@@ -246,6 +255,7 @@ func priorityRotation(h *harness) {
 	holder := h.request("holder", 1)
 	grant := h.must(airlock.Submit, holder, "", airlock.Granted)
 	queues := map[string][]airlock.Request{}
+
 	for _, spec := range []struct {
 		tenant string
 		count  int
@@ -256,16 +266,20 @@ func priorityRotation(h *harness) {
 			h.must(airlock.Submit, r, "", airlock.Queued)
 		}
 	}
+
 	h.must(airlock.Release, holder, grant.LeaseID, airlock.Released)
+
 	for cycle := 0; cycle < 2; cycle++ {
 		for _, tenant := range []string{"h1", "h2", "h1", "h2", "h1", "h2", "h1", "h2", "m", "m", "m", "l"} {
 			r := queues[tenant][0]
+
 			// Poll all other tenants first. Observation frequency cannot change turns.
 			for _, other := range []string{"l", "m", "h2", "h1"} {
 				if other != tenant && len(queues[other]) > 0 {
 					h.must(airlock.Observe, queues[other][0], "", airlock.Queued)
 				}
 			}
+
 			g := h.must(airlock.Observe, r, "", airlock.Granted)
 			h.must(airlock.Release, r, g.LeaseID, airlock.Released)
 			queues[tenant] = queues[tenant][1:]
@@ -279,13 +293,16 @@ func tenantRotation(h *harness) {
 	holder := h.request("holder", 1)
 	g := h.must(airlock.Submit, holder, "", airlock.Granted)
 	a1, a2, b, c := h.request("a", 1), h.request("a", 1), h.request("b", 1), h.request("c", 1)
+
 	for _, r := range []airlock.Request{a1, a2, b, c} {
 		h.must(airlock.Submit, r, "", airlock.Queued)
 	}
+
 	h.must(airlock.Cancel, b, "", airlock.Cancelled)
 	b2 := h.request("b", 1)
 	h.must(airlock.Submit, b2, "", airlock.Queued)
 	h.must(airlock.Release, holder, g.LeaseID, airlock.Released)
+
 	for _, r := range []airlock.Request{a1, c, b2, a2} {
 		g = h.must(airlock.Observe, r, "", airlock.Granted)
 		h.must(airlock.Release, r, g.LeaseID, airlock.Released)
@@ -301,11 +318,14 @@ func selectedCancel(h *harness) {
 	holder := h.request("holder", 2)
 	g := h.must(airlock.Submit, holder, "", airlock.Granted)
 	h1, h2, h3, low := h.request("h", 3), h.request("h", 3), h.request("h", 3), h.request("low", 3)
+
 	for _, r := range []airlock.Request{h1, h2, h3, low} {
 		h.must(airlock.Submit, r, "", airlock.Queued)
 	}
+
 	h.must(airlock.Cancel, h1, "", airlock.Cancelled)
 	h.must(airlock.Release, holder, g.LeaseID, airlock.Released)
+
 	for _, r := range []airlock.Request{h2, low, h3} {
 		g = h.must(airlock.Observe, r, "", airlock.Granted)
 		h.must(airlock.Release, r, g.LeaseID, airlock.Released)
@@ -337,6 +357,7 @@ func leaseExpiry(h *harness) {
 	if renewed.LeaseID != g.LeaseID {
 		h.t.Fatal("renew changed lease ID")
 	}
+
 	waiting := h.request("b", 3)
 	h.must(airlock.Submit, waiting, "", airlock.Queued)
 	sleepUntil(start.Add(h.cfg.LeaseTTL + 100*time.Millisecond))
@@ -377,9 +398,11 @@ func concurrentAdmission(h *harness) {
 	h.cfg.Admission.Capacity = 7
 	const clients = 24
 	requests := make([]airlock.Request, clients)
+
 	for i := range requests {
 		requests[i] = h.request(fmt.Sprintf("tenant-%d", i%4), 1+i%3)
 	}
+
 	var inUse atomic.Int64
 	var completed atomic.Int64
 	var workers sync.WaitGroup
@@ -387,6 +410,7 @@ func concurrentAdmission(h *harness) {
 	allSubmitted := make(chan struct{})
 	var submitted sync.WaitGroup
 	submitted.Add(clients)
+
 	for _, request := range requests {
 		workers.Add(1)
 		go func(r airlock.Request) {
@@ -398,13 +422,16 @@ func concurrentAdmission(h *harness) {
 					h.t.Errorf("concurrent initial grants own %d > %d", used, h.cfg.Admission.Capacity)
 				}
 			}
+
 			submitted.Done()
 			<-allSubmitted // No release until every initial submission settles.
 			if err != nil {
 				h.t.Errorf("concurrent submit: %v", err)
 				return
 			}
+
 			deadline := time.Now().Add(20 * time.Second)
+
 			for result.Status == airlock.Queued && time.Now().Before(deadline) {
 				// Observe may atomically rewrite a bounded resource snapshot.
 				// Avoid a 24-client polling storm under race/coverage instruments;
@@ -415,18 +442,22 @@ func concurrentAdmission(h *harness) {
 					h.t.Errorf("concurrent observe: %v", err)
 					return
 				}
+
 				if result.Status == airlock.Granted {
 					if used := inUse.Add(int64(r.Weight)); used > int64(h.cfg.Admission.Capacity) {
 						h.t.Errorf("concurrent grants own %d > %d", used, h.cfg.Admission.Capacity)
 					}
 				}
 			}
+
 			if result.Status != airlock.Granted || result.Weight != r.Weight || result.LeaseID == "" {
 				h.t.Errorf("concurrent grant invalid: %+v", result)
 				return
 			}
+
 			// Stop simulated work before release can grant the next request.
 			inUse.Add(-int64(r.Weight))
+
 			for i := 0; i < 2; i++ {
 				released, releaseErr := h.execute(airlock.Release, r, result.LeaseID)
 				if releaseErr != nil || released.Status != airlock.Released {
@@ -434,9 +465,11 @@ func concurrentAdmission(h *harness) {
 					return
 				}
 			}
+
 			completed.Add(1)
 		}(request)
 	}
+
 	close(start)
 	submitted.Wait()
 	close(allSubmitted)

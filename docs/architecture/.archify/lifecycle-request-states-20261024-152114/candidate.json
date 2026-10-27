@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "revision": "ca393a3031c310c21515cec04e98b4f009f50e08",
       "link_mode": "local-only"
     }
   },
@@ -27,9 +27,9 @@
       "sublabel": "不是 Status 枚举",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 92,
-          "end_line": 127
+          "path": "shared_state.go",
+          "line": 122,
+          "end_line": 134
         }
       ]
     },
@@ -40,19 +40,19 @@
       "sublabel": "持久等待；不占 token",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 73,
-          "end_line": 87
+          "path": "driver.go",
+          "line": 121,
+          "end_line": 124
         },
         {
-          "path": "driver_state.go",
-          "line": 117,
-          "end_line": 143
+          "path": "shared_state.go",
+          "line": 100,
+          "end_line": 104
         },
         {
-          "path": "driver_state.go",
-          "line": 221,
-          "end_line": 228
+          "path": "shared_state.go",
+          "line": 147,
+          "end_line": 157
         }
       ]
     },
@@ -63,14 +63,14 @@
       "sublabel": "占用全部 weight",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 131,
-          "end_line": 160
+          "path": "shared_state.go",
+          "line": 143,
+          "end_line": 146
         },
         {
-          "path": "driver_state.go",
-          "line": 73,
-          "end_line": 84
+          "path": "shared_state.go",
+          "line": 184,
+          "end_line": 192
         }
       ]
     },
@@ -81,14 +81,14 @@
       "sublabel": "匹配租约已释放",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 144,
-          "end_line": 160
+          "path": "shared_state.go",
+          "line": 184,
+          "end_line": 192
         },
         {
-          "path": "driver_state.go",
-          "line": 85,
-          "end_line": 87
+          "path": "shared_state.go",
+          "line": 237,
+          "end_line": 241
         }
       ]
     },
@@ -99,9 +99,9 @@
       "sublabel": "原 ID 不能重新提交",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 85,
-          "end_line": 101
+          "path": "shared_state.go",
+          "line": 100,
+          "end_line": 117
         }
       ]
     },
@@ -112,19 +112,14 @@
       "sublabel": "含先取消后提交",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 103,
-          "end_line": 108
+          "path": "shared_state.go",
+          "line": 136,
+          "end_line": 139
         },
         {
-          "path": "driver_state.go",
-          "line": 131,
-          "end_line": 143
-        },
-        {
-          "path": "driver_state.go",
-          "line": 85,
-          "end_line": 87
+          "path": "shared_state.go",
+          "line": 160,
+          "end_line": 176
         }
       ]
     },
@@ -135,14 +130,14 @@
       "sublabel": "等待或租约到期",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 73,
-          "end_line": 87
+          "path": "shared_state.go",
+          "line": 98,
+          "end_line": 112
         },
         {
-          "path": "driver_state.go",
-          "line": 109,
-          "end_line": 111
+          "path": "shared_state.go",
+          "line": 140,
+          "end_line": 142
         }
       ]
     },
@@ -153,14 +148,14 @@
       "sublabel": "队列拒绝结果稳定",
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 117,
-          "end_line": 121
+          "path": "shared_state.go",
+          "line": 147,
+          "end_line": 153
         },
         {
-          "path": "driver_state.go",
-          "line": 85,
-          "end_line": 87
+          "path": "shared_state.go",
+          "line": 225,
+          "end_line": 234
         }
       ]
     }
@@ -287,7 +282,7 @@
       "title": "图外错误",
       "items": [
         "配置冲突、历史满、非法命令等不等于 Rejected 状态。",
-        "本图展示合法协议路径；既有记录上的 Observe 等不改状态操作省略。"
+        "本图展示合法协议路径；免维护期的只读 Observe 不改状态、不推进 Revision。"
       ]
     }
   ]

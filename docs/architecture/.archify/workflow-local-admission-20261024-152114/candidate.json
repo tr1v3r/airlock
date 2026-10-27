@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "revision": "ca393a3031c310c21515cec04e98b4f009f50e08",
       "link_mode": "local-only"
     },
     "legend": {
@@ -59,8 +59,13 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 155,
-          "end_line": 184
+          "line": 188,
+          "end_line": 200
+        },
+        {
+          "path": "airlock.go",
+          "line": 203,
+          "end_line": 219
         }
       ]
     },
@@ -74,8 +79,8 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 180,
-          "end_line": 190
+          "line": 220,
+          "end_line": 225
         }
       ]
     },
@@ -89,8 +94,13 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 185,
-          "end_line": 205
+          "line": 220,
+          "end_line": 225
+        },
+        {
+          "path": "airlock.go",
+          "line": 238,
+          "end_line": 243
         }
       ]
     },
@@ -104,8 +114,8 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 277,
-          "end_line": 295
+          "line": 337,
+          "end_line": 358
         }
       ]
     },
@@ -119,8 +129,8 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 216,
-          "end_line": 227
+          "line": 263,
+          "end_line": 278
         }
       ]
     },
@@ -134,13 +144,28 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 191,
-          "end_line": 211
+          "line": 227,
+          "end_line": 236
         },
         {
           "path": "airlock.go",
-          "line": 228,
-          "end_line": 237
+          "line": 238,
+          "end_line": 244
+        }
+      ]
+    },
+    {
+      "id": "resize",
+      "type": "security",
+      "label": "Resize 缩容拒绝",
+      "sublabel": "超重者出队并唤醒",
+      "lane": "wait",
+      "col": 3,
+      "sources": [
+        {
+          "path": "airlock.go",
+          "line": 383,
+          "end_line": 398
         }
       ]
     },
@@ -154,13 +179,13 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 191,
-          "end_line": 195
+          "line": 227,
+          "end_line": 231
         },
         {
           "path": "airlock.go",
-          "line": 216,
-          "end_line": 227
+          "line": 263,
+          "end_line": 278
         }
       ]
     },
@@ -174,8 +199,8 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 201,
-          "end_line": 210
+          "line": 245,
+          "end_line": 254
         }
       ]
     },
@@ -189,13 +214,13 @@
       "sources": [
         {
           "path": "airlock.go",
-          "line": 201,
-          "end_line": 210
+          "line": 245,
+          "end_line": 259
         },
         {
           "path": "airlock.go",
-          "line": 241,
-          "end_line": 252
+          "line": 293,
+          "end_line": 307
         }
       ]
     }
@@ -238,6 +263,12 @@
       "label": "ready"
     },
     {
+      "id": "queued-resize",
+      "from": "queued",
+      "to": "resize",
+      "label": "缩容且超重"
+    },
+    {
       "id": "queued-race",
       "from": "queued",
       "to": "race",
@@ -268,7 +299,7 @@
       "title": "错误优先级",
       "items": [
         "nil context 会 panic；显式空租户、非法权重先于取消校验。",
-        "ctx.Err 在锁内检查；取消与授予以锁内状态转换为准。"
+        "ctx.Err 在锁内检查；取消、缩容拒绝与授予以锁内状态为准。"
       ]
     },
     {
@@ -284,6 +315,7 @@
       "title": "释放与完成",
       "items": [
         "授予赢得竞争时，即使 context 已取消也可能成功返回。",
+        "Resize 收缩只拒绝超重等待者，已授予的 Permit 不受影响。",
         "库不执行任务；所有成功返回的 Permit 都需要释放。"
       ]
     }

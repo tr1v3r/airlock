@@ -35,6 +35,7 @@ func run(address string) error {
 	if err != nil {
 		return err
 	}
+
 	limiter, err := airlock.NewShared(driver, airlock.SharedOptions{
 		Resource: "jobs",
 		Config: airlock.ResourceConfig{
@@ -44,21 +45,25 @@ func run(address string) error {
 	if err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	lease, err := limiter.AcquireNFor(ctx, "tenant-a", 2)
 	if err != nil {
 		return err
 	}
+
 	// Real work must stop when Done closes or Valid becomes false. Acquisition
 	// context cancellation does not stop work or release this delivered lease.
 	var workErr error
+
 	select {
 	case <-lease.Done():
 		workErr = airlock.ErrLeaseLost
 	default:
 		fmt.Printf("admitted %d tokens\n", lease.Weight())
 	}
+
 	// Work has stopped before releasing. Use a fresh context for cleanup.
 	cleanup, cancelCleanup := context.WithTimeout(context.Background(), time.Second)
 	defer cancelCleanup()

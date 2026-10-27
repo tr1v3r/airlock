@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "revision": "ca393a3031c310c21515cec04e98b4f009f50e08",
       "link_mode": "local-only"
     },
     "legend": {
@@ -58,7 +58,7 @@
       "sources": [
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 22,
+          "line": 23,
           "end_line": 41
         }
       ]
@@ -73,13 +73,13 @@
       "sources": [
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 74,
-          "end_line": 111
+          "line": 85,
+          "end_line": 99
         },
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 132,
-          "end_line": 138
+          "line": 149,
+          "end_line": 156
         }
       ]
     },
@@ -93,13 +93,13 @@
       "sources": [
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 71,
-          "end_line": 74
+          "line": 43,
+          "end_line": 58
         },
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 132,
-          "end_line": 138
+          "line": 153,
+          "end_line": 156
         }
       ]
     },
@@ -113,8 +113,8 @@
       "sources": [
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 79,
-          "end_line": 87
+          "line": 90,
+          "end_line": 99
         }
       ]
     },
@@ -128,8 +128,8 @@
       "sources": [
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 88,
-          "end_line": 110
+          "line": 100,
+          "end_line": 126
         }
       ]
     },
@@ -143,8 +143,8 @@
       "sources": [
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 113,
-          "end_line": 130
+          "line": 128,
+          "end_line": 148
         }
       ]
     },
@@ -158,8 +158,8 @@
       "sources": [
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 167,
-          "end_line": 180
+          "line": 189,
+          "end_line": 207
         }
       ]
     },
@@ -173,8 +173,8 @@
       "sources": [
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 167,
-          "end_line": 180
+          "line": 193,
+          "end_line": 204
         }
       ]
     },
@@ -188,13 +188,8 @@
       "sources": [
         {
           "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 119,
-          "end_line": 130
-        },
-        {
-          "path": "driver/memory/examples/lifecycle/main.go",
-          "line": 167,
-          "end_line": 180
+          "line": 128,
+          "end_line": 148
         }
       ]
     }

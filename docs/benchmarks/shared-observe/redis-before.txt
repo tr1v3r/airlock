@@ -1,0 +1,7 @@
+goos: linux
+goarch: arm64
+pkg: github.com/tr1v3r/airlock/driver/redis
+BenchmarkIntegrationObserveQueued/1-12  	     100	     73885 ns/op	   17033 B/op	     120 allocs/op
+BenchmarkIntegrationObserveQueued/100-12         	     100	   1057481 ns/op	  545696 B/op	    1148 allocs/op
+BenchmarkIntegrationObserveQueued/1000-12        	     100	  12426740 ns/op	 7041745 B/op	   11228 allocs/op
+PASS
