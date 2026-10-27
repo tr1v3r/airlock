@@ -175,6 +175,8 @@ Tests: [driver/redis/redis_test.go](../../driver/redis/redis_test.go), [driver/r
 
 ## Scope and reading limits
 
+- These pinned diagram snapshots precede versioned Shared Resize/Inspect and do not show the optional ResourceManager flow. Use the [current Shared guide](../guides/shared.md#shared-dynamic-capacity) for resource management.
+
 - Diagrams explain code behavior, not measured throughput or an SLA. Sequence positions encode order, not elapsed time.
 - The backend lifecycle preserves the full set of state-changing paths and has several crossing routes; use HTML node focus to follow them. Common observations and other state-preserving operations are omitted.
 - The client Lease diagram describes local validity separately. Invalidity does not confirm backend release, and terminal accounting cannot forcibly stop application work.
