@@ -133,7 +133,7 @@
     ],
     "tests": [
       "internal/driverconformance/conformance.go",
-      "driver/redis/cas_test.go"
+      "driver/redis/commit_test.go"
     ],
     "preview": "previews/driver-boundaries.png"
   },

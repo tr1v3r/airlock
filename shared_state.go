@@ -54,7 +54,7 @@ type durableRecord = DriverRecord
 type durableSnapshot = SharedState
 
 // transition advances exclusively owned structured state.
-func transition(state *SharedState, now time.Time, cmd Command) (*SharedState, Result, error) {
+func transition(state *SharedState, now time.Time, cmd Command, window *commitWindowCollector) (*SharedState, Result, error) {
 	r := cmd.Request
 	r.SubmitUntil = r.SubmitUntil.UTC()
 	r.WaitUntil = r.WaitUntil.UTC()
@@ -82,9 +82,14 @@ func transition(state *SharedState, now time.Time, cmd Command) (*SharedState, R
 
 	for _, rec := range s.Records {
 		if rec != nil {
+			// Capture original deadlines before expiry, renewal or cancellation.
+			window.record(rec, s.Config.Retention)
 			rec.Request.Config = s.Config
 		}
 	}
+
+	// Keep boundary order: original records, original command, final records.
+	window.request(cmd.Request)
 
 	if old := s.Records[r.ID]; old != nil && !reflect.DeepEqual(old.Request, r) {
 		return nil, Result{}, ErrRequestConflict
@@ -216,6 +221,8 @@ func transition(state *SharedState, now time.Time, cmd Command) (*SharedState, R
 
 	// Store immutable configuration once, not once per retained request.
 	for _, rec := range s.Records {
+		// All lifecycle/scheduling changes are complete; collect final deadlines.
+		window.record(rec, s.Config.Retention)
 		rec.Request.Config = ResourceConfig{}
 	}
 
