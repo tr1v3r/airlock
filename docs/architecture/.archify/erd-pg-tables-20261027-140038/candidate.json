@@ -1,0 +1,250 @@
+{
+  "schema_version": 1,
+  "diagram_type": "erd",
+  "meta": {
+    "title": "PG 表结构｜资源行负责串行化，请求行保存生命周期",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "cbdfca745233d8cd3a67fd7d236c76d13d07f436",
+      "link_mode": "local-only"
+    },
+    "output": ".archify/erd-pg-tables-20261027-140038/pg-tables.html"
+  },
+  "layout": {
+    "mode": "grid",
+    "entityW": 420,
+    "gapX": 160,
+    "rowH": 25
+  },
+  "entities": [
+    {
+      "id": "resources",
+      "label": "airlock_resources",
+      "sublabel": "每个 namespace + resource 一行",
+      "tag": "资源与调度",
+      "row": 0,
+      "col": 0,
+      "attributes": [
+        {
+          "name": "namespace",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "resource",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "state_version",
+          "type": "integer"
+        },
+        {
+          "name": "config",
+          "type": "jsonb"
+        },
+        {
+          "name": "rotations",
+          "type": "jsonb"
+        },
+        {
+          "name": "protected",
+          "type": "text"
+        },
+        {
+          "name": "cursor",
+          "type": "integer"
+        },
+        {
+          "name": "revision",
+          "type": "numeric(20,0)"
+        },
+        {
+          "name": "observed_ms",
+          "type": "bigint"
+        },
+        {
+          "name": "next_maintenance_ms",
+          "type": "bigint"
+        }
+      ],
+      "sources": [
+        {
+          "path": "driver/postgres/schema.go",
+          "line": 49,
+          "end_line": 69,
+          "label": "资源表 DDL"
+        },
+        {
+          "path": "driver/postgres/storage.go",
+          "line": 150,
+          "end_line": 175,
+          "label": "资源表更新"
+        },
+        {
+          "path": "driver/postgres/storage.go",
+          "line": 55,
+          "end_line": 80,
+          "label": "资源行锁"
+        }
+      ]
+    },
+    {
+      "id": "requests",
+      "label": "airlock_requests",
+      "sublabel": "每个 namespace + resource + id 一行",
+      "tag": "请求与恢复",
+      "row": 0,
+      "col": 1,
+      "attributes": [
+        {
+          "name": "namespace",
+          "type": "text",
+          "key": [
+            "pk",
+            "fk",
+            "uk"
+          ],
+          "references": "resources.namespace"
+        },
+        {
+          "name": "resource",
+          "type": "text",
+          "key": [
+            "pk",
+            "fk",
+            "uk"
+          ],
+          "references": "resources.resource"
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "owner",
+          "type": "text"
+        },
+        {
+          "name": "tenant",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "weight",
+          "type": "integer"
+        },
+        {
+          "name": "submit_until_ms",
+          "type": "bigint"
+        },
+        {
+          "name": "wait_until_ms",
+          "type": "bigint"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "lease_id",
+          "type": "text"
+        },
+        {
+          "name": "until_ms",
+          "type": "bigint"
+        },
+        {
+          "name": "finished_ms",
+          "type": "bigint"
+        },
+        {
+          "name": "failure",
+          "type": "text"
+        },
+        {
+          "name": "queue_position",
+          "type": "bigint",
+          "key": "uk"
+        }
+      ],
+      "sources": [
+        {
+          "path": "driver/postgres/schema.go",
+          "line": 68,
+          "end_line": 92,
+          "label": "请求表与约束"
+        },
+        {
+          "path": "driver/postgres/storage.go",
+          "line": 200,
+          "end_line": 249,
+          "label": "请求差异写入"
+        },
+        {
+          "path": "driver/postgres/observe.go",
+          "line": 20,
+          "end_line": 49,
+          "label": "两表关联查询"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "request_resource",
+      "from": "requests",
+      "to": "resources",
+      "fromCardinality": "many",
+      "fromOptional": true,
+      "toCardinality": "one",
+      "label": "namespace + resource 外键",
+      "identifying": true
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "复合键：标记表示参与，单列不独立唯一",
+      "items": [
+        "资源主键：(namespace, resource)。请求主键：(namespace, resource, id)。",
+        "请求外键：(namespace, resource) → airlock_resources(namespace, resource)。",
+        "请求复合唯一约束：(namespace, resource, tenant, queue_position)，DEFERRABLE INITIALLY DEFERRED。",
+        "一个资源可以没有请求，也可以有多条请求；每条请求必须关联一个资源。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "资源字段怎么使用",
+      "items": [
+        "config：不可变 ResourceConfig，包含容量、队列、优先级及租约/保留策略。state_version：状态格式版本，当前约束为 1。",
+        "rotations：优先级组内的租户轮转顺序。cursor：加权组选择位置，非负。protected：受保护请求 ID 文本，不是布尔值，也没有声明成外键。",
+        "revision：每次已提交完整转换递增。observed_ms：核心计算采用的后端时间。next_maintenance_ms：最早过期或回收边界。",
+        "namespace/resource/protected 及请求身份/队列相关文本使用 pg_catalog.C collation；默认表位于 public，可通过 WithTable 自定义。"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "请求字段怎么使用",
+      "items": [
+        "id/owner/tenant/weight 与提交、等待期限构成不可变请求信息；weight > 0。",
+        "status：queued / granted / released / expired / cancelled / rejected。lease_id 是授予身份，终态也可能保留。",
+        "until_ms：排队或租约的到期时间。finished_ms：进入终态的时间。failure：Rejected 对应的稳定拒绝原因。",
+        "queue_position：租户 FIFO 的持久化位置，非负；CHECK 强制 status=queued 等价于位置非 NULL。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "默认值、可空字段与当前边界",
+      "items": [
+        "资源：state_version=1，rotations=[]，protected=空串，cursor=0，revision=0；observed_ms 与 next_maintenance_ms 可为 NULL，其余字段 NOT NULL。",
+        "请求：until_ms、finished_ms、queue_position 可为 NULL，其余字段 NOT NULL；未声明默认值。",
+        "revision 约束 0..18446744073709551615。历史保留至 max(Finished+Retention, SubmitUntil)，然后由核心回收。",
+        "当前没有 used、active、queued、record_count 摘要列；不能把 #50 的拟议摘要字段理解为现有表结构。"
+      ]
+    }
+  ]
+}

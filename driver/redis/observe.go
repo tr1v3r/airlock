@@ -78,7 +78,7 @@ func (d *Driver) observe(ctx context.Context, request airlock.Request) (airlock.
 	}
 
 	// Reuse backend-time validation, without transferring a state snapshot.
-	_, _, now, err := decodeRead([]any{int64(0), "", values[2], values[3]})
+	_, now, err := decodeRead([]any{int64(0), "", values[2], values[3]})
 	if err != nil {
 		return airlock.Result{}, true, err
 	}

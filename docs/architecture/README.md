@@ -10,23 +10,26 @@ names; this English guide covers the same entry points and limits.
 
 - **Users**: 01 overview → 02 local admission; for shared capacity, continue with 05 lease → 08 supervision.
 - **Beginners**: 01 → 02 → 03 to distinguish capacity, waiting requests, tenants and permits; then 04–06 for the shared protocol.
-- **Contributors**: 03 scheduling → 04 state machine → 07 drivers, followed by the implementation/test map below.
+- **Contributors**: 03 scheduling → 04 state machine → 07 drivers, then 09–10 for PostgreSQL and 11 for Redis; use the implementation/test map below.
 
 GitHub file views do not execute HTML. Read the PNG previews below, or clone the
 repository and open `docs/architecture/index.html` in a browser. Each diagram HTML
 can also be downloaded and opened independently. The graph and viewer are inline;
 no server is needed. The viewer supports search, node focus, light/dark themes and
 PNG/SVG export. PNGs are static browser previews, not substitutes for the explorable HTML.
-Source evidence is pinned to
-[`beb9c6f`](https://github.com/tr1v3r/airlock/tree/beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d).
-The atlas PR is based on `045c387`, which subsequently merged SDK comments; diagram
+Source evidence for diagrams 01–08 is pinned to
+[`ca393a3`](https://github.com/tr1v3r/airlock/tree/ca393a3031c310c21515cec04e98b4f009f50e08).
+This refresh follows the `dev` renames (`shared.go`, `shared_state.go`,
+`driver_transition.go`), local `Resize` and read-only observations; diagram
 line numbers belong to the pinned snapshot, not the moving `dev` branch.
+PG views 09–10 retain [`cbdfca7`](https://github.com/tr1v3r/airlock/tree/cbdfca745233d8cd3a67fd7d236c76d13d07f436). Redis view 11 follows `dev` at [`f9de5e5`](https://github.com/tr1v3r/airlock/tree/f9de5e5e79bd2d06d97b0eba4ce45dbbb99b6410), including the Resource update lock and owner/CommitWindow checks. Every candidate records its own revision; earlier views retain their pinned snapshots.
 
 ## Find your entry point
 
 | Need | API / implementation | Contract to verify |
 | --- | --- | --- |
 | Bound local in-flight work | [hello](../../examples/hello/example.go), `New(Config)` | Release successful permits; zero queue limits disable waiting |
+| Change capacity at runtime | [airlock.go](../../airlock.go), `Resize` | Shrinking never revokes permits; overweight waiters fail |
 | Acquire a whole weighted allocation | [weighted](../../examples/weighted/example.go), `AcquireNFor` | No partial grants; protected large requests |
 | Reject immediately when busy | [tryacquire](../../examples/tryacquire/example.go), `TryAcquireNFor` | No bypassing waiters; still takes the mutex |
 | Tenant priorities and waiting budgets | [priority example](../../examples/priority/example.go), [priority.go](../../priority.go) | Shares count selections, not token usage |
@@ -120,7 +123,7 @@ Locate the atomic boundary and the actual snapshot writer.
 
 Implementation: [driver.go](../../driver.go), [driver_transition.go](../../driver_transition.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
 
-Tests: [internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/cas_test.go](../../driver/redis/cas_test.go)
+Tests: [internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/commit_test.go](../../driver/redis/commit_test.go)
 
 ### 08 · Application-owned supervision
 
@@ -134,14 +137,51 @@ Implementation: [driver/memory/examples/lifecycle/main.go](../../driver/memory/e
 
 Tests: [driver/memory/examples/lifecycle/main_test.go](../../driver/memory/examples/lifecycle/main_test.go)
 
+### 09 · PostgreSQL operations and transaction boundaries
+
+Trace the five operations, lock acquisition, full-state loading and delta writes.
+
+[HTML](.archify/workflow-pg-operations-20261027-140038/pg-operations.html) · [JSON](.archify/workflow-pg-operations-20261027-140038/candidate.json)
+
+![PostgreSQL operations and transaction boundaries](previews/pg-operations.png)
+
+Implementation: [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/postgres/observe.go](../../driver/postgres/observe.go), [driver/postgres/storage.go](../../driver/postgres/storage.go), [shared_state.go](../../shared_state.go)
+
+Tests: [driver/postgres/postgres_test.go](../../driver/postgres/postgres_test.go), [driver/postgres/storage_test.go](../../driver/postgres/storage_test.go), [driver/postgres/postgres_integration_test.go](../../driver/postgres/postgres_integration_test.go)
+
+### 10 · PostgreSQL resource and request schema
+
+Inspect every physical column, composite key and lifecycle field.
+
+[HTML](.archify/erd-pg-tables-20261027-140038/pg-tables.html) · [JSON](.archify/erd-pg-tables-20261027-140038/candidate.json)
+
+![PostgreSQL resource and request schema](previews/pg-tables.png)
+
+Implementation: [driver/postgres/schema.go](../../driver/postgres/schema.go), [driver/postgres/storage.go](../../driver/postgres/storage.go), [driver/postgres/observe.go](../../driver/postgres/observe.go)
+
+Tests: [driver/postgres/postgres_test.go](../../driver/postgres/postgres_test.go), [driver/postgres/storage_test.go](../../driver/postgres/storage_test.go)
+
+### 11 · Redis resource update lock and guarded commit workflow
+
+Follow read-only Observe, per-resource locking, owner/time guards and cleanup.
+
+[HTML](.archify/workflow-redis-operations-20261027-224623/redis-operations.html) · [JSON](.archify/workflow-redis-operations-20261027-224623/candidate.json)
+
+![Redis resource update lock and guarded commit workflow](previews/redis-operations.png)
+
+Implementation: [driver/redis/redis.go](../../driver/redis/redis.go), [driver/redis/observe.go](../../driver/redis/observe.go), [driver/redis/scripts.go](../../driver/redis/scripts.go), [driver/redis/update_lock.go](../../driver/redis/update_lock.go), [driver_transition.go](../../driver_transition.go), [shared_state.go](../../shared_state.go)
+
+Tests: [driver/redis/redis_test.go](../../driver/redis/redis_test.go), [driver/redis/commit_test.go](../../driver/redis/commit_test.go), [driver/redis/integration_test.go](../../driver/redis/integration_test.go), [shared_commit_window_test.go](../../shared_commit_window_test.go)
+
 ## Scope and reading limits
 
 - Diagrams explain code behavior, not measured throughput or an SLA. Sequence positions encode order, not elapsed time.
 - The backend lifecycle preserves the full set of state-changing paths and has several crossing routes; use HTML node focus to follow them. Common observations and other state-preserving operations are omitted.
 - The client Lease diagram describes local validity separately. Invalidity does not confirm backend release, and terminal accounting cannot forcibly stop application work.
-- The driver diagram shows I/O ownership; its cards describe Memory / PostgreSQL calls to Transition. Redis uses the optimistic wrapper.
+- The driver diagram shows I/O ownership; its cards describe Memory / PostgreSQL calls to Transition. Redis enforces the returned CommitWindow, and every driver can answer Observe read-only between maintenance boundaries.
 - Supervision comes from a runnable application example; `runJob` is not an SDK API. Acquisition failure starts no work; actual execution determines the ordering of cancellation and completion.
-- Proposals, the unmerged PostgreSQL relational branch, deployment topologies and performance waterfalls are not presented as implemented architecture.
+- The PG views show the current complete-state load and request delta writes. The Redis view shows one Hash with authoritative `state`, derived `meta`/`r:<id>` projections, and a per-Resource update lock plus atomic owner/CommitWindow checks. Redis no longer compares the old snapshot. Incremental transition proposals (#50/#51) remain unimplemented.
+- Proposals, unmerged branches, deployment topologies and performance waterfalls are not presented as implemented architecture.
 
 ## Maintenance and verification
 

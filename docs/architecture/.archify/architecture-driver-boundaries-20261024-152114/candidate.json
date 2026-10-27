@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:tr1v3r/airlock.git",
-      "revision": "beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d",
+      "revision": "ca393a3031c310c21515cec04e98b4f009f50e08",
       "link_mode": "local-only"
     }
   },
@@ -30,7 +30,7 @@
         {
           "path": "driver.go",
           "line": 14,
-          "end_line": 31
+          "end_line": 36
         }
       ]
     },
@@ -50,8 +50,8 @@
       "sources": [
         {
           "path": "driver/memory/memory.go",
-          "line": 30,
-          "end_line": 64
+          "line": 50,
+          "end_line": 68
         }
       ]
     },
@@ -71,8 +71,8 @@
       "sources": [
         {
           "path": "driver/postgres/postgres.go",
-          "line": 123,
-          "end_line": 172
+          "line": 143,
+          "end_line": 181
         }
       ]
     },
@@ -92,8 +92,8 @@
       "sources": [
         {
           "path": "driver/redis/redis.go",
-          "line": 162,
-          "end_line": 221
+          "line": 210,
+          "end_line": 296
         }
       ]
     },
@@ -101,7 +101,7 @@
       "id": "memstore",
       "type": "database",
       "label": "进程内快照",
-      "sublabel": "实例之间不共享",
+      "sublabel": "含只读投影；实例间不共享",
       "pos": [
         700,
         60
@@ -113,13 +113,13 @@
       "sources": [
         {
           "path": "driver/memory/memory.go",
-          "line": 14,
+          "line": 16,
           "end_line": 25
         },
         {
           "path": "driver/memory/memory.go",
-          "line": 57,
-          "end_line": 64
+          "line": 85,
+          "end_line": 101
         }
       ]
     },
@@ -127,7 +127,7 @@
       "id": "pgstore",
       "type": "database",
       "label": "PostgreSQL",
-      "sublabel": "资源行保存 snapshot",
+      "sublabel": "资源行 + 请求行增量写",
       "pos": [
         700,
         245
@@ -138,9 +138,14 @@
       ],
       "sources": [
         {
-          "path": "driver/postgres/postgres.go",
-          "line": 138,
-          "end_line": 172
+          "path": "driver/postgres/storage.go",
+          "line": 33,
+          "end_line": 34
+        },
+        {
+          "path": "driver/postgres/storage.go",
+          "line": 150,
+          "end_line": 252
         }
       ]
     },
@@ -160,8 +165,39 @@
       "sources": [
         {
           "path": "driver/redis/scripts.go",
-          "line": 3,
-          "end_line": 39
+          "line": 18,
+          "end_line": 84
+        }
+      ]
+    },
+    {
+      "id": "observation",
+      "type": "backend",
+      "label": "Observation",
+      "sublabel": "免维护期只读应答",
+      "pos": [
+        40,
+        620
+      ],
+      "size": [
+        180,
+        70
+      ],
+      "sources": [
+        {
+          "path": "shared_observation.go",
+          "line": 44,
+          "end_line": 91
+        },
+        {
+          "path": "driver/postgres/observe.go",
+          "line": 18,
+          "end_line": 34
+        },
+        {
+          "path": "driver/memory/memory.go",
+          "line": 74,
+          "end_line": 83
         }
       ]
     },
@@ -180,27 +216,22 @@
       ],
       "sources": [
         {
-          "path": "driver_state.go",
-          "line": 32,
-          "end_line": 40
+          "path": "shared_state.go",
+          "line": 56,
+          "end_line": 96
         },
         {
-          "path": "driver_state.go",
-          "line": 163,
-          "end_line": 187
-        },
-        {
-          "path": "driver_state.go",
-          "line": 221,
-          "end_line": 228
+          "path": "shared_state.go",
+          "line": 268,
+          "end_line": 278
         }
       ]
     },
     {
       "id": "window",
       "type": "backend",
-      "label": "TransitionOptimistic",
-      "sublabel": "附加提交时间窗口",
+      "label": "CommitWindow",
+      "sublabel": "Transition 返回发布窗口",
       "pos": [
         700,
         620
@@ -211,9 +242,14 @@
       ],
       "sources": [
         {
-          "path": "driver_optimistic.go",
+          "path": "driver_transition.go",
+          "line": 8,
+          "end_line": 18
+        },
+        {
+          "path": "driver_transition.go",
           "line": 20,
-          "end_line": 62
+          "end_line": 70
         }
       ]
     }
@@ -256,16 +292,22 @@
       "label": "Lua CAS"
     },
     {
-      "id": "redis-window",
-      "from": "redis",
+      "id": "transition-window",
+      "from": "transition",
       "to": "window",
-      "label": "计算"
+      "label": "返回窗口"
     },
     {
-      "id": "window-transition",
+      "id": "window-redis",
       "from": "window",
-      "to": "transition",
-      "label": "复用"
+      "to": "redis",
+      "label": "CAS 校验"
+    },
+    {
+      "id": "transition-observation",
+      "from": "transition",
+      "to": "observation",
+      "label": "免维护边界"
     }
   ],
   "cards": [
@@ -274,15 +316,16 @@
       "title": "三种原子边界",
       "items": [
         "Memory 和 PostgreSQL 在独占资源后直接调用 Transition。",
-        "Redis 通过 TransitionOptimistic 计算；CAS 同时校验原快照与发布时间。"
+        "Redis 按 Transition 返回的 CommitWindow 做 CAS；同时校验原快照与发布时间。"
       ]
     },
     {
       "dot": "cyan",
       "title": "自定义驱动的切入点",
       "items": [
-        "实现 Driver 的五个方法；不可自行修改 opaque snapshot。",
-        "即使有业务错误，也要提交非 nil 新快照；传输错误是未知结果。"
+        "实现 Driver 的五个方法；SharedState 是可选参考，存储布局自选。",
+        "即使有业务错误，也要提交非 nil 新快照；传输错误是未知结果。",
+        "Observe 在免维护期可只读应答，不推进 Revision。"
       ]
     },
     {
@@ -290,7 +333,7 @@
       "title": "部署与性能边界",
       "items": [
         "Memory 仅供测试演示；远端驱动分别是独立 Go 模块。",
-        "每资源全快照读写；Observe 也推进状态，不能当作廉价只读查询。"
+        "PostgreSQL 增量写变更行；免维护期 Observe 只读、Revision 不变。"
       ]
     }
   ]

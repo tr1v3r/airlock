@@ -162,3 +162,43 @@ func BenchmarkTransitionScale(b *testing.B) {
 func BenchmarkTransitionOptimisticScale(b *testing.B) {
 	benchmarkTransitionScale(b, true)
 }
+
+// BenchmarkCommitWindowTransition compares the frozen split-pass algorithm and
+// fused collection on the same structured workloads. No JSON/network work is
+// timed. Observe leaves records unchanged; Renew's target is reset in O(1), so
+// every iteration sees the same input and history never grows. Queue structures
+// are read from the fixture and replaced only on the returned snapshot header.
+func BenchmarkCommitWindowTransition(b *testing.B) {
+	for _, records := range []int{8, 128, 1000, 10000} {
+		for _, kind := range []Operation{Observe, Renew} {
+			for _, implementation := range []struct {
+				name string
+				run  func(*SharedState, time.Time, Command) (*SharedState, Result, CommitWindow, error)
+			}{{"split", splitWindowTransition}, {"fused", Transition}} {
+				b.Run(fmt.Sprintf("R=%d/%s/%s", records, kind, implementation.name), func(b *testing.B) {
+					s, cmd := scaleSnapshot(b, records, 0, records/2)
+					cmd.Kind = kind
+					cmd.LeaseID = s.Records[cmd.Request.ID].LeaseID
+					if kind == Observe {
+						cmd.Request = s.Records[s.Queues["waiting"][0]].Request
+					}
+					for _, record := range s.Records {
+						record.Request.Config = ResourceConfig{}
+					}
+					target := s.Records[cmd.Request.ID]
+					original := *target
+					now := s.Time.Add(123 * time.Microsecond)
+					b.ReportAllocs()
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						*target = original
+						next, result, window, err := implementation.run(&s, now, cmd)
+						if next == nil || err != nil || result.Revision != 2 || window.NotBefore != now {
+							b.Fatalf("invalid transition: %+v %+v %v", result, window, err)
+						}
+					}
+				})
+			}
+		}
+	}
+}

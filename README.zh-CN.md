@@ -26,7 +26,7 @@ Airlock 是一个**提供完整源码注释的 SDK**，方便编码 agent 理解
 
 ## 架构图集
 
-查看[架构图集](docs/architecture/README.zh-CN.md)：8 张基于源码的架构、流程、时序和生命周期图，配套使用者、初学者、开发者阅读路径及源码/测试入口。[English guide](docs/architecture/README.md)。
+查看[架构图集](docs/architecture/README.zh-CN.md)：11 张基于源码的架构、流程、时序、生命周期和表结构图，配套使用者、初学者、开发者阅读路径及源码/测试入口。[English guide](docs/architecture/README.md)。
 
 ## 安装
 

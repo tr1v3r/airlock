@@ -47,10 +47,10 @@ inventory of checked artifacts; it is not a replacement for rerunning the gates.
 
 ## Scope decisions
 
-The atlas contains eight complementary views rather than every supported diagram
+The atlas contains eleven complementary views rather than every supported diagram
 type. The source/test entry-point tables cover repository navigation without a
 second directory tree. There is no class diagram that merely repeats every API,
-no proposed relational schema presented as shipped, and no timing waterfall without
+no proposed-but-unmerged feature presented as shipped, and no timing waterfall without
 a measured trace. Add a view when it answers a concrete reader question that the
 existing views do not answer.
 
@@ -60,10 +60,18 @@ This drawing distinguishes `Rejected` (a stored queue rejection) from protocol
 errors that do not create that status. The client Lease view is a separate state
 space and must never be merged with authoritative backend status.
 
-The pinned implementation snapshot is `beb9c6fcd49f9d270bfb5f951ac0b400b5aeca0d`.
-The PR base `045c387eabd1913988884c98a31b43e40f67570a` adds SDK comments and README
-routing. This documentation-only change does not alter Go behavior or claim new
-backend integration/performance results.
+Diagrams 01–08 retain implementation snapshot `ca393a3031c310c21515cec04e98b4f009f50e08`.
+PG operation/schema views 09–10 retain `cbdfca745233d8cd3a67fd7d236c76d13d07f436`.
+Redis view 11 follows `dev` at `f9de5e5e79bd2d06d97b0eba4ce45dbbb99b6410` after #53:
+per-Resource update leases, read-only Observe and under-lock rechecks, atomic
+owner/CommitWindow publication without old-snapshot CAS, and owner-checked cleanup.
+The window collector uses existing record passes; single updates still load and
+encode complete state. Every candidate and verification entry records its own
+source revision. Earlier views retain their pinned snapshots.
+
+These views describe implemented behavior; #50/#51 incremental state transitions
+remain proposals. This refresh changes documentation and diagram artifacts, with
+no new backend integration or performance claim.
 
 ## Viewer attribution
 

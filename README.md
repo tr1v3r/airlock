@@ -31,7 +31,7 @@ standard library; remote driver dependencies are installed separately.
 
 ## Architecture atlas
 
-Explore the [architecture atlas](docs/architecture/README.md) for eight source-backed diagrams, reading paths for users and contributors, and implementation/test entry points. [中文图集](docs/architecture/README.zh-CN.md).
+Explore the [architecture atlas](docs/architecture/README.md) for eleven source-backed diagrams, reading paths for users and contributors, and implementation/test entry points. [中文图集](docs/architecture/README.zh-CN.md).
 
 ## Installation
 

@@ -13,12 +13,16 @@ const readScript = `
 	return {1, state, now[1], now[2]}
 `
 
-// casScript compares snapshot/time guards, prepares derived request records, then
-// publishes the authoritative state and metadata together in its final HSET.
-const casScript = `
-	if #KEYS ~= 1 or (#ARGV ~= 5 and #ARGV ~= 6) then return redis.error_reply('invalid arguments') end
-	if ARGV[1] ~= '0' and ARGV[1] ~= '1' then return redis.error_reply('invalid existence') end
-	if #ARGV[3] == 0 then return redis.error_reply('empty snapshot') end
+// commitScript checks lock ownership and backend time, prepares derived request
+// records, then publishes state and metadata together in its final HSET. Every
+// updater must hold the resource lock; no old snapshot is sent or compared.
+const commitScript = `
+	if #KEYS ~= 2 or #ARGV ~= 5 then return redis.error_reply('invalid arguments') end
+	if #ARGV[1] == 0 then return redis.error_reply('empty lock owner') end
+	if #ARGV[2] == 0 then return redis.error_reply('empty snapshot') end
+	-- Ownership is checked in the same atomic operation that publishes state.
+	-- A paused process cannot commit after expiry, even without a successor.
+	if redis.call('GET', KEYS[2]) ~= ARGV[1] then return 0 end
 
 	local function integer(s)
 		if not string.match(s, '^%d+$') then return nil end
@@ -27,18 +31,10 @@ const casScript = `
 		return n
 	end
 
-	local lower = integer(ARGV[4])
-	local upper = integer(ARGV[5])
+	local lower = integer(ARGV[3])
+	local upper = integer(ARGV[4])
 	if not lower or not upper or (upper ~= 0 and upper <= lower) then
 		return redis.error_reply('invalid window')
-	end
-
-	local old = redis.call('HGET', KEYS[1], 'state')
-	if ARGV[1] == '0' then
-		if old ~= false then return 0 end
-		if redis.call('EXISTS', KEYS[1]) ~= 0 then return redis.error_reply('missing snapshot') end
-	else
-		if old == false or old ~= ARGV[2] then return 0 end
 	end
 
 	local tm = redis.call('TIME')
@@ -52,34 +48,27 @@ const casScript = `
 	if now > 9007199254740991 then return redis.error_reply('invalid clock') end
 	if now < lower or (upper ~= 0 and now >= upper) then return 0 end
 
-	local index = nil
-	if #ARGV == 6 then
-		index = cjson.decode(ARGV[6])
-		if type(index) ~= 'table' or type(index.Meta) ~= 'string' or type(index.Records) ~= 'table' then
-			return redis.error_reply('invalid observation index')
+	local index = cjson.decode(ARGV[5])
+	if type(index) ~= 'table' or type(index.Meta) ~= 'string' or type(index.Records) ~= 'table' then
+		return redis.error_reply('invalid observation index')
+	end
+	for id, value in pairs(index.Records) do
+		if type(id) ~= 'string' or type(value) ~= 'string' then
+			return redis.error_reply('invalid observation record')
 		end
-		for id, value in pairs(index.Records) do
-			if type(id) ~= 'string' or type(value) ~= 'string' then
-				return redis.error_reply('invalid observation record')
-			end
-		end
-
-		-- Prepare candidate-tagged derived records before publishing the authoritative
-		-- state and header in the final HSET. If preparation fails, mismatched/missing
-		-- records force a full-state fallback; they cannot authorize work.
-		-- Also collect orphaned indexes from an interrupted preparation.
-		for _, field in ipairs(redis.call('HKEYS', KEYS[1])) do
-			if string.sub(field, 1, 2) == 'r:' and index.Records[string.sub(field, 3)] == nil then
-				redis.call('HDEL', KEYS[1], field)
-			end
-		end
-
-		for id, value in pairs(index.Records) do redis.call('HSET', KEYS[1], 'r:' .. id, value) end
-		redis.call('HSET', KEYS[1], 'state', ARGV[3], 'meta', index.Meta)
-	else
-		redis.call('HSET', KEYS[1], 'state', ARGV[3], 'meta', '')
 	end
 
+	-- Prepare candidate-tagged derived records before publishing state and the
+	-- matching header. Failed preparation cannot authorize work through Observe.
+	-- Also collect orphaned indexes from interrupted preparation.
+	for _, field in ipairs(redis.call('HKEYS', KEYS[1])) do
+		if string.sub(field, 1, 2) == 'r:' and index.Records[string.sub(field, 3)] == nil then
+			redis.call('HDEL', KEYS[1], field)
+		end
+	end
+
+	for id, value in pairs(index.Records) do redis.call('HSET', KEYS[1], 'r:' .. id, value) end
+	redis.call('HSET', KEYS[1], 'state', ARGV[2], 'meta', index.Meta)
 	return 1
 `
 
@@ -90,4 +79,19 @@ const observeScript = `
 	local now = redis.call('TIME')
 
 	return {values[1] or '', values[2] or '', now[1], now[2]}
+`
+
+// acquireUpdateLockScript installs a bounded owner lease without refreshing an
+// existing owner's TTL. The integer response distinguishes contention from I/O errors.
+const acquireUpdateLockScript = `
+	if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then return 1 end
+	return 0
+`
+
+// releaseUpdateLockScript never deletes a lock belonging to a newer updater.
+const releaseUpdateLockScript = `
+	if redis.call('GET', KEYS[1]) == ARGV[1] then
+		return redis.call('DEL', KEYS[1])
+	end
+	return 0
 `
