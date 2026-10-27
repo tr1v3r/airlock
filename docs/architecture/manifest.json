@@ -153,5 +153,72 @@
       "driver/memory/examples/lifecycle/main_test.go"
     ],
     "preview": "previews/application-lifecycle.png"
+  },
+  {
+    "slug": "pg-operations",
+    "type": "workflow",
+    "title": "PG 操作流程：无锁观察与事务更新",
+    "title_en": "PostgreSQL operations and transaction boundaries",
+    "question": "五类操作何时加锁？读写哪张表？",
+    "question_en": "Trace the five operations, lock acquisition, full-state loading and delta writes.",
+    "candidate": ".archify/workflow-pg-operations-20261027-140038/candidate.json",
+    "html": ".archify/workflow-pg-operations-20261027-140038/pg-operations.html",
+    "sources": [
+      "driver/postgres/postgres.go",
+      "driver/postgres/observe.go",
+      "driver/postgres/storage.go",
+      "shared_state.go"
+    ],
+    "tests": [
+      "driver/postgres/postgres_test.go",
+      "driver/postgres/storage_test.go",
+      "driver/postgres/postgres_integration_test.go"
+    ],
+    "preview": "previews/pg-operations.png"
+  },
+  {
+    "slug": "pg-tables",
+    "type": "erd",
+    "title": "PG 表结构：资源、请求与复合键",
+    "title_en": "PostgreSQL resource and request schema",
+    "question": "资源行与请求行如何关联？每个字段负责什么？",
+    "question_en": "Inspect every physical column, composite key and lifecycle field.",
+    "candidate": ".archify/erd-pg-tables-20261027-140038/candidate.json",
+    "html": ".archify/erd-pg-tables-20261027-140038/pg-tables.html",
+    "sources": [
+      "driver/postgres/schema.go",
+      "driver/postgres/storage.go",
+      "driver/postgres/observe.go"
+    ],
+    "tests": [
+      "driver/postgres/postgres_test.go",
+      "driver/postgres/storage_test.go"
+    ],
+    "preview": "previews/pg-tables.png"
+  },
+  {
+    "slug": "redis-operations",
+    "type": "workflow",
+    "title": "Redis 操作流程：更新锁与 owner/CommitWindow 校验",
+    "title_en": "Redis resource update lock and guarded commit workflow",
+    "question": "Hash 和更新锁如何协作？Observe 何时抢锁？",
+    "question_en": "Follow read-only Observe, per-resource locking, owner/time guards and cleanup.",
+    "candidate": ".archify/workflow-redis-operations-20261027-224623/candidate.json",
+    "html": ".archify/workflow-redis-operations-20261027-224623/redis-operations.html",
+    "sources": [
+      "driver/redis/redis.go",
+      "driver/redis/observe.go",
+      "driver/redis/scripts.go",
+      "shared_state.go",
+      "driver/redis/update_lock.go",
+      "driver_transition.go"
+    ],
+    "tests": [
+      "driver/redis/redis_test.go",
+      "driver/redis/commit_test.go",
+      "driver/redis/integration_test.go",
+      "shared_commit_window_test.go"
+    ],
+    "preview": "previews/redis-operations.png"
   }
 ]

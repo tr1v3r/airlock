@@ -1,0 +1,874 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "PG 操作流程｜当前实现：无锁观察与事务更新",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "cbdfca745233d8cd3a67fd7d236c76d13d07f436",
+      "link_mode": "local-only"
+    },
+    "output": ".archify/workflow-pg-operations-20261027-140038/pg-operations.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "计算与控制"
+        },
+        "database": {
+          "label": "存储操作"
+        },
+        "security": {
+          "label": "异常返回"
+        },
+        "external": {
+          "label": "调用入口"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "entry",
+      "label": "业务入口"
+    },
+    {
+      "id": "observe",
+      "label": "只读 Observe"
+    },
+    {
+      "id": "transaction",
+      "label": "事务与复查"
+    },
+    {
+      "id": "load",
+      "label": "完整读取"
+    },
+    {
+      "id": "core",
+      "label": "Go 核心转换"
+    },
+    {
+      "id": "effects",
+      "label": "命令效果"
+    },
+    {
+      "id": "persist",
+      "label": "状态与写回"
+    },
+    {
+      "id": "finish",
+      "label": "结束与返回"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "entry",
+      "lane": "entry",
+      "col": 0,
+      "type": "external",
+      "label": "Driver 操作",
+      "sublabel": "五类业务接口",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 198,
+          "end_line": 233,
+          "label": "业务接口入口"
+        }
+      ]
+    },
+    {
+      "id": "validate",
+      "lane": "entry",
+      "col": 1,
+      "type": "backend",
+      "label": "输入校验",
+      "sublabel": "ctx / Request / Config",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 135,
+          "end_line": 144,
+          "label": "写操作校验"
+        },
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 204,
+          "end_line": 213,
+          "label": "Observe 校验"
+        }
+      ]
+    },
+    {
+      "id": "route",
+      "lane": "entry",
+      "col": 2,
+      "type": "backend",
+      "label": "是否 Observe？",
+      "sublabel": "按 Command.Kind 分流",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 198,
+          "end_line": 233,
+          "label": "入口分流"
+        }
+      ],
+      "icon": "decision"
+    },
+    {
+      "id": "invalid",
+      "lane": "entry",
+      "col": 3,
+      "type": "security",
+      "label": "输入错误返回",
+      "sublabel": "校验失败，不开事务",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 135,
+          "end_line": 144,
+          "label": "输入错误"
+        },
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 204,
+          "end_line": 210,
+          "label": "Observe 输入错误"
+        }
+      ]
+    },
+    {
+      "id": "fast_query",
+      "lane": "observe",
+      "col": 3,
+      "type": "database",
+      "label": "两表无锁查询",
+      "sublabel": "资源头 + 单条目标请求",
+      "sources": [
+        {
+          "path": "driver/postgres/observe.go",
+          "line": 18,
+          "end_line": 49,
+          "label": "LEFT JOIN 查询"
+        },
+        {
+          "path": "shared_observation.go",
+          "line": 49,
+          "end_line": 90,
+          "label": "只读结果判断"
+        }
+      ]
+    },
+    {
+      "id": "fast_gate",
+      "lane": "observe",
+      "col": 4,
+      "type": "backend",
+      "label": "可直接返回？",
+      "sublabel": "无需维护，记录可安全判读",
+      "sources": [
+        {
+          "path": "driver/postgres/observe.go",
+          "line": 50,
+          "end_line": 98,
+          "label": "解析与回退"
+        },
+        {
+          "path": "shared_observation.go",
+          "line": 54,
+          "end_line": 90,
+          "label": "维护与租约检查"
+        }
+      ],
+      "icon": "decision"
+    },
+    {
+      "id": "fast_return",
+      "lane": "observe",
+      "col": 5,
+      "type": "backend",
+      "label": "只读返回",
+      "sublabel": "不写表，不增加 revision",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 214,
+          "end_line": 217,
+          "label": "快速返回"
+        },
+        {
+          "path": "shared_observation.go",
+          "line": 44,
+          "end_line": 90,
+          "label": "Observation 契约"
+        }
+      ]
+    },
+    {
+      "id": "begin",
+      "lane": "transaction",
+      "col": 1,
+      "type": "backend",
+      "label": "开启事务",
+      "sublabel": "READ COMMITTED",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 143,
+          "end_line": 154,
+          "label": "BeginTx 与回滚保护"
+        }
+      ]
+    },
+    {
+      "id": "observe_lock",
+      "lane": "transaction",
+      "col": 3,
+      "type": "database",
+      "label": "Observe 锁资源行",
+      "sublabel": "SELECT … FOR UPDATE",
+      "sources": [
+        {
+          "path": "driver/postgres/observe.go",
+          "line": 104,
+          "end_line": 122,
+          "label": "observeLocked"
+        }
+      ]
+    },
+    {
+      "id": "recheck",
+      "lane": "transaction",
+      "col": 4,
+      "type": "backend",
+      "label": "拿锁后重新查询",
+      "sublabel": "新 SQL 语句复查状态",
+      "sources": [
+        {
+          "path": "driver/postgres/observe.go",
+          "line": 101,
+          "end_line": 122,
+          "label": "锁后复查"
+        },
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 150,
+          "end_line": 154,
+          "label": "事务内返回条件"
+        }
+      ],
+      "icon": "decision"
+    },
+    {
+      "id": "recheck_return",
+      "lane": "transaction",
+      "col": 5,
+      "type": "backend",
+      "label": "释放锁并返回",
+      "sublabel": "无需推进：结束只读事务",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 149,
+          "end_line": 154,
+          "label": "defer Rollback 释放锁"
+        }
+      ]
+    },
+    {
+      "id": "ensure",
+      "lane": "load",
+      "col": 0,
+      "type": "database",
+      "label": "确保资源行存在",
+      "sublabel": "INSERT … ON CONFLICT",
+      "sources": [
+        {
+          "path": "driver/postgres/storage.go",
+          "line": 36,
+          "end_line": 53,
+          "label": "初始化资源行"
+        }
+      ]
+    },
+    {
+      "id": "resource_lock",
+      "lane": "load",
+      "col": 1,
+      "type": "database",
+      "label": "锁住 Resource",
+      "sublabel": "airlock_resources",
+      "sources": [
+        {
+          "path": "driver/postgres/storage.go",
+          "line": 55,
+          "end_line": 80,
+          "label": "资源行 FOR UPDATE"
+        }
+      ]
+    },
+    {
+      "id": "load_requests",
+      "lane": "load",
+      "col": 2,
+      "type": "database",
+      "label": "加载全部保留请求",
+      "sublabel": "airlock_requests",
+      "sources": [
+        {
+          "path": "driver/postgres/storage.go",
+          "line": 82,
+          "end_line": 147,
+          "label": "完整读取与 before 快照"
+        }
+      ]
+    },
+    {
+      "id": "backend_time",
+      "lane": "load",
+      "col": 3,
+      "type": "backend",
+      "label": "读取后端时间",
+      "sublabel": "锁定并加载后取 clock_timestamp",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 156,
+          "end_line": 168,
+          "label": "读取完成后取后端时间"
+        }
+      ]
+    },
+    {
+      "id": "maintain",
+      "lane": "core",
+      "col": 3,
+      "type": "backend",
+      "label": "Transition 公共处理",
+      "sublabel": "校验、恢复、过期、GC、先调度",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 57,
+          "end_line": 120,
+          "label": "命令前维护"
+        }
+      ]
+    },
+    {
+      "id": "command",
+      "lane": "core",
+      "col": 2,
+      "type": "backend",
+      "label": "命令分支",
+      "sublabel": "规则在 Go 核心中计算",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 122,
+          "end_line": 197,
+          "label": "各命令的状态转换"
+        }
+      ],
+      "icon": "decision",
+      "height": 110
+    },
+    {
+      "id": "submit",
+      "lane": "effects",
+      "col": 0,
+      "type": "backend",
+      "label": "Submit",
+      "sublabel": "新建 / 排队 / 复用已有结果",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 122,
+          "end_line": 159,
+          "label": "首次提交与已有结果"
+        }
+      ]
+    },
+    {
+      "id": "cancel",
+      "lane": "effects",
+      "col": 1,
+      "type": "backend",
+      "label": "Cancel",
+      "sublabel": "取消或建立取消墓碑",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 122,
+          "end_line": 139,
+          "label": "先取消后提交"
+        },
+        {
+          "path": "shared_state.go",
+          "line": 161,
+          "end_line": 176,
+          "label": "取消等待或授予"
+        }
+      ]
+    },
+    {
+      "id": "renew",
+      "lane": "effects",
+      "col": 2,
+      "type": "backend",
+      "label": "Renew",
+      "sublabel": "有效且匹配才延长 until",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 178,
+          "end_line": 195,
+          "label": "续租与失租判断"
+        }
+      ]
+    },
+    {
+      "id": "release",
+      "lane": "effects",
+      "col": 3,
+      "type": "backend",
+      "label": "Release",
+      "sublabel": "匹配授予归还全部权重",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 178,
+          "end_line": 195,
+          "label": "释放与幂等终态"
+        }
+      ]
+    },
+    {
+      "id": "observe_command",
+      "lane": "effects",
+      "col": 4,
+      "type": "backend",
+      "label": "Observe",
+      "sublabel": "仅维护并读取当前结果",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 122,
+          "end_line": 127,
+          "label": "未知 Observe 不创建"
+        },
+        {
+          "path": "shared_state.go",
+          "line": 161,
+          "end_line": 215,
+          "label": "已有记录结果"
+        }
+      ]
+    },
+    {
+      "id": "capture",
+      "lane": "persist",
+      "col": 2,
+      "type": "backend",
+      "label": "再次调度与捕获",
+      "sublabel": "Time 更新，Revision + 1",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 199,
+          "end_line": 222,
+          "label": "命令后调度及结果"
+        }
+      ],
+      "height": 110
+    },
+    {
+      "id": "next_gate",
+      "lane": "persist",
+      "col": 3,
+      "type": "backend",
+      "label": "有新状态？",
+      "sublabel": "next != nil 才持久化",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 168,
+          "end_line": 174,
+          "label": "next 与错误提交规则"
+        }
+      ],
+      "icon": "decision"
+    },
+    {
+      "id": "write_resource",
+      "lane": "persist",
+      "col": 4,
+      "type": "database",
+      "label": "更新资源表",
+      "sublabel": "轮转 / 保护队首 / 版本 / 时间",
+      "sources": [
+        {
+          "path": "driver/postgres/storage.go",
+          "line": 150,
+          "end_line": 175,
+          "label": "UPDATE resource 元数据"
+        }
+      ]
+    },
+    {
+      "id": "write_requests",
+      "lane": "persist",
+      "col": 5,
+      "type": "database",
+      "label": "差异写请求表",
+      "sublabel": "位置保留；DELETE / UPSERT",
+      "sources": [
+        {
+          "path": "driver/postgres/storage.go",
+          "line": 177,
+          "end_line": 249,
+          "label": "队列位置与增删改"
+        }
+      ]
+    },
+    {
+      "id": "rollback",
+      "lane": "finish",
+      "col": 0,
+      "type": "security",
+      "label": "回滚并返回",
+      "sublabel": "next=nil 或存储错误",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 149,
+          "end_line": 177,
+          "label": "defer Rollback 与错误路径"
+        }
+      ]
+    },
+    {
+      "id": "commit",
+      "lane": "finish",
+      "col": 5,
+      "type": "backend",
+      "label": "COMMIT",
+      "sublabel": "两表一起发布，释放资源锁",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 172,
+          "end_line": 177,
+          "label": "持久化后提交"
+        }
+      ]
+    },
+    {
+      "id": "result",
+      "lane": "finish",
+      "col": 4,
+      "type": "backend",
+      "label": "返回结果或业务错误",
+      "sublabel": "提交错误：不能授权执行",
+      "sources": [
+        {
+          "path": "driver/postgres/postgres.go",
+          "line": 168,
+          "end_line": 181,
+          "label": "提交与最终返回"
+        },
+        {
+          "path": "driver.go",
+          "line": 136,
+          "end_line": 149,
+          "label": "Result 授权规则"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "entry_validate",
+      "from": "entry",
+      "to": "validate"
+    },
+    {
+      "id": "validate_invalid",
+      "from": "validate",
+      "to": "invalid",
+      "label": "失败",
+      "role": "error"
+    },
+    {
+      "id": "validate_route",
+      "from": "validate",
+      "to": "route",
+      "label": "通过"
+    },
+    {
+      "id": "route_observe",
+      "from": "route",
+      "to": "fast_query",
+      "label": "是",
+      "role": "branch"
+    },
+    {
+      "id": "route_write",
+      "from": "route",
+      "to": "begin",
+      "label": "写命令",
+      "role": "main"
+    },
+    {
+      "id": "query_gate",
+      "from": "fast_query",
+      "to": "fast_gate"
+    },
+    {
+      "id": "fast_ready",
+      "from": "fast_gate",
+      "to": "fast_return",
+      "label": "是",
+      "role": "branch"
+    },
+    {
+      "id": "fast_fallback",
+      "from": "fast_gate",
+      "to": "begin",
+      "label": "需推进",
+      "role": "branch"
+    },
+    {
+      "id": "begin_observe",
+      "from": "begin",
+      "to": "observe_lock",
+      "label": "Observe",
+      "role": "branch"
+    },
+    {
+      "id": "locked_recheck",
+      "from": "observe_lock",
+      "to": "recheck"
+    },
+    {
+      "id": "recheck_ready",
+      "from": "recheck",
+      "to": "recheck_return",
+      "label": "无需推进",
+      "role": "branch"
+    },
+    {
+      "id": "recheck_full",
+      "from": "recheck",
+      "to": "ensure",
+      "label": "仍需推进",
+      "role": "branch"
+    },
+    {
+      "id": "begin_write",
+      "from": "begin",
+      "to": "ensure",
+      "label": "写命令",
+      "role": "main"
+    },
+    {
+      "id": "ensure_lock",
+      "from": "ensure",
+      "to": "resource_lock"
+    },
+    {
+      "id": "lock_load",
+      "from": "resource_lock",
+      "to": "load_requests"
+    },
+    {
+      "id": "load_time",
+      "from": "load_requests",
+      "to": "backend_time"
+    },
+    {
+      "id": "time_transition",
+      "from": "backend_time",
+      "to": "maintain"
+    },
+    {
+      "id": "transition_command",
+      "from": "maintain",
+      "to": "command"
+    },
+    {
+      "id": "command_submit",
+      "from": "command",
+      "to": "submit",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "submit_capture",
+      "from": "submit",
+      "to": "capture",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "command_cancel",
+      "from": "command",
+      "to": "cancel",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "cancel_capture",
+      "from": "cancel",
+      "to": "capture",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "command_renew",
+      "from": "command",
+      "to": "renew",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "renew_capture",
+      "from": "renew",
+      "to": "capture",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "command_release",
+      "from": "command",
+      "to": "release",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "release_capture",
+      "from": "release",
+      "to": "capture",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "command_observe_command",
+      "from": "command",
+      "to": "observe_command",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "observe_command_capture",
+      "from": "observe_command",
+      "to": "capture",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "capture_next",
+      "from": "capture",
+      "to": "next_gate"
+    },
+    {
+      "id": "nil_rollback",
+      "from": "next_gate",
+      "to": "rollback",
+      "label": "否",
+      "role": "error"
+    },
+    {
+      "id": "next_write",
+      "from": "next_gate",
+      "to": "write_resource",
+      "label": "是"
+    },
+    {
+      "id": "resource_requests",
+      "from": "write_resource",
+      "to": "write_requests"
+    },
+    {
+      "id": "requests_commit",
+      "from": "write_requests",
+      "to": "commit"
+    },
+    {
+      "id": "commit_return",
+      "from": "commit",
+      "to": "result"
+    },
+    {
+      "id": "transition_invalid",
+      "from": "maintain",
+      "to": "rollback",
+      "label": "无有效新状态",
+      "role": "error"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "两张表如何配合",
+      "items": [
+        "airlock_resources：每个 (namespace, resource) 一行，保存 config、rotations、protected、cursor、revision、observed_ms 和 next_maintenance_ms。",
+        "airlock_requests：每个 (namespace, resource, id) 一行，保存身份、权重、状态、租约、期限和 queue_position；外键指向资源行。",
+        "图使用默认表名；WithTable 可以选择其他表名。完整字段与复合键见配套表结构图。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Observe 的两次判断",
+      "items": [
+        "第一次：一个 LEFT JOIN 语句读取资源头、目标请求及后端时间；不取 FOR UPDATE，不读取 rotations 或其他请求。",
+        "到期、缺失或尚未初始化时进入事务。先锁资源行，再用新 SQL 语句重新查；其他事务可能已经完成维护。",
+        "锁后仍需推进才走完整 load → Transition → persist；检查/解析错误直接返回，不当成正常回退。"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "五类操作的命令效果",
+      "items": [
+        "Submit：已有记录复用结果，不刷新租约；新记录可能 Granted、Queued、Rejected 或已过等待期限而 Expired。MaxRecords/提交窗口等检查也可能拒绝。",
+        "Cancel：等待中出队；授予中归还权重；可在 Submit 前建立 Cancelled 墓碑，仍受提交窗口与记录上限约束。",
+        "Renew：核对请求身份和 LeaseID，仅仍有效的 Granted 延长 Until；否则按协议返回失租或未找到等结果。",
+        "Release：匹配且 Granted 时转 Released、归还全部权重；已终态且 LeaseID 匹配时不重复归还。",
+        "Observe：公共维护后读取结果；未知请求不会因 Observe 新建记录。所有完整转换都有命令前后调度。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "事务与错误边界",
+      "items": [
+        "锁主体是事务，锁粒度是 (namespace, resource) 的资源行。竞争写者等待到前一事务结束或超时取消。",
+        "其他 Resource 不直接竞争同一行锁；普通 Observe 的 MVCC 查询不等待这把行锁。后端连接池、CPU、I/O 等仍共享。",
+        "Transition 无 SQL；它在 Go 中恢复完整状态并计算调度。next=nil 时不持久化；存储失败由事务回滚。",
+        "业务拒绝可以同时产生维护变化：next 非空仍须提交，再返回业务错误。Commit 失败或响应丢失不能当作确定回滚，更不能授权执行。"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "persist 的实际读写范围",
+      "items": [
+        "每次完整转换更新一条资源元数据行；配置和 state_version 不在 persist 中修改。",
+        "遍历队列和新旧记录做比较：原 queue_position 尽量保留，新请求追加位置；离开排队队列后位置为 NULL。",
+        "仅删除被核心回收的历史；新记录插入，变化记录更新 status/lease_id/until_ms/finished_ms/failure/queue_position，未变化记录跳过 SQL。",
+        "当前仍全量读取和多次内存遍历；Used/Active/Queued 等由核心重建，没有持久化摘要计数字段。#50 的增量优化尚未实现。"
+      ]
+    }
+  ]
+}
