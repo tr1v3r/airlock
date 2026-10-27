@@ -194,7 +194,7 @@ func TestTransitionErrorIdentityAndMaintenance(t *testing.T) {
 	changed.Weight = 2
 	h.call(Submit, changed, "", ErrRequestConflict)
 	changed = r
-	changed.Config.Admission.Capacity = 4
+	changed.Config.Retention += time.Millisecond
 	h.call(Observe, changed, "", ErrConfigConflict)
 	changed = r
 	changed.Resource = "other"
@@ -765,7 +765,7 @@ func TestObservationValidationAndFallback(t *testing.T) {
 	}{
 		{"invalid request", func(_ *Observation, r *Request) { r.Owner = "" }, ErrInvalidRequest, true},
 		{"resource conflict", func(o *Observation, _ *Request) { o.Resource = "other" }, ErrConfigConflict, true},
-		{"config conflict", func(o *Observation, _ *Request) { o.Config.Admission.Capacity++ }, ErrConfigConflict, true},
+		{"config conflict", func(o *Observation, _ *Request) { o.Config.Retention += time.Millisecond }, ErrConfigConflict, true},
 		{"zero revision", func(o *Observation, _ *Request) { o.Revision = 0 }, ErrCorruptState, true},
 		{"exhausted revision", func(o *Observation, _ *Request) { o.Revision = ^uint64(0) }, ErrCorruptState, true},
 		{"zero time", func(o *Observation, _ *Request) { o.Time = time.Time{} }, ErrCorruptState, true},

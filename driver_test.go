@@ -99,7 +99,7 @@ func TestDriverRequestValidation(t *testing.T) {
 		{"wait bound", func(r *Request) { r.WaitUntil = r.SubmitUntil.Add(r.Config.MaxWait + time.Millisecond) }, ErrInvalidRequest},
 		{"zero weight", func(r *Request) { r.Weight = 0 }, ErrInvalidWeight},
 		{"negative weight", func(r *Request) { r.Weight = -1 }, ErrInvalidWeight},
-		{"excess weight", func(r *Request) { r.Weight = r.Config.Admission.Capacity + 1 }, ErrWeightExceedsCapacity},
+		{"excess weight", func(r *Request) { r.Weight = 10001 }, ErrWeightExceedsCapacity},
 	}
 
 	for _, tc := range cases {

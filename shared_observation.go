@@ -12,6 +12,10 @@ import (
 type Observation struct {
 	Resource        string
 	Config          ResourceConfig
+	Capacity        int
+	CapacityVersion uint64
+	Used            int
+	Queued          int
 	Time            time.Time
 	Revision        uint64
 	NextMaintenance time.Time
@@ -53,7 +57,7 @@ func (o Observation) Observe(now time.Time, request Request) (result Result, rea
 
 	request.SubmitUntil = request.SubmitUntil.UTC()
 	request.WaitUntil = request.WaitUntil.UTC()
-	if o.Resource != request.Resource || !reflect.DeepEqual(o.Config, request.Config) {
+	if o.Resource != request.Resource || !o.Config.EqualPolicy(request.Config) {
 		return Result{}, true, ErrConfigConflict
 	}
 	if o.Revision == 0 || o.Revision == ^uint64(0) || o.Time.IsZero() || now.Truncate(time.Millisecond).Before(o.Time) {
@@ -67,7 +71,7 @@ func (o Observation) Observe(now time.Time, request Request) (result Result, rea
 	}
 
 	rec := *o.Record
-	rec.Request.Config = o.Config
+	rec.Request.Config = request.Config
 	if !reflect.DeepEqual(rec.Request, request) {
 		return Result{}, true, ErrRequestConflict
 	}

@@ -85,8 +85,7 @@ func newBenchDriver(tb testing.TB, seed []byte) *benchDriver {
 	}
 	d := &benchDriver{gate: make(chan struct{}, 1), snapshot: seed, state: state, nowFunc: time.Now}
 	if state != nil {
-		d.observation = Observation{Resource: state.Resource, Config: state.Config, Time: state.Time,
-			Revision: state.Revision, NextMaintenance: state.NextMaintenance()}
+		d.observation = state.Observation()
 	}
 	return d
 }
@@ -131,8 +130,7 @@ func (d *benchDriver) execute(ctx context.Context, cmd Command) (Result, error) 
 		}
 		d.snapshot = data
 		d.state = next
-		d.observation = Observation{Resource: next.Resource, Config: next.Config, Time: next.Time,
-			Revision: next.Revision, NextMaintenance: next.NextMaintenance()}
+		d.observation = next.Observation()
 	}
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
@@ -285,7 +283,7 @@ func benchSeedSnapshot(tb testing.TB, resource string, cfg ResourceConfig, termi
 		return nil
 	}
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	s := durableSnapshot{Version: 1, Resource: resource, Config: cfg,
+	s := durableSnapshot{Version: 1, Resource: resource, Config: cfg, Capacity: cfg.Admission.Capacity, CapacityVersion: 1,
 		Records: make(map[string]*durableRecord, terminals), Queues: make(map[string][]string),
 		Rotations: [][]string{{}}, Revision: 1, Time: now}
 	var probe Request

@@ -98,3 +98,23 @@ Drivers may use `Observation.Observe` and `SharedState.NextMaintenance` for comp
 read-only results. Read metadata and the target request atomically using backend
 time. Due maintenance, missing results or incomplete indexes must fall back to
 full Observe so expiry-driven scheduling still progresses without Release.
+
+## Optional resource management
+
+Implement `ResourceManager` alongside Driver to expose InspectResource and Resize.
+Resize is a real resource command (`Command{Kind: Resize, Resize: ...}`), not a
+fabricated user request. `Command.Resource()` selects its target. Return the
+committed `Result.ResourceStatus`; on any publication error return zero status.
+Use the ordinary resource update boundary and preserve ExpectedVersion across
+owner/window retries. No state is returned for a capacity-version conflict.
+
+SharedState.Capacity / CapacityVersion are independent of the creation hint in
+Config.Admission.Capacity. Compare configurations with EqualPolicy and normalize
+that hint before checking request identity. Preserve the current capacity through
+all business operations and restarts. Resize sweeps expiry without first dispatching
+under the old limit, removes oversized waiters, then dispatches under the new limit.
+Legal overcommit must survive restoration. `state.Observation()` builds one header
+with current capacity/version, charged counters and the next maintenance boundary;
+publish it atomically with all affected request results. Inspect never runs Transition.
+Redis still requires atomic owner + CommitWindow checks, not old-snapshot comparison.
+PG updates capacity/version on airlock_resources with request deltas in one transaction.

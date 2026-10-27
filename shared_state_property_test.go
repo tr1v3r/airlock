@@ -284,7 +284,7 @@ func TestTransitionRestoredRequestFieldValidation(t *testing.T) {
 		"fractional wait":  func(r *Request) { r.WaitUntil = r.WaitUntil.Add(time.Nanosecond) },
 		"future wait":      func(r *Request) { r.WaitUntil = r.SubmitUntil.Add(r.Config.MaxWait + time.Millisecond) },
 		"negative weight":  func(r *Request) { r.Weight = -1 },
-		"excessive weight": func(r *Request) { r.Weight = r.Config.Admission.Capacity + 1 },
+		"excessive weight": func(r *Request) { r.Weight = 10001 },
 	}
 
 	for name, mutate := range mutations {

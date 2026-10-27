@@ -82,3 +82,17 @@ Redis 的状态操作和锁竞争受 `WithOperationTimeout`（默认五秒）或
 只读优化可使用核心 `Observation.Observe` 与 `SharedState.NextMaintenance` 辅助方法。
 元数据和目标请求必须来自同一个原子快照，并使用后端时间。到期、结果缺失或索引不完整
 时须回到完整 Observe，不能因分离查询而丢失无人 Release 时的过期调度能力。
+
+## 可选资源管理
+
+Driver 可同时实现 ResourceManager，提供 InspectResource 和 Resize。Resize 使用真正的资源级
+命令 `Command{Kind: Resize, Resize: ...}`，不伪造用户请求；Command.Resource() 返回目标资源。
+发布成功后才返回 Result.ResourceStatus，发布出错则返回零状态。复用正常资源更新边界，
+owner/时间窗口重试保持原 ExpectedVersion；容量版本冲突不产生候选状态。
+
+SharedState.Capacity / CapacityVersion 独立于 Config.Admission.Capacity 的首次创建提示。
+用 EqualPolicy 比较不可变规则，请求身份比较前归一化提示；普通操作和重启都不能重置容量。
+Resize 清理过期时不先按旧容量调度，移除超重等待者后才按新容量调度；恢复必须允许合法超限。
+state.Observation() 生成当前容量/版本、占用与排队计数、下一维护时间，并与请求变化一致发布。
+Inspect 不运行 Transition。Redis 仍在 Lua 中检查 owner + CommitWindow，不比较旧快照；
+PG 在资源行事务中同时写容量、容量版本和请求差异。

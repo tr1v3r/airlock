@@ -254,3 +254,42 @@ GC 规则均不变。租约 Remaining/RTT 计算不变：预算不会增加租�
 
 协议实现细节放在独立的[自定义 driver 指南](drivers.zh-CN.md)。默认值取舍见
 [ADR 008](../decisions/008-shared-usability.md)。
+
+## Shared 动态容量
+
+Memory、PostgreSQL、Redis 均实现可选的 `ResourceManager`，原有五个 Driver 业务方法不变。
+对已初始化的 Resource，通过 `Shared.Inspect` 查询，再携带容量版本执行 `Shared.Resize`：
+
+```go
+status, err := shared.Inspect(ctx)
+if err != nil {
+    return err
+}
+status, err = shared.Resize(ctx, 8, status.CapacityVersion)
+if err != nil {
+    return err
+}
+fmt.Println(status.Capacity, status.Used, status.CapacityVersion)
+```
+
+`Config.Admission.Capacity` 是首次创建提示，范围 1..10000。首次成功创建者确定初始容量；
+此后队列/租约策略相同的客户端可携带不同初始容量提示，重连不会重置容量。构造时仍不访问后端。
+当前容量与 CapacityVersion 单独持久化；提示不参与请求身份或不可变策略比较。新请求由后端按
+当前容量校验，旧 Shared 实例无需重建就能使用扩容后的容量。
+
+缩容不撤销已有租约，也不阻止正常续租/释放；Used 可以暂时大于 Capacity，超限时不新增授予，
+等待释放或过期。超过新容量的排队请求持久化为 Rejected，Observe 恢复 ErrWeightExceedsCapacity；
+其他请求保留公平顺序和保护队首。扩容按新上限调度，客户端在下一次 Observe 得知授予，默认轮询 50ms。
+
+ExpectedVersion 必填，对比 CapacityVersion 而非 Revision。只有实际容量变化才增加容量版本；
+版本匹配的同容量调用仍执行维护并提交新 Revision。版本冲突返回 ErrCapacityVersionConflict，
+本次调用不提交维护；容量版本溢出时失败关闭。结果不确定时保留原绝对目标和期望版本，冲突后
+再查询，由管理者决定下一步，不自动跟随新版本覆盖。没有管理操作去重历史，也不会自动重放
+未知提交。Resize 成功只表示上限已提交，不表示运行任务已降到目标。
+
+Inspect 只读，Used/Queued 表示已提交快照中的记录，可能包括尚未清理的过期记录；
+StateTime 和 Revision 标明口径，不代表真实执行任务数。资源不存在时返回 ErrResourceNotFound，
+Inspect/Resize 不创建资源。驱动不支持可选管理能力时，Shared 返回 ErrResourceManagementUnsupported。
+鉴权由应用/后端 ACL 负责，Tenant 不代表管理权限。第一版不支持容量 0。
+
+可执行 memory 示例 ExampleDriver_Resize 展示合法超限、释放，以及使用原 Shared 实例扩容后申请更大权重。
