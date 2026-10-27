@@ -5,11 +5,11 @@ import (
 	"time"
 )
 
-// CommitWindow bounds publication under optimistic concurrency control.
-// A driver must atomically compare the previously read state and enforce this
-// window using backend time. Before is exclusive; zero means no upper bound.
-// A confirmed comparison/window miss requires rereading and recomputing.
-// Transport errors are ambiguous outcomes, not retryable CAS conflicts.
+// CommitWindow bounds publication when computation and commit use separate
+// backend operations. Atomically enforce the window and either check current
+// update-lock ownership or compare the previously read state. Before is exclusive;
+// zero means no upper bound. Confirmed guard misses require rereading and
+// recomputing; transport errors remain ambiguous outcomes.
 type CommitWindow struct{ NotBefore, Before time.Time }
 
 // Allows reports whether backend time is inside the publication window.
@@ -22,8 +22,9 @@ func (w CommitWindow) Allows(now time.Time) bool {
 // of state, including maps and records; input may be modified even on error.
 // Persist every nonnil next state atomically, even when err is a business error.
 // Never persist nil next or return a successful result before commit.
-// Use backend time after locking, or enforce the returned window together with
-// CAS. Lock-based drivers can ignore the window while retaining their lock.
+// Use backend time after locking. A non-expiring lock held through commit permits
+// ignoring the window; expiring leases require atomic owner/window checks at
+// publication. Optimistic drivers must atomically compare prior state and window.
 func Transition(state *SharedState, now time.Time, cmd Command) (next *SharedState, result Result, window CommitWindow, err error) {
 	window.NotBefore = now.UTC()
 	boundary := func(at time.Time) {

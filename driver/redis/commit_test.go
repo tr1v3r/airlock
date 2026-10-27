@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -18,9 +17,11 @@ import (
 	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
-// Lua errors do not roll back prior writes. Assert preservation for every failed
-// validation/comparison, not just the last value after a sequence of scripts.
-func TestLuaCASRejectedCandidatePreservesState(t *testing.T) {
+const emptyTestIndex = `{"Meta":"","Records":{}}`
+
+// Script validation and time-window rejection must leave the whole Hash intact:
+// Redis Lua errors do not roll back writes performed before the error.
+func TestLuaCommitRejectedCandidatePreservesState(t *testing.T) {
 	now := time.Unix(1800000000, 123456000).UTC()
 	stamp := now.UnixMicro()
 	cases := []struct {
@@ -28,19 +29,19 @@ func TestLuaCASRejectedCandidatePreservesState(t *testing.T) {
 		args      []any
 		wantError bool
 	}{
-		{"short_arity", []any{"1", "old"}, true},
-		{"long_arity", []any{"1", "old", "new", stamp, 0, "extra"}, true},
-		{"invalid_existence", []any{"true", "old", "new", stamp, 0}, true},
-		{"empty_candidate", []any{"1", "old", "", stamp, 0}, true},
-		{"nondecimal_lower", []any{"1", "old", "new", "1e3", 0}, true},
-		{"negative_upper", []any{"1", "old", "new", stamp, -1}, true},
-		{"fractional_upper", []any{"1", "old", "new", stamp, "1.5"}, true},
-		{"inexact_upper", []any{"1", "old", "new", stamp, "9007199254740992"}, true},
-		{"empty_window", []any{"1", "old", "new", stamp, stamp}, true},
-		{"expected_absent", []any{"0", "", "new", stamp, 0}, false},
-		{"stale_value", []any{"1", "different", "new", stamp, 0}, false},
-		{"clock_before_lower", []any{"1", "old", "new", stamp + 1, 0}, false},
-		{"clock_at_exclusive_upper", []any{"1", "old", "new", stamp - 1, stamp}, false},
+		{"short_arity", []any{"new"}, true},
+		{"long_arity", []any{"new", stamp, 0, emptyTestIndex, "extra"}, true},
+		{"empty_candidate", []any{"", stamp, 0, emptyTestIndex}, true},
+		{"nondecimal_lower", []any{"new", "1e3", 0, emptyTestIndex}, true},
+		{"negative_upper", []any{"new", stamp, -1, emptyTestIndex}, true},
+		{"fractional_upper", []any{"new", stamp, "1.5", emptyTestIndex}, true},
+		{"inexact_upper", []any{"new", stamp, "9007199254740992", emptyTestIndex}, true},
+		{"empty_window", []any{"new", stamp, stamp, emptyTestIndex}, true},
+		{"clock_before_lower", []any{"new", stamp + 1, 0, emptyTestIndex}, false},
+		{"clock_at_exclusive_upper", []any{"new", stamp - 1, stamp, emptyTestIndex}, false},
+		{"malformed_index", []any{"new", stamp, 0, "{"}, true},
+		{"invalid_index", []any{"new", stamp, 0, `{"Meta":1,"Records":{}}`}, true},
+		{"invalid_record", []any{"new", stamp, 0, `{"Meta":"","Records":{"id":1}}`}, true},
 	}
 
 	for _, test := range cases {
@@ -49,18 +50,16 @@ func TestLuaCASRejectedCandidatePreservesState(t *testing.T) {
 			server.SetTime(now)
 			ctx := context.Background()
 			key := d.key(test.name)
-			if err := client.HSet(ctx, key, "state", "old").Err(); err != nil {
+			if err := client.HSet(ctx, key, "state", "old", "meta", "old-meta", "r:keep", "old-record").Err(); err != nil {
 				t.Fatal(err)
 			}
-
-			got, err := evalTestCAS(t, d, key, test.args...)
+			before := client.HGetAll(ctx, key).Val()
+			got, err := evalTestCommit(t, d, key, test.args...)
 			if (err != nil) != test.wantError || (!test.wantError && got != int64(0)) {
-				t.Fatalf("CAS result=%v err=%v wantError=%t", got, err, test.wantError)
+				t.Fatalf("commit result=%v err=%v wantError=%t", got, err, test.wantError)
 			}
-
-			value, err := client.HGet(ctx, key, "state").Result()
-			if err != nil || value != "old" {
-				t.Fatalf("rejected candidate changed state: %q err=%v", value, err)
+			if after := client.HGetAll(ctx, key).Val(); !reflect.DeepEqual(before, after) {
+				t.Fatalf("rejected candidate changed Hash: before=%v after=%v", before, after)
 			}
 			if ttl := client.PTTL(ctx, key).Val(); ttl != -1 {
 				t.Fatalf("rejected candidate changed permanent lifetime: %v", ttl)
@@ -69,13 +68,12 @@ func TestLuaCASRejectedCandidatePreservesState(t *testing.T) {
 	}
 }
 
-func TestLuaCASTimeWindowEdges(t *testing.T) {
+func TestLuaCommitTimeWindowEdges(t *testing.T) {
 	for _, bounded := range []bool{false, true} {
 		name := "no_upper_bound"
 		if bounded {
 			name = "last_microsecond_before_upper"
 		}
-
 		t.Run(name, func(t *testing.T) {
 			d, client, server := fixture(t)
 			now := time.Unix(1800000000, 999999000).UTC()
@@ -84,38 +82,66 @@ func TestLuaCASTimeWindowEdges(t *testing.T) {
 			if bounded {
 				upper = now.UnixMicro() + 1
 			}
-
 			key := d.key(name)
 			ctx := context.Background()
-			got, err := evalTestCAS(t, d, key, "0", "", "new", now.UnixMicro(), upper)
-			if err != nil || got != int64(1) {
-				t.Fatalf("inclusive lower / exclusive upper: result=%v err=%v", got, err)
-			}
-			if value, err := client.HGet(ctx, key, "state").Result(); err != nil || value != "new" {
-				t.Fatalf("committed value=%q err=%v", value, err)
+			// Initial publication and replacement both use the same five-argument
+			// protocol: owner, next state, lower, upper and observation index.
+			for _, value := range []string{"new", "replacement"} {
+				got, err := evalTestCommit(t, d, key, value, now.UnixMicro(), upper, emptyTestIndex)
+				if err != nil || got != int64(1) {
+					t.Fatalf("inclusive lower / exclusive upper: result=%v err=%v", got, err)
+				}
+				if stored, err := client.HGet(ctx, key, "state").Result(); err != nil || stored != value {
+					t.Fatalf("committed value=%q err=%v", stored, err)
+				}
 			}
 		})
 	}
 }
 
-func TestLuaCASWrongTypePreservesOriginal(t *testing.T) {
+func TestLuaCommitWrongTypePreservesOriginal(t *testing.T) {
 	d, client, _ := fixture(t)
 	ctx := context.Background()
 	key := d.key("wrong-type")
 	if err := client.RPush(ctx, key, "original").Err(); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := evalTestCAS(t, d, key, "1", "old", "replacement", 0, 0); err == nil {
+	if got, err := evalTestCommit(t, d, key, "replacement", 0, 0, emptyTestIndex); err == nil {
 		t.Fatalf("wrong type unexpectedly accepted: %v", got)
 	}
-
 	values, err := client.LRange(ctx, key, 0, -1).Result()
 	if err != nil || len(values) != 1 || values[0] != "original" {
 		t.Fatalf("failed script altered list: %v err=%v", values, err)
 	}
 }
 
-// Move server time between read and CAS. A Renew derived from the old live lease
+func TestLuaCommitRequiresOwner(t *testing.T) {
+	d, client, _ := fixture(t)
+	ctx := context.Background()
+	key := d.key("owner-required")
+	if err := client.HSet(ctx, key, "state", "old").Err(); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := d.tryUpdateLock(ctx, key, "current"); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	defer d.releaseUpdateLock(ctx, key, "current")
+	for _, owner := range []string{"", "other"} {
+		raw, err := d.evalKeys(ctx, commitScript, []string{key, updateLockKey(key)}, owner, "new", 0, 0, emptyTestIndex)
+		if owner == "" {
+			if err == nil {
+				t.Fatal("empty owner accepted", raw)
+			}
+		} else if err != nil || raw != int64(0) {
+			t.Fatal(raw, err)
+		}
+		if got := client.HGet(ctx, key, "state").Val(); got != "old" {
+			t.Fatal("unauthorized commit changed state", got)
+		}
+	}
+}
+
+// Move server time between read and commit. A Renew derived from the old live lease
 // must not resurrect it once its old expiry has passed before publication.
 func TestExpiryBetweenReadAndCommit(t *testing.T) {
 	for _, operation := range []airlock.Operation{airlock.Renew, airlock.Cancel} {
@@ -131,13 +157,13 @@ func TestExpiryBetweenReadAndCommit(t *testing.T) {
 			var shifted bool
 			var conflicts int
 			client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
-				if isCAS(cmd) && !shifted {
+				if isCommit(cmd) && !shifted {
 					server.SetTime(now.Add(101 * time.Millisecond))
 					shifted = true
 				}
 
 				err := next(ctx, cmd)
-				if isCAS(cmd) && err == nil && cmd.(*noRetryCmd).Val() == int64(0) {
+				if isCommit(cmd) && err == nil && cmd.(*noRetryCmd).Val() == int64(0) {
 					conflicts++
 				}
 				return err
@@ -164,57 +190,9 @@ func TestExpiryBetweenReadAndCommit(t *testing.T) {
 	}
 }
 
-func TestLuaCASGuards(t *testing.T) {
-	d, client, server := fixture(t)
-	ctx := context.Background()
-	now := time.Now().UTC().Truncate(time.Microsecond)
-	server.SetTime(now)
-	key := d.key("script-guards")
-	stamp := strconv.FormatInt(now.UnixMicro(), 10)
-	cases := []struct {
-		name      string
-		args      []any
-		wantError bool
-		want      int64
-	}{
-		{"arity", nil, true, 0}, {"existence", []any{"2", "", "new", stamp, 0}, true, 0},
-		{"empty", []any{"0", "", "", stamp, 0}, true, 0},
-		{"negative", []any{"0", "", "new", "-1", 0}, true, 0},
-		{"fraction", []any{"0", "", "new", "1.5", 0}, true, 0},
-		{"overflow", []any{"0", "", "new", "9007199254740992", 0}, true, 0},
-		{"reversed", []any{"0", "", "new", stamp, 1}, true, 0},
-		{"missing", []any{"1", "old", "new", stamp, 0}, false, 0},
-		{"too_early", []any{"0", "", "new", now.Add(time.Microsecond).UnixMicro(), 0}, false, 0},
-		{"expired", []any{"0", "", "new", now.Add(-time.Second).UnixMicro(), stamp}, false, 0},
-		{"success", []any{"0", "", "new", stamp, 0}, false, 1},
-		{"present", []any{"0", "", "newer", stamp, 0}, false, 0},
-		{"mismatch", []any{"1", "other", "newer", stamp, 0}, false, 0},
-		{"replace", []any{"1", "new", "newer", stamp, now.Add(time.Second).UnixMicro()}, false, 1},
-	}
-
-	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
-			raw, err := evalTestCAS(t, d, key, test.args...)
-			if test.wantError {
-				if err == nil {
-					t.Fatal(raw)
-				}
-				return
-			}
-			if err != nil || raw != test.want {
-				t.Fatal(raw, err)
-			}
-		})
-	}
-
-	if got := client.HGet(ctx, key, "state").Val(); got != "newer" {
-		t.Fatal(got)
-	}
-}
-
-// Force a real stale-snapshot CAS, rather than making a hook return a synthetic
-// conflict. The competing independent client wins all capacity after our read.
-func TestCASConflictRecomputesAgainstCommittedWinner(t *testing.T) {
+// A paused updater loses ownership, then another client wins all capacity.
+// The loser must discard its candidate and recompute from the winner's state.
+func TestLostOwnershipRecomputesAgainstCommittedWinner(t *testing.T) {
 	d, client, server := fixture(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	server.SetTime(now)
@@ -233,7 +211,7 @@ func TestCASConflictRecomputesAgainstCommittedWinner(t *testing.T) {
 	var conflicts, commits int
 	var winning airlock.Result
 	client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
-		if isCAS(cmd) && !injected {
+		if isCommit(cmd) && !injected {
 			injected = true
 			// Simulate a paused updater losing its lease before another client wins.
 			server.FastForward(d.updateLockTTL)
@@ -245,7 +223,7 @@ func TestCASConflictRecomputesAgainstCommittedWinner(t *testing.T) {
 		}
 
 		err := next(ctx, cmd)
-		if isCAS(cmd) && err == nil {
+		if isCommit(cmd) && err == nil {
 			switch cmd.(*noRetryCmd).Val() {
 			case int64(0):
 				conflicts++
@@ -300,8 +278,8 @@ func TestEvalDoesNotFallbackOnOtherErrors(t *testing.T) {
 	}
 }
 
-// Supply valid ownership while independently exercising snapshot/window guards.
-func evalTestCAS(t *testing.T, d *Driver, key string, args ...any) (any, error) {
+// Supply valid ownership while independently exercising ownership/window guards.
+func evalTestCommit(t *testing.T, d *Driver, key string, args ...any) (any, error) {
 	t.Helper()
 	ctx := context.Background()
 	owner := airlock.NewRequest(time.Now()).Owner
@@ -310,7 +288,7 @@ func evalTestCAS(t *testing.T, d *Driver, key string, args ...any) (any, error) 
 		t.Fatalf("acquire test update lock: %t %v", ok, err)
 	}
 	defer d.releaseUpdateLock(ctx, key, owner)
-	return d.evalKeys(ctx, casScript, []string{key, updateLockKey(key)}, append(args, owner)...)
+	return d.evalKeys(ctx, commitScript, []string{key, updateLockKey(key)}, append([]any{owner}, args...)...)
 }
 
 func TestUpdateLockOwnershipAndExpiry(t *testing.T) {
@@ -339,14 +317,14 @@ func TestUpdateLockOwnershipAndExpiry(t *testing.T) {
 
 	server.FastForward(time.Millisecond)
 	// Expiry without a successor must reject a stale owner too: no state has
-	// changed, so the snapshot comparison alone would incorrectly accept it.
+	// changed; ownership must still be checked before any state publication.
 	for _, successor := range []bool{false, true} {
 		if successor {
 			if ok, err := d.tryUpdateLock(ctx, key, "successor"); err != nil || !ok {
 				t.Fatal(ok, err)
 			}
 		}
-		raw, err := d.evalKeys(ctx, casScript, []string{key, lock}, "0", "", "stale", 0, 0, "old")
+		raw, err := d.evalKeys(ctx, commitScript, []string{key, lock}, "old", "stale", 0, 0, emptyTestIndex)
 		if err != nil || raw != int64(0) || client.Exists(ctx, key).Val() != 0 {
 			t.Fatalf("expired owner published: %v %v", raw, err)
 		}
@@ -385,7 +363,7 @@ func TestBusyUpdateLockAvoidsFullState(t *testing.T) {
 				if isScript(cmd, readScript) {
 					reads++
 				}
-				if isCAS(cmd) {
+				if isCommit(cmd) {
 					commits++
 				}
 				return next(ctx, cmd)
@@ -428,7 +406,7 @@ func TestObserveRechecksAfterAcquiringUpdateLock(t *testing.T) {
 				return err
 			}
 		}
-		if isScript(cmd, readScript) || isCAS(cmd) {
+		if isScript(cmd, readScript) || isCommit(cmd) {
 			reads++
 		}
 		return next(ctx, cmd)
@@ -567,7 +545,7 @@ func TestConcurrentObserveMaintainsOnce(t *testing.T) {
 				return ctx.Err()
 			}
 		}
-		if isCAS(cmd) && cmd.(*noRetryCmd).Val() == int64(1) {
+		if isCommit(cmd) && cmd.(*noRetryCmd).Val() == int64(1) {
 			commits.Add(1)
 		}
 		return nil
@@ -608,5 +586,35 @@ func TestConcurrentObserveMaintainsOnce(t *testing.T) {
 	}
 	if reads.Load() != 1 || commits.Load() != 1 {
 		t.Fatalf("duplicate maintenance: reads=%d commits=%d", reads.Load(), commits.Load())
+	}
+}
+
+func TestCommitDoesNotResendOldSnapshot(t *testing.T) {
+	d, client, _ := fixture(t)
+	r := request()
+	grant := mustExecute(t, d, submit(r))
+	old, err := client.HGet(context.Background(), d.key(r.Resource), "state").Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var commits int
+	client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
+		if isCommit(cmd) {
+			commits++
+			// Two declared keys plus owner, next state, bounds and projection.
+			if len(cmd.Args()) != 10 {
+				t.Error("commit sent an extra snapshot or existence guard")
+			}
+			for _, arg := range cmd.Args()[5:] {
+				if arg == old {
+					t.Error("commit retransmitted the old snapshot")
+				}
+			}
+		}
+		return next(ctx, cmd)
+	}})
+	result := mustExecute(t, d, airlock.Command{Kind: airlock.Renew, Request: r, LeaseID: grant.LeaseID})
+	if result.Status != airlock.Granted || commits != 1 {
+		t.Fatal(result, commits)
 	}
 }

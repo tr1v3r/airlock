@@ -56,10 +56,13 @@ Driver call interface. Direct callers provide a complete ResourceConfig; only
 NewShared resolves defaults.
 
 The commit window includes original and resulting deadlines. In-place renewal
-must retain the original lease expiry as a publication bound. Lock-based drivers
-may ignore the window while holding exclusive access through commit. Only
-confirmed CAS/window misses permit rereading and recomputing; transport errors
-remain ambiguous outcomes.
+must retain the original lease expiry as a publication bound. Drivers with a
+non-expiring lock may ignore the window while retaining exclusive access through commit. An
+expiring update lease, as used by Redis, must atomically check owner and window
+at publication. Redis does not compare the previous snapshot. Optimistic custom
+drivers must instead compare their previously read state and enforce the window.
+Only confirmed ownership/comparison/window misses permit rereading and
+recomputing; transport errors remain ambiguous outcomes.
 
 Serialize the whole resource's read, transition and commit. Use backend time after
 obtaining exclusive access; optimistic backends must enforce the time window

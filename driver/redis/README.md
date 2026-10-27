@@ -59,12 +59,14 @@ fresh random owner token. A loser backs off without loading or computing the
 full snapshot. `Submit`, `Cancel`, `Renew` and `Release` all use this path.
 
 After acquisition, Lua reads the snapshot and Redis `TIME`; Go computes the shared
-transition. The commit script checks **current lock ownership, the exact old
-snapshot and CommitWindow together**, including lease expiry, waiting/submission
-deadlines and history cleanup. Time retains microsecond precision within Lua's
-exact integer range. The lock reduces duplicate computation; it does not replace
-CAS or time guards. A paused updater whose lock expires cannot publish even if
-the snapshot has not changed.
+transition. The commit script checks **current lock ownership and CommitWindow
+together**, including lease expiry, waiting/submission deadlines and history
+cleanup. Time retains microsecond precision within Lua's exact integer range.
+All state writers must acquire the same resource lock. The commit sends only
+owner, new state, window bounds and observation index; it neither sends nor
+compares the previous snapshot. Time guards remain necessary because holding a
+lock does not stop lease and queue deadlines from passing. A paused updater whose
+lock expires cannot publish even if the snapshot has not changed.
 
 After each acquired attempt, a separate owner-checking Lua script deletes only
 that updater's lock, including on cancellation or an error. Cleanup uses a fresh,
@@ -78,13 +80,13 @@ state updates only and is never held while application work runs.
 
 The script prepares request indexes tagged with a unique candidate token, then
 publishes the snapshot and matching observation header together in its final
-`HSET`. Within the commit script, no command follows that publication. A preparation error cannot
-authorize work: missing or token-mismatched projections fall back to the
+`HSET`. Within the commit script, no command follows that publication. A
+preparation error cannot authorize work: missing or token-mismatched projections fall back to the
 authoritative snapshot. Tokens are independent of Revision so different failed
 candidates for the same revision cannot be mistaken for a committed result.
 Redis scripts do not roll back earlier writes.
 
-Only known lock contention or explicit ownership/comparison/time-window misses
+Only known lock contention or explicit ownership/time-window misses
 trigger bounded, context-aware backoff (1–10ms). Each script command disables
 go-redis network retries using `Cmder.NoRetry`; a definite `NOSCRIPT` permits `EVAL` fallback.
 Cluster's explicit `MOVED`/`ASK` routing still works. Transport or script errors
@@ -95,7 +97,7 @@ commit expiry and scheduling changes. No connection is held during business work
 An ordinary `Observe` atomically reads only `meta`, the selected request and
 backend time. Before the next lease/queue expiry or history collection boundary,
 it returns the committed result without reading the full snapshot, restoring the
-scheduler, acquiring the update lock, changing Revision or executing CAS. Missing
+scheduler, acquiring the update lock, changing Revision or publishing state. Missing
 projections or due maintenance attempt the update lock. Observe rechecks the
 projection after acquiring ownership: if another updater already performed
 maintenance, it releases the lock and returns the committed result without full
@@ -148,7 +150,7 @@ AIRLOCK_REDIS_CLUSTER_ADDRS=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002 GOWORK=
 
 For container Cluster fixtures whose announced addresses are not host-routable,
 set `AIRLOCK_REDIS_CLUSTER_MAPPING=containerIP:6379=127.0.0.1:port,...`. This is a
-test-only dial mapping. Tests exercise the shared conformance suite, CAS races,
+test-only dial mapping. Tests exercise the shared conformance suite, competing updaters,
 expiry guards, lock contention/expiry/owner checks, read-only polling under an
 update lock, cache reload, lost write responses, and client lease lifecycle.
 Default tests use miniredis; real standalone and Cluster tests are opt-in.

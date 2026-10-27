@@ -160,7 +160,7 @@ func integrationSuite(t *testing.T, cluster bool) {
 			t.Fatal(ok, err)
 		}
 		defer d.releaseUpdateLock(ctx, key, "successor")
-		raw, err := d.evalKeys(ctx, casScript, []string{key, updateLockKey(key)}, "0", "", "stale", 0, 0, "expired-owner")
+		raw, err := d.evalKeys(ctx, commitScript, []string{key, updateLockKey(key)}, "expired-owner", "stale", 0, 0, `{"Meta":"","Records":{}}`)
 		if err != nil || raw != int64(0) || client.Exists(ctx, key).Val() != 0 {
 			t.Fatal("expired owner published", raw, err)
 		}

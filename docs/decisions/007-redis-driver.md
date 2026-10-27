@@ -1,79 +1,90 @@
 # Redis driver 的重要取舍
 
-状态：本 PR 实现独立 Redis 模块；依赖 core 协议、memory 和 PostgreSQL PR。
-没有创建 tag/release。核验日期：2026-10-23。
+状态：独立 Redis 模块复用核心状态机，使用 Resource 更新锁与 owner/CommitWindow 校验。
+实现说明更新日期：2026-10-27。没有创建 tag/release。
 
 ## 1. 复用 Go 状态机，以 Lua 发布快照
 
-第一版没有把公平调度再翻译成 Lua。读取脚本原子返回 GET 与 TIME，Go 运行
-`Transition`，发布脚本检查原值、存在性和时间窗口后 SET。队列、组游标、
-租户轮转、protected head 和完整权重的授予都来自同一份 core 状态机。
-Lua 不遍历请求队列，也没有服务端维护循环；成本仍与快照字节数有关。
+公平调度使用同一份 Go `Transition`：队列、组游标、租户轮转、protected head 和
+完整权重的授予都在核心计算。状态存储在单个 Hash，`state` 是权威 JSON 快照，
+`meta` 和 `r:<id>` 是带发布 token 的只读投影。
 
-代价是每次通常两次网络往返（脚本缓存未命中时更多）、完整快照传输和客户端重算。
-同资源竞争的失败 CAS 会浪费计算与网络；不同资源独立。它不是已经实测优于行锁或 Lua
-调度的性能结论。MaxRecords 限制保留记录数；记录和租户名也有界，但上限组合仍可能很大，
-应按业务缩小配置并测量快照大小和争用。资源 key 不自动 GC。
+普通 Observe 原子读取元数据、目标请求和 Redis TIME，在无须维护时直接返回。
+维护到期或投影不完整时才竞争更新锁；抢到后再次检查投影，避免其他实例已完成维护后
+重复转换。其他写命令直接竞争更新锁。竞争失败不读取或计算完整快照。
 
-## 2. CAS 比较内容还不够，必须检查时间
+持锁者读取完整快照和后端时间，在 Go 中计算新状态，再通过 Lua 发布。单次更新仍为
+O(records)；锁减少同资源竞争时的重复计算，没有实现按需加载或增量转换，也不代表
+已经实测优于其他存储方案。MaxRecords 限制保留记录数，但应按业务测量快照大小和争用。
 
-即使快照没有被其他客户端修改，读与写之间也可能跨过租约、等待、提交或历史回收期限。
-core 返回 `[NotBefore, Before)`：下界拒绝相对于读取时刻的时钟倒退，上界包含旧/新状态的
-生命周期边界、当前命令期限以及将来才进入有效范围的时间边界。发布脚本重新 TIME，
-越界便丢弃候选结果，从新快照重算。失败的候选状态不会消耗调度轮次。
+## 2. 原子校验 owner 和 CommitWindow
 
-空 key 与不存在分别比较，已有空值视为损坏；不能把损坏状态重新初始化。Lua 数值按精确
-微秒范围校验。脚本只有最后一条 SET 会修改状态，所有可能失败的校验与读取都在它之前，
-避免误把脚本的原子可见性当成异常回滚能力。
+每次尝试获取更新锁都生成新的随机 owner，用 SET NX PX 安装有界租约。默认 TTL 一秒，
+可通过 WithUpdateLockTTL 配置，不创建后台续锁 goroutine。提交脚本原子检查当前 owner，
+锁过期后，即使状态没有被其他客户端修改，旧持有者也不能提交。
 
-租约剩余时间按第一次读取的 backend time 计算；客户端从调用开始计算保守期限并扣除完整
-往返时间，因此不会把 CAS 等待时间额外加到租约上。直接调用 Driver 五个操作方法的调用者也必须遵守该约定。
-Redis 服务器时钟仍是部署假设；这不是跨服务器时钟异常的全局时钟协议。
+所有状态写入者都必须遵守同一资源更新锁。提交只传 owner、新状态、窗口上下界与观察索引，
+不传旧快照或存在性预期，也不执行快照 CAS 比较。
 
-## 3. 只重试明确未提交的冲突
+持锁不阻止时间流逝。读取与发布之间仍可能跨过租约、等待、提交或历史回收期限，
+因此提交脚本必须再次检查核心返回的 `[NotBefore, Before)`。下界拒绝相对于读取时刻的
+时钟倒退，上界包含转换前后的生命周期边界；续租也必须保留原租约期限作为上界。
+归属或窗口失效时，候选不会发布，必须重新抢锁、读取、计算。
 
-CAS/window miss 明确没有写入，可以在整体操作超时内以 1–10ms 有界退避重新读取。
-NOSCRIPT 明确没有执行，可回退到 EVAL。其他网络/脚本错误返回零 Result：SET 可能成功，
-但响应丢失，不能擅自重试，尤其 Renew 没有独立 operation ID，重试可能再次延长租期。
+脚本先验证参数、owner、时间和观察索引，再准备带候选 token 的请求记录，最后一条
+HSET 同时发布权威状态和匹配的元数据。Lua 错误不回滚已经发生的写入，投影缺失或
+标记不匹配必须回退权威状态，不能授权执行。永久状态 Hash 缺少 state、空或错误类型
+均视为损坏，不能重新初始化覆盖。
 
-go-redis v9.22.0 的每命令 NoRetry 禁止不确定传输错误的内部重试，保留明确的 Cluster
-MOVED/ASK 路由。构造器不修改共享客户端配置；要求 ContextTimeoutEnabled，拒绝副本读取及禁用 socket deadline 的配置。
-原始 ReadTimeout/WriteTimeout=-1 仍保留 context deadline，可以使用；-2 会禁用底层
-SetReadDeadline/SetWriteDeadline，不能仅凭 context 保证超时，因此构造时拒绝。
-用户自行安装的 hooks 也不能偷偷重试未知写入。默认总操作超时 5 秒；ctx 更早的期限优先。
-业务拒绝仍可能伴随维护状态提交，不能因为返回队满等错误而丢弃新快照。
+每次持锁尝试结束后，独立脚本校验 owner 后删除自己的锁；旧 owner 不能删除后继的锁。
+取消后的清理使用独立且有界的 context，最多额外耗时 100ms；失败由 TTL 回收。
+锁只覆盖状态更新，不跨越业务任务执行。
+
+租约剩余时间按读取时的 backend time 计算；客户端扣除完整调用耗时，不把锁等待或
+提交等待额外加到租约上。Redis 服务器时钟仍是部署假设。
+
+## 3. 只重试明确未提交的尝试
+
+锁竞争、owner/window miss 明确没有发布状态，可在操作截止前以 1–10ms 有界退避重试。
+Observe 每次重试前重新检查只读结果，可能在不抢到锁的情况下看到其他实例的维护结果。
+NOSCRIPT 明确没有执行，允许 EVALSHA 回退到 EVAL；其他抢锁或提交错误返回零 Result，
+不自动重放。结果不确定的抢锁可能留下租约，由 TTL 回收；不确定的提交不能授权工作。
+
+每条命令通过 NoRetry 禁止不确定网络错误后的内部重试，保留明确的 Cluster MOVED/ASK
+路由。构造器不修改调用方客户端配置，要求 ContextTimeoutEnabled 和 socket deadline，
+拒绝副本读取。默认操作上限五秒，调用方更早的期限优先。业务拒绝仍可能伴随非 nil
+维护状态提交，不能因为返回队满等错误就丢弃状态变化。
 
 ## 4. 一个资源一个 Cluster slot
 
-key 为 `airlock:{sha256(namespace + NUL + resource)}:state`。namespace/resource 禁止 NUL，
-边界拼接无歧义，hash tag 保证该资源的读与发布属于同槽。不同资源能分布到不同节点，单个热点
-资源不能靠 Cluster 自动拆分。注入客户端由调用者关闭，driver 构造不进行网络 I/O。
+状态 key 为 `airlock:{sha256(namespace + NUL + resource)}:state`，更新锁为同一 hash tag
+下的 `:update-lock`。不同 namespace 或 Resource 使用独立的状态与锁；同一资源的多个
+Driver 实例竞争同一把锁。更新锁不承诺 FIFO，入队顺序按成功提交的状态转换确定。
+不同资源仍共享后端 CPU、网络和连接池，单个热点资源不能靠 Cluster 自动拆分。
 
-## 5. 永久 key 与部署约束
+## 5. 永久状态与部署约束
 
-不设置 TTL：删除整个状态会同时删除活动授权、等待队列、调度游标和幂等历史。
-必须使用 noeviction，禁止外部 DEL/EXPIRE/写入该 namespace；内存容量和永久资源数量由部署管理。
-终态记录可按协议回收，整个资源的退休和重建需要另外的生命周期设计。
+权威状态 key 不设置 TTL，更新锁设置 TTL。使用 noeviction，活跃期间禁止外部删除、
+过期、恢复或修改状态与更新锁。终态记录可按协议回收，整个资源的退休需要停止客户端和
+活跃业务后处理；状态 key 不自动 GC。客户端与连接资源由调用方管理。
 
-Redis 默认异步复制可能在切换后丢失已经确认的授权。持久化、备份恢复、主从切换与旧主隔离
-不是 driver 自动完成的；WAIT 也不能把 Redis 变成强一致 CP 系统。业务进程暂停超过 TTL 后
-仍可能继续运行；Lease.Done/Valid 需要业务遵守，租约不自动停止任务，也不提供通用 fencing。
+异步复制与故障切换可能丢失已确认状态，更新锁不改变这个边界。租约只能回收记账容量，
+不能停止业务任务，也不提供外部 fencing。应用仍须遵守 Lease.Done/Valid 并监督实际工作。
 
 ## 6. 验证证明到哪里
 
-默认 miniredis 测试覆盖共享契约、CAS 竞争、时间窗口、损坏状态、取消、续租和响应丢失注入；
-真实 standalone 与三主 Cluster 运行共同契约、独立客户端和 SCRIPT FLUSH 路径。
-真实 Cluster 是多节点路由/原子状态测试，不是 Cluster failover 保证。
+测试覆盖公共契约、owner/CommitWindow 拒绝、锁过期、跨客户端竞争、取消后清理、
+响应丢失、只读 Observe、维护去重及投影发布。真实 standalone 和三主 Cluster 运行
+共同契约、同 slot 多 key 提交、独立客户端、原生 TTL 与 SCRIPT FLUSH 路径。
+这些是正确性验证，不是吞吐、P99 或 Cluster failover 安全保证。
 
-`scripts/redis-failover.sh` 先同步一主一从，再暂停副本并断开复制连接，随后主库确认一个授权。
-停止旧主后提升没有该写入的副本，验证在原租约仍有剩余时间时又能授予满容量。
-这是刻意构造的异步复制缺失实验，预期结果是暴露局限，不是宣称故障切换安全，也不是 TCP 分区模拟。
-脚本只操作自行创建的隔离容器、网络与临时文件。
+`scripts/redis-failover.sh` 构造异步复制缺失，验证旧授权仍有效时，丢失状态的新主可能
+再次授予满容量。这用于暴露部署局限，不是宣称故障切换安全。脚本只操作自行创建的隔离资源。
 
 参考：[Redis 脚本语义](https://redis.io/docs/latest/develop/programmability/eval-intro/)、
-[复制和故障边界](https://redis.io/docs/latest/operate/oss_and_stack/management/replication/)、
-[go-redis v9.22.0](https://github.com/redis/go-redis/tree/v9.22.0)。
+[复制和故障边界](https://redis.io/docs/latest/operate/oss_and_stack/management/replication/)。
 
+## 初版验证记录
 
 实际验证记录（2026-10-23）：Go 1.24.13 / Darwin arm64；根模块覆盖率 100%，
 Redis 生产文件覆盖率 97.22%，独立模块的 race/vet/lint 通过。真实 Redis 7.4 standalone、

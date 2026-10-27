@@ -118,7 +118,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。源码引用固定�
 
 实现：[driver.go](../../driver.go), [driver_transition.go](../../driver_transition.go), [driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/redis/scripts.go](../../driver/redis/scripts.go)
 
-测试：[internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/cas_test.go](../../driver/redis/cas_test.go)
+测试：[internal/driverconformance/conformance.go](../../internal/driverconformance/conformance.go), [driver/redis/commit_test.go](../../driver/redis/commit_test.go)
 
 ### 08 · 应用监督流程：停止任务后再释放租约
 

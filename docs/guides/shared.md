@@ -64,7 +64,7 @@ and requests have primary key `(namespace, resource, id)`. Commands lock only th
 matching resource row with `FOR UPDATE` and read that resource's requests. Redis
 stores each resource at `airlock:{SHA256(namespace + "\0" + resource)}:state`, with
 an independent `:update-lock` key in the same Cluster slot for state updates,
-plus snapshot CAS and commit-time ownership/time checks. Read-only Observe does
+with atomic commit-time ownership/time checks. Read-only Observe does
 not acquire this lock. Resources still share the backend's physical resources
 and connection pool; logical isolation does not guarantee performance isolation.
 

@@ -13,7 +13,8 @@ import (
 
 // Driver provides atomic admission operations for a resource. Implementations must
 // serialize mutations, use backend time after obtaining exclusive access
-// (or enforce the Transition publication window with atomic CAS),
+// (or enforce its publication window while atomically checking update-lock
+// ownership or comparing the previously read state),
 // atomically persist lifecycle/scheduling changes even on business rejection,
 // and honor ctx. Storage layout and use of the reference helpers are optional. Transport errors are ambiguous and never authorize work.
 // Drivers do not own injected connections, execute work, or fall back locally.
