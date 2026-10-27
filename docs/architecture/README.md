@@ -22,7 +22,7 @@ Source evidence for diagrams 01–08 is pinned to
 This refresh follows the `dev` renames (`shared.go`, `shared_state.go`,
 `driver_transition.go`), local `Resize` and read-only observations; diagram
 line numbers belong to the pinned snapshot, not the moving `dev` branch.
-Backend views 09–11 are pinned to [`cbdfca7`](https://github.com/tr1v3r/airlock/tree/cbdfca745233d8cd3a67fd7d236c76d13d07f436). Their candidates carry their own revision; the two snapshots have identical backend implementation files.
+PG views 09–10 retain [`cbdfca7`](https://github.com/tr1v3r/airlock/tree/cbdfca745233d8cd3a67fd7d236c76d13d07f436). Redis view 11 follows `dev` at [`f9de5e5`](https://github.com/tr1v3r/airlock/tree/f9de5e5e79bd2d06d97b0eba4ce45dbbb99b6410), including the Resource update lock and owner/CommitWindow checks. Every candidate records its own revision; earlier views retain their pinned snapshots.
 
 ## Find your entry point
 
@@ -161,17 +161,17 @@ Implementation: [driver/postgres/schema.go](../../driver/postgres/schema.go), [d
 
 Tests: [driver/postgres/postgres_test.go](../../driver/postgres/postgres_test.go), [driver/postgres/storage_test.go](../../driver/postgres/storage_test.go)
 
-### 11 · Redis key, Hash fields and snapshot CAS workflow
+### 11 · Redis resource update lock and guarded commit workflow
 
-Follow the authoritative snapshot, read projections, publication tokens and guarded CAS retries.
+Follow read-only Observe, per-resource locking, owner/time guards and cleanup.
 
-[HTML](.archify/workflow-redis-operations-20261027-143337/redis-operations.html) · [JSON](.archify/workflow-redis-operations-20261027-143337/candidate.json)
+[HTML](.archify/workflow-redis-operations-20261027-224623/redis-operations.html) · [JSON](.archify/workflow-redis-operations-20261027-224623/candidate.json)
 
-![Redis key, Hash fields and snapshot CAS workflow](previews/redis-operations.png)
+![Redis resource update lock and guarded commit workflow](previews/redis-operations.png)
 
-Implementation: [driver/redis/redis.go](../../driver/redis/redis.go), [driver/redis/observe.go](../../driver/redis/observe.go), [driver/redis/scripts.go](../../driver/redis/scripts.go), [shared_state.go](../../shared_state.go)
+Implementation: [driver/redis/redis.go](../../driver/redis/redis.go), [driver/redis/observe.go](../../driver/redis/observe.go), [driver/redis/scripts.go](../../driver/redis/scripts.go), [driver/redis/update_lock.go](../../driver/redis/update_lock.go), [driver_transition.go](../../driver_transition.go), [shared_state.go](../../shared_state.go)
 
-Tests: [driver/redis/redis_test.go](../../driver/redis/redis_test.go), [driver/redis/cas_test.go](../../driver/redis/cas_test.go), [driver/redis/integration_test.go](../../driver/redis/integration_test.go)
+Tests: [driver/redis/redis_test.go](../../driver/redis/redis_test.go), [driver/redis/commit_test.go](../../driver/redis/commit_test.go), [driver/redis/integration_test.go](../../driver/redis/integration_test.go), [shared_commit_window_test.go](../../shared_commit_window_test.go)
 
 ## Scope and reading limits
 
@@ -180,7 +180,7 @@ Tests: [driver/redis/redis_test.go](../../driver/redis/redis_test.go), [driver/r
 - The client Lease diagram describes local validity separately. Invalidity does not confirm backend release, and terminal accounting cannot forcibly stop application work.
 - The driver diagram shows I/O ownership; its cards describe Memory / PostgreSQL calls to Transition. Redis enforces the returned CommitWindow, and every driver can answer Observe read-only between maintenance boundaries.
 - Supervision comes from a runnable application example; `runJob` is not an SDK API. Acquisition failure starts no work; actual execution determines the ordering of cancellation and completion.
-- The PG views show the current complete-state load and request delta writes. The Redis view shows one Hash with authoritative `state`, derived `meta`/`r:<id>` projections, and snapshot CAS with CommitWindow. Neither depicts the incremental proposals (#50/#51) or a Resource update lock.
+- The PG views show the current complete-state load and request delta writes. The Redis view shows one Hash with authoritative `state`, derived `meta`/`r:<id>` projections, and a per-Resource update lock plus atomic owner/CommitWindow checks. Redis no longer compares the old snapshot. Incremental transition proposals (#50/#51) remain unimplemented.
 - Proposals, unmerged branches, deployment topologies and performance waterfalls are not presented as implemented architecture.
 
 ## Maintenance and verification

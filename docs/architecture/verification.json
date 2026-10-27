@@ -190,11 +190,11 @@
     },
     {
       "slug": "redis-operations",
-      "source_revision": "cbdfca745233d8cd3a67fd7d236c76d13d07f436",
-      "candidate": ".archify/workflow-redis-operations-20261027-143337/candidate.json",
-      "candidate_sha256": "2033070b610fb442a771b5990722bb12ccb436cb8ce5f5dcac392e794dc447d3",
-      "html": ".archify/workflow-redis-operations-20261027-143337/redis-operations.html",
-      "html_sha256": "8214ff61811a56cd55fb93c1f058b95d3c31e2d126cfea35d48e2d53dfe9b747",
+      "source_revision": "f9de5e5e79bd2d06d97b0eba4ce45dbbb99b6410",
+      "candidate": ".archify/workflow-redis-operations-20261027-224623/candidate.json",
+      "candidate_sha256": "3f6aae2ffd339554d7ef2bf363188599d7cb2b2b59ba3a407655135354f33e0e",
+      "html": ".archify/workflow-redis-operations-20261027-224623/redis-operations.html",
+      "html_sha256": "de6e3584eee5583fc99170ccd11cd8671841e35f5a5ad121fa69a51912b58a6f",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -202,14 +202,15 @@
         "browser-check": "pass"
       },
       "preview": "previews/redis-operations.png",
-      "preview_sha256": "421ab5f18ebb0b13719886a29fcde67c45e9c02026398af0df1aa723875caeef",
-      "manual_review": "Inspected full-page light-theme Chrome preview at 1440 CSS pixels, including below-fold paths and notes. Automatic browser checks also cover desktop light/dark states.",
+      "preview_sha256": "b69283ee746fae1cd5cf0ad3b137db089ec897581966fae576cad304d667d274",
+      "manual_review": "Inspected full-page light-theme Chrome preview at 1440 CSS pixels and a full-size middle viewport, including five command branches, under-lock exits, commit guards and retry corridors. Finalize also passed real-browser light/dark desktop checks. Diagram labels carry the flow; accompanying cards explain Hash fields, TTL, tokens and time boundaries.",
       "route_advisory": {}
     }
   ],
   "source_revision_note": "Default revision for views 01–08; each diagram entry records its own pinned revision.",
   "source_revisions": {
     "views_01_08": "ca393a3031c310c21515cec04e98b4f009f50e08",
-    "views_09_11": "cbdfca745233d8cd3a67fd7d236c76d13d07f436"
+    "views_09_10": "cbdfca745233d8cd3a67fd7d236c76d13d07f436",
+    "view_11": "f9de5e5e79bd2d06d97b0eba4ce45dbbb99b6410"
   }
 }

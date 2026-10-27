@@ -199,22 +199,25 @@
   {
     "slug": "redis-operations",
     "type": "workflow",
-    "title": "Redis 操作流程：单 key Hash 与快照 CAS",
-    "title_en": "Redis key, Hash fields and snapshot CAS workflow",
-    "question": "state、meta、r:<id> 怎么读写？冲突时重试什么？",
-    "question_en": "Follow the authoritative snapshot, read projections, publication tokens and guarded CAS retries.",
-    "candidate": ".archify/workflow-redis-operations-20261027-143337/candidate.json",
-    "html": ".archify/workflow-redis-operations-20261027-143337/redis-operations.html",
+    "title": "Redis 操作流程：更新锁与 owner/CommitWindow 校验",
+    "title_en": "Redis resource update lock and guarded commit workflow",
+    "question": "Hash 和更新锁如何协作？Observe 何时抢锁？",
+    "question_en": "Follow read-only Observe, per-resource locking, owner/time guards and cleanup.",
+    "candidate": ".archify/workflow-redis-operations-20261027-224623/candidate.json",
+    "html": ".archify/workflow-redis-operations-20261027-224623/redis-operations.html",
     "sources": [
       "driver/redis/redis.go",
       "driver/redis/observe.go",
       "driver/redis/scripts.go",
-      "shared_state.go"
+      "shared_state.go",
+      "driver/redis/update_lock.go",
+      "driver_transition.go"
     ],
     "tests": [
       "driver/redis/redis_test.go",
-      "driver/redis/cas_test.go",
-      "driver/redis/integration_test.go"
+      "driver/redis/commit_test.go",
+      "driver/redis/integration_test.go",
+      "shared_commit_window_test.go"
     ],
     "preview": "previews/redis-operations.png"
   }

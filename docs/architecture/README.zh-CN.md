@@ -18,7 +18,7 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。01–08 的源码引
 [`ca393a3`](https://github.com/tr1v3r/airlock/tree/ca393a3031c310c21515cec04e98b4f009f50e08)。
 本次刷新对齐 `dev` 的重命名（`shared.go`、`shared_state.go`、`driver_transition.go`）、
 本地 `Resize` 与只读观察；图中的源码行号属于固定快照，不是浮动的 `dev`。
-后端视图 09–11 固定到 [`cbdfca7`](https://github.com/tr1v3r/airlock/tree/cbdfca745233d8cd3a67fd7d236c76d13d07f436)；每张候选 JSON 单独记录版本，这两个快照的后端实现文件一致。
+PG 视图 09–10 保留 [`cbdfca7`](https://github.com/tr1v3r/airlock/tree/cbdfca745233d8cd3a67fd7d236c76d13d07f436)。Redis 视图 11 对齐 `dev` 的 [`f9de5e5`](https://github.com/tr1v3r/airlock/tree/f9de5e5e79bd2d06d97b0eba4ce45dbbb99b6410)，包含 Resource 更新锁与 owner/CommitWindow 校验。每张候选 JSON 单独记录版本，其他视图保留原快照。
 
 ## 按需求切入
 
@@ -157,17 +157,17 @@ PNG 是静态浏览器预览，不替代可探索的 HTML。01–08 的源码引
 
 测试：[driver/postgres/postgres_test.go](../../driver/postgres/postgres_test.go), [driver/postgres/storage_test.go](../../driver/postgres/storage_test.go)
 
-### 11 · Redis 操作流程：单 key Hash 与快照 CAS
+### 11 · Redis 操作流程：更新锁与 owner/CommitWindow 校验
 
-state、meta、r:<id> 怎么读写？冲突时重试什么？
+Hash 和更新锁如何协作？Observe 何时抢锁？
 
-[HTML](.archify/workflow-redis-operations-20261027-143337/redis-operations.html) · [JSON](.archify/workflow-redis-operations-20261027-143337/candidate.json)
+[HTML](.archify/workflow-redis-operations-20261027-224623/redis-operations.html) · [JSON](.archify/workflow-redis-operations-20261027-224623/candidate.json)
 
-![Redis 操作流程：单 key Hash 与快照 CAS](previews/redis-operations.png)
+![Redis 操作流程：更新锁与 owner/CommitWindow 校验](previews/redis-operations.png)
 
-实现：[driver/redis/redis.go](../../driver/redis/redis.go), [driver/redis/observe.go](../../driver/redis/observe.go), [driver/redis/scripts.go](../../driver/redis/scripts.go), [shared_state.go](../../shared_state.go)
+实现：[driver/redis/redis.go](../../driver/redis/redis.go), [driver/redis/observe.go](../../driver/redis/observe.go), [driver/redis/scripts.go](../../driver/redis/scripts.go), [driver/redis/update_lock.go](../../driver/redis/update_lock.go), [driver_transition.go](../../driver_transition.go), [shared_state.go](../../shared_state.go)
 
-测试：[driver/redis/redis_test.go](../../driver/redis/redis_test.go), [driver/redis/cas_test.go](../../driver/redis/cas_test.go), [driver/redis/integration_test.go](../../driver/redis/integration_test.go)
+测试：[driver/redis/redis_test.go](../../driver/redis/redis_test.go), [driver/redis/commit_test.go](../../driver/redis/commit_test.go), [driver/redis/integration_test.go](../../driver/redis/integration_test.go), [shared_commit_window_test.go](../../shared_commit_window_test.go)
 
 ## 阅读边界
 
@@ -176,7 +176,7 @@ state、meta、r:<id> 怎么读写？冲突时重试什么？
 - 客户端 Lease 图单独描述本地有效性。失效不等于后端已释放，终态也无法强制结束应用工作。
 - 驱动图展示 I/O 所有权；Memory / PostgreSQL 调用 Transition 的关系写在图下卡片中。Redis 校验 Transition 返回的 CommitWindow；免维护期各驱动都可只读应答 Observe。
 - 应用监督图来自可运行示例；`runJob` 不是 SDK API。获取失败不启动业务，监督取消与业务完成的先后取决于实际执行。
-- PG 图展示当前完整状态读取与请求差异写入；Redis 图展示单 Hash 的权威 `state`、派生 `meta`/`r:<id>` 和带 CommitWindow 的快照 CAS。#50/#51 增量提案及 Resource 更新锁均未画成现有实现。
+- PG 图展示当前完整状态读取与请求差异写入；Redis 图展示单 Hash 的权威 `state`、派生 `meta`/`r:<id>`、Resource 更新锁及原子的 owner/CommitWindow 校验，不再比较旧快照。#50/#51 增量转换仍是提案。
 - 提案、尚未合入的分支、部署拓扑和性能瀑布图未被当作已实现架构。
 
 ## 维护与验证

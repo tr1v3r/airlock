@@ -1,0 +1,1299 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Redis 操作流程｜Resource 更新锁与 owner / CommitWindow",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "f9de5e5e79bd2d06d97b0eba4ce45dbbb99b6410",
+      "link_mode": "local-only"
+    },
+    "output": ".archify/workflow-redis-operations-20261027-224623/redis-operations.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "计算与控制"
+        },
+        "database": {
+          "label": "Redis 读写"
+        },
+        "security": {
+          "label": "错误或不确定结果"
+        },
+        "external": {
+          "label": "调用入口"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "entry",
+      "label": "入口与同槽 key"
+    },
+    {
+      "id": "attempt",
+      "label": "每轮尝试"
+    },
+    {
+      "id": "probe",
+      "label": "Observe 只读快路径"
+    },
+    {
+      "id": "probe_error",
+      "label": "未持锁的读取错误",
+      "variant": "exception"
+    },
+    {
+      "id": "acquire",
+      "label": "按 Resource 抢更新锁"
+    },
+    {
+      "id": "locked_route",
+      "label": "确认持锁后的分流"
+    },
+    {
+      "id": "recheck",
+      "label": "Observe 持锁复查"
+    },
+    {
+      "id": "snapshot",
+      "label": "持锁读取权威状态"
+    },
+    {
+      "id": "core",
+      "label": "Go 核心状态机"
+    },
+    {
+      "id": "effects",
+      "label": "五类命令效果"
+    },
+    {
+      "id": "plan",
+      "label": "最终状态与提交准备"
+    },
+    {
+      "id": "args_failure",
+      "label": "编码错误清理",
+      "variant": "exception"
+    },
+    {
+      "id": "commit",
+      "label": "commitScript 原子发布"
+    },
+    {
+      "id": "outcome",
+      "label": "提交错误或重试清理"
+    },
+    {
+      "id": "cleanup",
+      "label": "发布成功后的解锁"
+    },
+    {
+      "id": "context",
+      "label": "返回前检查操作 context"
+    },
+    {
+      "id": "finish",
+      "label": "返回或退避"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "entry",
+      "lane": "entry",
+      "col": 0,
+      "type": "external",
+      "label": "Driver 五类操作",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 340,
+          "end_line": 363,
+          "label": "业务接口"
+        }
+      ],
+      "width": 200
+    },
+    {
+      "id": "validate",
+      "lane": "entry",
+      "col": 1,
+      "type": "backend",
+      "label": "输入与 context 校验",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 208,
+          "end_line": 221,
+          "label": "校验、超时与资源 key"
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "keys",
+      "lane": "entry",
+      "col": 2,
+      "type": "database",
+      "label": "同槽两类 key",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 113,
+          "end_line": 116,
+          "label": "状态 key 哈希"
+        },
+        {
+          "path": "driver/redis/update_lock.go",
+          "line": 25,
+          "end_line": 28,
+          "label": "同槽更新锁 key"
+        }
+      ],
+      "width": 128
+    },
+    {
+      "id": "invalid",
+      "lane": "entry",
+      "col": 5,
+      "type": "security",
+      "label": "输入错误直接返回",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 208,
+          "end_line": 217,
+          "label": "输入错误"
+        }
+      ],
+      "width": 104
+    },
+    {
+      "id": "route",
+      "lane": "attempt",
+      "col": 3,
+      "type": "backend",
+      "label": "本轮是 Observe？",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 223,
+          "end_line": 230,
+          "label": "每轮分流"
+        }
+      ],
+      "icon": "decision",
+      "width": 104
+    },
+    {
+      "id": "probe",
+      "lane": "probe",
+      "col": 3,
+      "type": "backend",
+      "label": "投影可直接返回？",
+      "sources": [
+        {
+          "path": "driver/redis/observe.go",
+          "line": 63,
+          "end_line": 105,
+          "label": "读投影、Token 与校验"
+        },
+        {
+          "path": "shared_observation.go",
+          "line": 49,
+          "end_line": 90,
+          "label": "请求身份及维护边界"
+        }
+      ],
+      "icon": "decision",
+      "width": 104
+    },
+    {
+      "id": "fast_return",
+      "lane": "probe",
+      "col": 4,
+      "type": "backend",
+      "label": "返回已提交结果",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 224,
+          "end_line": 227,
+          "label": "只读返回"
+        },
+        {
+          "path": "driver/redis/scripts.go",
+          "line": 75,
+          "end_line": 82,
+          "label": "只读 Lua"
+        }
+      ],
+      "width": 160
+    },
+    {
+      "id": "probe_error",
+      "lane": "probe_error",
+      "col": 5,
+      "type": "security",
+      "label": "只读查询错误返回",
+      "sources": [
+        {
+          "path": "driver/redis/observe.go",
+          "line": 63,
+          "end_line": 105,
+          "label": "错误返回"
+        }
+      ],
+      "width": 104
+    },
+    {
+      "id": "acquire",
+      "lane": "acquire",
+      "col": 2,
+      "type": "database",
+      "label": "确认抢到更新锁？",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 251,
+          "end_line": 261,
+          "label": "每次生成 owner 与获取锁"
+        },
+        {
+          "path": "driver.go",
+          "line": 177,
+          "end_line": 186,
+          "label": "随机 owner 的生成"
+        },
+        {
+          "path": "driver/redis/scripts.go",
+          "line": 84,
+          "end_line": 89,
+          "label": "获取脚本"
+        }
+      ],
+      "icon": "decision",
+      "width": 104
+    },
+    {
+      "id": "acquire_error",
+      "lane": "acquire",
+      "col": 0,
+      "type": "security",
+      "label": "抢锁结果不确定",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 253,
+          "end_line": 256,
+          "label": "未知抢锁结果不重放"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 118,
+          "end_line": 151,
+          "label": "NoRetry 与 NOSCRIPT"
+        }
+      ],
+      "width": 172
+    },
+    {
+      "id": "locked_route",
+      "lane": "locked_route",
+      "col": 3,
+      "type": "backend",
+      "label": "持锁后仍是 Observe？",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 263,
+          "end_line": 271,
+          "label": "持锁分流"
+        }
+      ],
+      "icon": "decision",
+      "width": 132
+    },
+    {
+      "id": "recheck",
+      "lane": "recheck",
+      "col": 3,
+      "type": "backend",
+      "label": "投影已可直接返回？",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 263,
+          "end_line": 268,
+          "label": "持锁复查"
+        },
+        {
+          "path": "driver/redis/observe.go",
+          "line": 63,
+          "end_line": 105,
+          "label": "同一只读投影逻辑"
+        }
+      ],
+      "icon": "decision",
+      "width": 120
+    },
+    {
+      "id": "snapshot",
+      "lane": "snapshot",
+      "col": 1,
+      "type": "database",
+      "label": "持锁读取并解码 state",
+      "sources": [
+        {
+          "path": "driver/redis/scripts.go",
+          "line": 3,
+          "end_line": 14,
+          "label": "权威快照及后端时间"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 271,
+          "end_line": 284,
+          "label": "完整读取与 Go 解码"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "maintain",
+      "lane": "core",
+      "col": 3,
+      "type": "backend",
+      "label": "恢复与到期维护",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 83,
+          "end_line": 124,
+          "label": "旧边界、恢复、过期与调度"
+        },
+        {
+          "path": "driver_transition.go",
+          "line": 28,
+          "end_line": 72,
+          "label": "窗口收集器"
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "command",
+      "lane": "core",
+      "col": 2,
+      "type": "backend",
+      "label": "Go 命令分支",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 125,
+          "end_line": 202,
+          "label": "五类命令处理"
+        }
+      ],
+      "icon": "decision",
+      "height": 110,
+      "width": 144
+    },
+    {
+      "id": "submit",
+      "lane": "effects",
+      "col": 0,
+      "type": "backend",
+      "label": "Submit",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 127,
+          "end_line": 164,
+          "label": "提交与预先取消"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "cancel",
+      "lane": "effects",
+      "col": 1,
+      "type": "backend",
+      "label": "Cancel",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 141,
+          "end_line": 144,
+          "label": "提交前取消"
+        },
+        {
+          "path": "shared_state.go",
+          "line": 167,
+          "end_line": 181,
+          "label": "取消既有请求"
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "renew",
+      "lane": "effects",
+      "col": 2,
+      "type": "backend",
+      "label": "Renew",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 183,
+          "end_line": 200,
+          "label": "续租与有效性"
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "release",
+      "lane": "effects",
+      "col": 3,
+      "type": "backend",
+      "label": "Release",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 183,
+          "end_line": 200,
+          "label": "释放和重复释放"
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "observe_command",
+      "lane": "effects",
+      "col": 4,
+      "type": "backend",
+      "label": "Observe",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 127,
+          "end_line": 132,
+          "label": "Observe 不创建未知记录"
+        },
+        {
+          "path": "shared_state.go",
+          "line": 204,
+          "end_line": 220,
+          "label": "维护后的结果"
+        }
+      ],
+      "width": 136
+    },
+    {
+      "id": "capture",
+      "lane": "plan",
+      "col": 2,
+      "type": "backend",
+      "label": "再次调度与整理状态",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 204,
+          "end_line": 229,
+          "label": "最终调度、窗口和配置整理"
+        }
+      ],
+      "height": 110,
+      "width": 120
+    },
+    {
+      "id": "next",
+      "lane": "plan",
+      "col": 4,
+      "type": "backend",
+      "label": "next 非 nil？",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 286,
+          "end_line": 298,
+          "label": "新状态与业务错误返回"
+        }
+      ],
+      "icon": "decision",
+      "width": 132
+    },
+    {
+      "id": "parameters",
+      "lane": "plan",
+      "col": 5,
+      "type": "backend",
+      "label": "Go 编码提交参数",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 286,
+          "end_line": 317,
+          "label": "编码、窗口和提交参数"
+        },
+        {
+          "path": "driver/redis/observe.go",
+          "line": 26,
+          "end_line": 60,
+          "label": "同 Token 的全部查询记录"
+        }
+      ],
+      "width": 144
+    },
+    {
+      "id": "guards",
+      "lane": "commit",
+      "col": 4,
+      "type": "backend",
+      "label": "owner 与窗口有效？",
+      "sources": [
+        {
+          "path": "driver/redis/scripts.go",
+          "line": 19,
+          "end_line": 49,
+          "label": "归属和时间原子校验"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 315,
+          "end_line": 334,
+          "label": "提交及返回码"
+        }
+      ],
+      "icon": "decision",
+      "width": 176
+    },
+    {
+      "id": "prepare",
+      "lane": "commit",
+      "col": 3,
+      "type": "database",
+      "label": "准备查询记录",
+      "sources": [
+        {
+          "path": "driver/redis/scripts.go",
+          "line": 51,
+          "end_line": 70,
+          "label": "投影验证、删除和准备"
+        }
+      ],
+      "width": 168
+    },
+    {
+      "id": "publish",
+      "lane": "commit",
+      "col": 2,
+      "type": "database",
+      "label": "最后 HSET 发布",
+      "sources": [
+        {
+          "path": "driver/redis/scripts.go",
+          "line": 61,
+          "end_line": 72,
+          "label": "最终权威发布"
+        }
+      ],
+      "width": 132
+    },
+    {
+      "id": "saved_result",
+      "lane": "plan",
+      "col": 0,
+      "type": "backend",
+      "label": "解锁后返回核心结果",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 296,
+          "end_line": 298,
+          "label": "无新状态"
+        },
+        {
+          "path": "driver/redis/update_lock.go",
+          "line": 48,
+          "end_line": 55,
+          "label": "独立清理"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 230,
+          "end_line": 235,
+          "label": "最终 context"
+        }
+      ],
+      "width": 160
+    },
+    {
+      "id": "saved_retry",
+      "lane": "outcome",
+      "col": 5,
+      "type": "backend",
+      "label": "解锁后重新尝试",
+      "sources": [
+        {
+          "path": "driver/redis/scripts.go",
+          "line": 23,
+          "end_line": 49,
+          "label": "明确未发布"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 323,
+          "end_line": 334,
+          "label": "返回 retry"
+        }
+      ],
+      "width": 144
+    },
+    {
+      "id": "owned_error",
+      "lane": "outcome",
+      "col": 4,
+      "type": "security",
+      "label": "解锁后返回提交错误",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 271,
+          "end_line": 293,
+          "label": "读取与编码错误"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 300,
+          "end_line": 325,
+          "label": "窗口、投影及提交错误"
+        }
+      ],
+      "width": 160
+    },
+    {
+      "id": "cleanup",
+      "lane": "cleanup",
+      "col": 2,
+      "type": "database",
+      "label": "校验 owner 后解锁",
+      "sources": [
+        {
+          "path": "driver/redis/update_lock.go",
+          "line": 48,
+          "end_line": 55,
+          "label": "清理预算与上下文"
+        },
+        {
+          "path": "driver/redis/scripts.go",
+          "line": 91,
+          "end_line": 97,
+          "label": "只删自己的锁"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 251,
+          "end_line": 261,
+          "label": "成功持锁后 defer 清理"
+        }
+      ],
+      "width": 112
+    },
+    {
+      "id": "ctx",
+      "lane": "context",
+      "col": 2,
+      "type": "backend",
+      "label": "操作 context 已结束？",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 230,
+          "end_line": 244,
+          "label": "最终 context 与重试取消"
+        }
+      ],
+      "icon": "decision",
+      "width": 140
+    },
+    {
+      "id": "ctx_error",
+      "lane": "context",
+      "col": 4,
+      "type": "security",
+      "label": "返回 context 错误",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 230,
+          "end_line": 244,
+          "label": "零结果与取消"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 328,
+          "end_line": 332,
+          "label": "提交后取消检查"
+        }
+      ],
+      "width": 112
+    },
+    {
+      "id": "returned",
+      "lane": "finish",
+      "col": 1,
+      "type": "backend",
+      "label": "返回本轮结果或错误",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 230,
+          "end_line": 235,
+          "label": "返回结果"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 204,
+          "end_line": 207,
+          "label": "错误与提交契约"
+        }
+      ],
+      "width": 120
+    },
+    {
+      "id": "backoff",
+      "lane": "finish",
+      "col": 5,
+      "type": "backend",
+      "label": "1–10ms 有界退避",
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 238,
+          "end_line": 245,
+          "label": "计时与取消"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 258,
+          "end_line": 259,
+          "label": "锁竞争重试"
+        }
+      ],
+      "icon": "waiting",
+      "width": 96
+    },
+    {
+      "id": "recheck_return",
+      "lane": "recheck",
+      "col": 4,
+      "type": "backend",
+      "label": "解锁后返回复查结果",
+      "width": 160,
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 261,
+          "end_line": 268,
+          "label": "defer 与复查返回"
+        },
+        {
+          "path": "driver/redis/update_lock.go",
+          "line": 48,
+          "end_line": 55,
+          "label": "owner 校验与清理预算"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 230,
+          "end_line": 235,
+          "label": "返回前检查 context"
+        }
+      ]
+    },
+    {
+      "id": "recheck_error",
+      "lane": "recheck",
+      "col": 5,
+      "type": "security",
+      "label": "解锁后返回读取错误",
+      "width": 144,
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 261,
+          "end_line": 268,
+          "label": "复查错误"
+        },
+        {
+          "path": "driver/redis/update_lock.go",
+          "line": 48,
+          "end_line": 55,
+          "label": "owner 校验与清理预算"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 230,
+          "end_line": 235,
+          "label": "返回前检查 context"
+        }
+      ]
+    },
+    {
+      "id": "snapshot_error",
+      "lane": "snapshot",
+      "col": 0,
+      "type": "security",
+      "label": "解锁后返回快照错误",
+      "width": 160,
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 271,
+          "end_line": 284,
+          "label": "快照读取解码错误"
+        },
+        {
+          "path": "driver/redis/update_lock.go",
+          "line": 48,
+          "end_line": 55,
+          "label": "owner 校验与清理预算"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 230,
+          "end_line": 235,
+          "label": "返回前检查 context"
+        }
+      ]
+    },
+    {
+      "id": "parameters_error",
+      "lane": "args_failure",
+      "col": 5,
+      "type": "security",
+      "label": "解锁后返回编码错误",
+      "width": 144,
+      "sources": [
+        {
+          "path": "driver/redis/redis.go",
+          "line": 286,
+          "end_line": 312,
+          "label": "编码、窗口及投影错误"
+        },
+        {
+          "path": "driver/redis/update_lock.go",
+          "line": 48,
+          "end_line": 55,
+          "label": "owner 校验与清理预算"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 230,
+          "end_line": 235,
+          "label": "返回前检查 context"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "start",
+      "from": "entry",
+      "to": "validate"
+    },
+    {
+      "id": "input_bad",
+      "from": "validate",
+      "to": "invalid",
+      "label": "失败",
+      "role": "error"
+    },
+    {
+      "id": "input_ok",
+      "from": "validate",
+      "to": "keys",
+      "label": "通过"
+    },
+    {
+      "id": "key_route",
+      "from": "keys",
+      "to": "route"
+    },
+    {
+      "id": "is_observe",
+      "from": "route",
+      "to": "probe",
+      "label": "是",
+      "role": "branch"
+    },
+    {
+      "id": "is_write",
+      "from": "route",
+      "to": "acquire",
+      "label": "写命令",
+      "role": "branch"
+    },
+    {
+      "id": "fast_ready",
+      "from": "probe",
+      "to": "fast_return",
+      "label": "是",
+      "role": "branch"
+    },
+    {
+      "id": "probe_due",
+      "from": "probe",
+      "to": "acquire",
+      "label": "缺失 / 未发布 / 到期",
+      "role": "branch"
+    },
+    {
+      "id": "probe_bad",
+      "from": "probe",
+      "to": "probe_error",
+      "label": "读取或校验错误",
+      "role": "error"
+    },
+    {
+      "id": "lock_yes",
+      "from": "acquire",
+      "to": "locked_route",
+      "label": "确认获得：1",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "drop"
+    },
+    {
+      "id": "lock_busy",
+      "from": "acquire",
+      "to": "backoff",
+      "label": "竞争失败：0",
+      "role": "branch",
+      "fromSide": "right",
+      "toSide": "right",
+      "route": "outside-right",
+      "channelX": 1202
+    },
+    {
+      "id": "lock_unknown",
+      "from": "acquire",
+      "to": "acquire_error",
+      "label": "错误 / 异常响应",
+      "role": "error"
+    },
+    {
+      "id": "recheck_yes",
+      "from": "locked_route",
+      "to": "recheck",
+      "label": "Observe",
+      "role": "branch"
+    },
+    {
+      "id": "recheck_no",
+      "from": "locked_route",
+      "to": "snapshot",
+      "label": "写命令",
+      "role": "branch",
+      "fromSide": "left",
+      "toSide": "left",
+      "route": "return-left"
+    },
+    {
+      "id": "recheck_ready",
+      "from": "recheck",
+      "to": "recheck_return",
+      "label": "可直接返回",
+      "role": "branch"
+    },
+    {
+      "id": "recheck_due",
+      "from": "recheck",
+      "to": "snapshot",
+      "label": "仍需维护",
+      "role": "branch"
+    },
+    {
+      "id": "recheck_bad",
+      "from": "recheck",
+      "to": "recheck_error",
+      "label": "读取或校验错误",
+      "role": "error",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "route": "bottom-channel"
+    },
+    {
+      "id": "snapshot_good",
+      "from": "snapshot",
+      "to": "maintain"
+    },
+    {
+      "id": "snapshot_bad",
+      "from": "snapshot",
+      "to": "snapshot_error",
+      "label": "读 / 解码错误",
+      "role": "error"
+    },
+    {
+      "id": "maintenance_command",
+      "from": "maintain",
+      "to": "command"
+    },
+    {
+      "id": "command_submit",
+      "from": "command",
+      "to": "submit",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "submit_capture",
+      "from": "submit",
+      "to": "capture",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "command_cancel",
+      "from": "command",
+      "to": "cancel",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "cancel_capture",
+      "from": "cancel",
+      "to": "capture",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "command_renew",
+      "from": "command",
+      "to": "renew",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "renew_capture",
+      "from": "renew",
+      "to": "capture",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "command_release",
+      "from": "command",
+      "to": "release",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "release_capture",
+      "from": "release",
+      "to": "capture",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "command_observe_command",
+      "from": "command",
+      "to": "observe_command",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "observe_command_capture",
+      "from": "observe_command",
+      "to": "capture",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "capture_next",
+      "from": "capture",
+      "to": "next"
+    },
+    {
+      "id": "next_encode",
+      "from": "next",
+      "to": "parameters",
+      "label": "是"
+    },
+    {
+      "id": "next_nil",
+      "from": "next",
+      "to": "saved_result",
+      "label": "否",
+      "role": "branch",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "args_commit",
+      "from": "parameters",
+      "to": "guards",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "drop",
+      "bias": 0.2
+    },
+    {
+      "id": "args_error",
+      "from": "parameters",
+      "to": "parameters_error",
+      "label": "编码 / 参数错误",
+      "role": "error",
+      "labelDy": 40
+    },
+    {
+      "id": "guards_ok",
+      "from": "guards",
+      "to": "prepare",
+      "label": "通过"
+    },
+    {
+      "id": "prepare_publish",
+      "from": "prepare",
+      "to": "publish"
+    },
+    {
+      "id": "publish_result",
+      "from": "publish",
+      "to": "cleanup",
+      "label": "提交返回 1"
+    },
+    {
+      "id": "guards_retry",
+      "from": "guards",
+      "to": "saved_retry",
+      "label": "归属 / 窗口失效：0",
+      "role": "branch",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "commit_error",
+      "from": "guards",
+      "to": "owned_error",
+      "label": "脚本 / 通信错误",
+      "role": "error"
+    },
+    {
+      "id": "cleanup_ctx",
+      "from": "cleanup",
+      "to": "ctx"
+    },
+    {
+      "id": "ctx_expired",
+      "from": "ctx",
+      "to": "ctx_error",
+      "label": "是",
+      "role": "error"
+    },
+    {
+      "id": "retry_loop",
+      "from": "backoff",
+      "to": "route",
+      "label": "context 未结束：重读投影 / 重抢锁",
+      "role": "return",
+      "fromSide": "bottom",
+      "toSide": "right",
+      "via": [
+        [
+          1115.8,
+          2895
+        ],
+        [
+          1224,
+          2895
+        ],
+        [
+          1224,
+          309
+        ]
+      ]
+    },
+    {
+      "id": "retry_after_unlock",
+      "from": "saved_retry",
+      "to": "backoff",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "ctx_live_return",
+      "from": "ctx",
+      "to": "returned",
+      "label": "否"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "同一资源：永久 Hash + 有 TTL 的锁",
+      "items": [
+        "资源哈希 = SHA256(namespace + NUL + resource)。状态 key 为 airlock:{哈希}:state；更新锁为同槽 airlock:{哈希}:update-lock。不同 namespace/Resource 独立；不同 Driver 指向相同资源则竞争同一把锁。",
+        "状态 Hash 永久保留。字段 state 是完整 SharedState JSON；meta 为 JSON{Resource, Config, Time, Revision, NextMaintenance, Token}；r:<id> 为 JSON{Token, Record}，这些是字段，不是独立 key。",
+        "更新锁是 string，value 为每次尝试新生成的 32 个小写十六进制字符的随机 owner（128 位）；默认 PX 1000ms，可配 WithUpdateLockTTL，无后台续锁。它与业务 LeaseTTL 是不同租约。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Observe：先只读，再竞争，持锁复查",
+      "items": [
+        "投影 Token 一致、身份/配置/状态校验通过且未到维护时间，直接返回已提交结果，不取更新锁，不加载完整 state，不增加 Revision。损坏/通信错误返回错误，不视为正常维护信号。",
+        "投影缺失、Token 不匹配或维护到期才尝试更新锁。获得锁后再做同一投影检查；其他实例可能已完成维护，复查可直接返回时也必须先解锁。",
+        "锁竞争失败不读完整快照，不做完整状态转换。每轮重试重新检查投影；即使没获得锁，也可能读到其他实例刚发布的结果。"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "五类命令仍由 Go Transition 决定",
+      "items": [
+        "Submit 复用已有结果且不刷新租约；新请求按完整权重授予、排队、拒绝或过期。Cancel 取消等待/授予，也可预先建立取消墓碑。",
+        "Renew 只延长匹配且仍有效的业务租约，不增加容量占用。Release 仅归还匹配授予的完整权重，重复终态不重复归还。Observe 维护后读取结果，不新建未知请求。",
+        "公共处理包括恢复、过期与历史回收、命令前后公平调度；非 nil next 即使带业务错误仍需提交，nil next 不提交。Lua 不执行公平调度。",
+        "状态转换先恢复配置并维护旧状态，再执行命令；命令前后调度、最终整理和 Revision + 1 仍由核心完成。提交参数为 owner、新 state、CommitWindow 与完整查询投影。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "CommitWindow 与原子发布",
+      "items": [
+        "NotBefore 使用读取快照的原始后端时间；Before 取旧/新状态及当前请求中最早的未来边界，含租约/队列期限、历史回收、提交及等待窗口。原地续租必须保留旧租约期限。",
+        "边界收集合并进配置恢复与最终整理循环，不为窗口再单独扫描两遍记录。Lua 同时检查 GET update-lock == owner 和 NotBefore ≤ Redis TIME < Before；Before=0 表示无上界。",
+        "提交只传 owner、新 state、窗口上下界与查询投影，不传或比较旧快照，不做 CAS。锁过期后，即使没有后继写入，旧 owner 仍无法提交。",
+        "index 另生成一次候选发布 Token，所有 meta/r:<id> 共用；它不是锁 owner 或 fencing token。Lua 先准备查询记录，最后 HSET 同时发布 state/meta；错误不回滚先前写入，Token 不匹配时只读路径必须回退。"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "解锁、重试与成本边界",
+      "items": [
+        "每次确认获得锁后，复查命中、无新状态、提交成功或失败均经过 owner 校验清理，不能删后继的锁。独立清理 context 预算 min(操作超时,100ms)，可能让返回晚于原截止时间；遗留锁由 TTL 回收，最终仍检查原操作 context。",
+        "图中各个“解锁后返回/重试”节点展示同一个 defer releaseUpdateLock 的不同出口；每次确认持锁的尝试只执行一次清理。抢锁失败与只读快路径不执行解锁。",
+        "已知锁竞争或提交返回 0 才进行 1–10ms 退避；未知抢锁/提交结果不自动重放，不授权工作。每条脚本命令 NoRetry；只有 NOSCRIPT 明确未执行时回退 EVAL。",
+        "连接与脚本预热、无竞争重试时，实际写入需 4 次往返：获取锁、读快照、提交、解锁；只读 Observe 1 次，完整维护 Observe 通常 6 次（含两次投影读）。",
+        "当前仍全量解码、计算、编码及构建查询索引，整体 O(records)；更新锁不承诺 FIFO，不提供外部 fencing，也不改变 Redis 异步复制/故障切换的容量安全边界。#50/#51 增量转换仍是提案。"
+      ]
+    }
+  ]
+}

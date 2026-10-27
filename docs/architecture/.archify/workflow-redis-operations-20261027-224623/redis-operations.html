@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 3.2.0">
   <meta name="archify-reader-contract" content="declared-wide-v1">
-  <title>Redis 操作流程｜单 key Hash、只读投影与快照 CAS</title>
+  <title>Redis 操作流程｜Resource 更新锁与 owner / CommitWindow</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -5193,17 +5193,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
            data-preset-badge-blueprint="蓝图 / 修订 01"
            data-preset-badge-editorial="编辑风格 / 现场笔记">
         <div class="pulse-dot"></div>
-        <h1>Redis 操作流程｜单 key Hash、只读投影与快照 CAS</h1>
+        <h1>Redis 操作流程｜Resource 更新锁与 owner / CommitWindow</h1>
       </div>
     </div>
 
-    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"git@github.com:tr1v3r/airlock","revision":"cbdfca745233d8cd3a67fd7d236c76d13d07f436","shortRevision":"cbdfca7","label":"tr1v3r/airlock","linkMode":"local-only"},"referenceCount":41,"nodes":{"entry":[{"path":"driver/redis/redis.go","line":301,"endLine":324,"label":"五类业务入口"}],"validate":[{"path":"driver/redis/redis.go","line":195,"endLine":207,"label":"本地校验与操作超时"}],"key":[{"path":"driver/redis/redis.go","line":109,"endLine":112,"label":"namespace 与 Resource 编码"}],"route":[{"path":"driver/redis/redis.go","line":208,"endLine":217,"label":"每轮查询分流"}],"invalid":[{"path":"driver/redis/redis.go","line":195,"endLine":204,"label":"输入错误"}],"read_index":[{"path":"driver/redis/scripts.go","line":86,"endLine":93,"label":"observeScript"},{"path":"driver/redis/observe.go","line":63,"endLine":84,"label":"结果及后端时间解析"}],"observe_gate":[{"path":"driver/redis/observe.go","line":63,"endLine":105,"label":"缺失、Token 与解析"},{"path":"shared_observation.go","line":49,"endLine":90,"label":"Observation 判断"}],"observe_return":[{"path":"driver/redis/redis.go","line":210,"endLine":215,"label":"只读快速返回"},{"path":"shared_observation.go","line":44,"endLine":90,"label":"只读观察契约"}],"read_state":[{"path":"driver/redis/scripts.go","line":3,"endLine":14,"label":"readScript"},{"path":"driver/redis/redis.go","line":217,"endLine":225,"label":"读取完整快照"}],"decode":[{"path":"driver/redis/redis.go","line":227,"endLine":232,"label":"快照解码与核心调用"}],"maintenance":[{"path":"shared_state.go","line":57,"endLine":120,"label":"公共维护"}],"command":[{"path":"shared_state.go","line":122,"endLine":197,"label":"命令分支"}],"submit":[{"path":"shared_state.go","line":122,"endLine":159,"label":"提交处理"}],"cancel":[{"path":"shared_state.go","line":122,"endLine":139,"label":"预先取消"},{"path":"shared_state.go","line":161,"endLine":176,"label":"取消等待或授予"}],"renew":[{"path":"shared_state.go","line":178,"endLine":195,"label":"续租判定"}],"release":[{"path":"shared_state.go","line":178,"endLine":195,"label":"释放及重复释放"}],"observe_command":[{"path":"shared_state.go","line":122,"endLine":127,"label":"未知记录不新建"},{"path":"shared_state.go","line":199,"endLine":215,"label":"维护后读取结果"}],"capture":[{"path":"shared_state.go","line":199,"endLine":222,"label":"调度、快照与结果"}],"next_gate":[{"path":"driver/redis/redis.go","line":232,"endLine":244,"label":"next 与返回规则"}],"encode":[{"path":"driver/redis/redis.go","line":232,"endLine":244,"label":"编码及无新状态返回"}],"index":[{"path":"driver/redis/observe.go","line":26,"endLine":60,"label":"index 遍历全部记录"}],"window":[{"path":"driver/redis/redis.go","line":246,"endLine":270,"label":"窗口编码与 Lua 参数"}],"guards":[{"path":"driver/redis/scripts.go","line":18,"endLine":65,"label":"参数、CAS、CommitWindow"},{"path":"driver/redis/redis.go","line":266,"endLine":283,"label":"整个脚本调用与错误处理"}],"prepare":[{"path":"driver/redis/scripts.go","line":55,"endLine":77,"label":"校验、清理与准备查询记录"}],"publish":[{"path":"driver/redis/scripts.go","line":67,"endLine":83,"label":"候选记录与权威发布"}],"nil_return":[{"path":"driver/redis/redis.go","line":242,"endLine":244,"label":"无待提交状态返回"}],"unknown":[{"path":"driver/redis/redis.go","line":191,"endLine":194,"label":"错误与重试契约"},{"path":"driver/redis/redis.go","line":271,"endLine":283,"label":"脚本及提交后上下文错误"},{"path":"driver/redis/redis.go","line":114,"endLine":141,"label":"NoRetry 与 NOSCRIPT 回退"}],"backoff":[{"path":"driver/redis/scripts.go","line":36,"endLine":53,"label":"CAS/窗口不符返回 0"},{"path":"driver/redis/redis.go","line":275,"endLine":295,"label":"重试与上下文检查"}],"committed":[{"path":"driver/redis/redis.go","line":275,"endLine":285,"label":"成功提交与最终返回"},{"path":"driver.go","line":136,"endLine":149,"label":"Result 授权规则"}],"observe_error":[{"path":"driver/redis/observe.go","line":63,"endLine":105,"label":"Observe 错误返回"}]}}</script>
+    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"git@github.com:tr1v3r/airlock","revision":"f9de5e5e79bd2d06d97b0eba4ce45dbbb99b6410","shortRevision":"f9de5e5","label":"tr1v3r/airlock","linkMode":"local-only"},"referenceCount":68,"nodes":{"entry":[{"path":"driver/redis/redis.go","line":340,"endLine":363,"label":"业务接口"}],"validate":[{"path":"driver/redis/redis.go","line":208,"endLine":221,"label":"校验、超时与资源 key"}],"keys":[{"path":"driver/redis/redis.go","line":113,"endLine":116,"label":"状态 key 哈希"},{"path":"driver/redis/update_lock.go","line":25,"endLine":28,"label":"同槽更新锁 key"}],"invalid":[{"path":"driver/redis/redis.go","line":208,"endLine":217,"label":"输入错误"}],"route":[{"path":"driver/redis/redis.go","line":223,"endLine":230,"label":"每轮分流"}],"probe":[{"path":"driver/redis/observe.go","line":63,"endLine":105,"label":"读投影、Token 与校验"},{"path":"shared_observation.go","line":49,"endLine":90,"label":"请求身份及维护边界"}],"fast_return":[{"path":"driver/redis/redis.go","line":224,"endLine":227,"label":"只读返回"},{"path":"driver/redis/scripts.go","line":75,"endLine":82,"label":"只读 Lua"}],"probe_error":[{"path":"driver/redis/observe.go","line":63,"endLine":105,"label":"错误返回"}],"acquire":[{"path":"driver/redis/redis.go","line":251,"endLine":261,"label":"每次生成 owner 与获取锁"},{"path":"driver.go","line":177,"endLine":186,"label":"随机 owner 的生成"},{"path":"driver/redis/scripts.go","line":84,"endLine":89,"label":"获取脚本"}],"acquire_error":[{"path":"driver/redis/redis.go","line":253,"endLine":256,"label":"未知抢锁结果不重放"},{"path":"driver/redis/redis.go","line":118,"endLine":151,"label":"NoRetry 与 NOSCRIPT"}],"locked_route":[{"path":"driver/redis/redis.go","line":263,"endLine":271,"label":"持锁分流"}],"recheck":[{"path":"driver/redis/redis.go","line":263,"endLine":268,"label":"持锁复查"},{"path":"driver/redis/observe.go","line":63,"endLine":105,"label":"同一只读投影逻辑"}],"snapshot":[{"path":"driver/redis/scripts.go","line":3,"endLine":14,"label":"权威快照及后端时间"},{"path":"driver/redis/redis.go","line":271,"endLine":284,"label":"完整读取与 Go 解码"}],"maintain":[{"path":"shared_state.go","line":83,"endLine":124,"label":"旧边界、恢复、过期与调度"},{"path":"driver_transition.go","line":28,"endLine":72,"label":"窗口收集器"}],"command":[{"path":"shared_state.go","line":125,"endLine":202,"label":"五类命令处理"}],"submit":[{"path":"shared_state.go","line":127,"endLine":164,"label":"提交与预先取消"}],"cancel":[{"path":"shared_state.go","line":141,"endLine":144,"label":"提交前取消"},{"path":"shared_state.go","line":167,"endLine":181,"label":"取消既有请求"}],"renew":[{"path":"shared_state.go","line":183,"endLine":200,"label":"续租与有效性"}],"release":[{"path":"shared_state.go","line":183,"endLine":200,"label":"释放和重复释放"}],"observe_command":[{"path":"shared_state.go","line":127,"endLine":132,"label":"Observe 不创建未知记录"},{"path":"shared_state.go","line":204,"endLine":220,"label":"维护后的结果"}],"capture":[{"path":"shared_state.go","line":204,"endLine":229,"label":"最终调度、窗口和配置整理"}],"next":[{"path":"driver/redis/redis.go","line":286,"endLine":298,"label":"新状态与业务错误返回"}],"parameters":[{"path":"driver/redis/redis.go","line":286,"endLine":317,"label":"编码、窗口和提交参数"},{"path":"driver/redis/observe.go","line":26,"endLine":60,"label":"同 Token 的全部查询记录"}],"guards":[{"path":"driver/redis/scripts.go","line":19,"endLine":49,"label":"归属和时间原子校验"},{"path":"driver/redis/redis.go","line":315,"endLine":334,"label":"提交及返回码"}],"prepare":[{"path":"driver/redis/scripts.go","line":51,"endLine":70,"label":"投影验证、删除和准备"}],"publish":[{"path":"driver/redis/scripts.go","line":61,"endLine":72,"label":"最终权威发布"}],"saved_result":[{"path":"driver/redis/redis.go","line":296,"endLine":298,"label":"无新状态"},{"path":"driver/redis/update_lock.go","line":48,"endLine":55,"label":"独立清理"},{"path":"driver/redis/redis.go","line":230,"endLine":235,"label":"最终 context"}],"saved_retry":[{"path":"driver/redis/scripts.go","line":23,"endLine":49,"label":"明确未发布"},{"path":"driver/redis/redis.go","line":323,"endLine":334,"label":"返回 retry"}],"owned_error":[{"path":"driver/redis/redis.go","line":271,"endLine":293,"label":"读取与编码错误"},{"path":"driver/redis/redis.go","line":300,"endLine":325,"label":"窗口、投影及提交错误"}],"cleanup":[{"path":"driver/redis/update_lock.go","line":48,"endLine":55,"label":"清理预算与上下文"},{"path":"driver/redis/scripts.go","line":91,"endLine":97,"label":"只删自己的锁"},{"path":"driver/redis/redis.go","line":251,"endLine":261,"label":"成功持锁后 defer 清理"}],"ctx":[{"path":"driver/redis/redis.go","line":230,"endLine":244,"label":"最终 context 与重试取消"}],"ctx_error":[{"path":"driver/redis/redis.go","line":230,"endLine":244,"label":"零结果与取消"},{"path":"driver/redis/redis.go","line":328,"endLine":332,"label":"提交后取消检查"}],"returned":[{"path":"driver/redis/redis.go","line":230,"endLine":235,"label":"返回结果"},{"path":"driver/redis/redis.go","line":204,"endLine":207,"label":"错误与提交契约"}],"backoff":[{"path":"driver/redis/redis.go","line":238,"endLine":245,"label":"计时与取消"},{"path":"driver/redis/redis.go","line":258,"endLine":259,"label":"锁竞争重试"}],"recheck_return":[{"path":"driver/redis/redis.go","line":261,"endLine":268,"label":"defer 与复查返回"},{"path":"driver/redis/update_lock.go","line":48,"endLine":55,"label":"owner 校验与清理预算"},{"path":"driver/redis/redis.go","line":230,"endLine":235,"label":"返回前检查 context"}],"recheck_error":[{"path":"driver/redis/redis.go","line":261,"endLine":268,"label":"复查错误"},{"path":"driver/redis/update_lock.go","line":48,"endLine":55,"label":"owner 校验与清理预算"},{"path":"driver/redis/redis.go","line":230,"endLine":235,"label":"返回前检查 context"}],"snapshot_error":[{"path":"driver/redis/redis.go","line":271,"endLine":284,"label":"快照读取解码错误"},{"path":"driver/redis/update_lock.go","line":48,"endLine":55,"label":"owner 校验与清理预算"},{"path":"driver/redis/redis.go","line":230,"endLine":235,"label":"返回前检查 context"}],"parameters_error":[{"path":"driver/redis/redis.go","line":286,"endLine":312,"label":"编码、窗口及投影错误"},{"path":"driver/redis/update_lock.go","line":48,"endLine":55,"label":"owner 校验与清理预算"},{"path":"driver/redis/redis.go","line":230,"endLine":235,"label":"返回前检查 context"}]}}</script>
     <script id="archify-i18n-data" type="application/json">{"locale":"zh-CN","messages":{"viewer.kind.frontend":"前端","viewer.kind.backend":"后端","viewer.kind.database":"数据库","viewer.kind.cloud":"云服务","viewer.kind.security":"安全","viewer.kind.messagebus":"消息总线","viewer.kind.external":"外部系统","viewer.kind.neutral":"中性","viewer.kind.node":"节点","viewer.kind.start":"开始","viewer.kind.active":"活动","viewer.kind.waiting":"等待","viewer.kind.decision":"决策","viewer.kind.success":"成功","viewer.kind.failure":"失败","viewer.toolbar.actions":"图表操作","viewer.theme.toggle.title":"切换主题（T）","viewer.theme.toggle":"切换颜色主题","viewer.theme.dark":"深色","viewer.theme.light":"浅色","viewer.preset.choose.title":"选择视觉风格（S 循环切换）","viewer.preset.choose":"选择视觉风格","viewer.preset.style":"风格","viewer.preset.menu":"视觉风格","viewer.preset.identity":"视觉表达","viewer.preset.cycles":"循环切换","viewer.preset.classic":"经典","viewer.preset.classic.short":"经典","viewer.preset.classic.hint":"稳定的技术默认风格","viewer.preset.flow":"信号流","viewer.preset.flow.short":"流动","viewer.preset.flow.hint":"突出动态流向","viewer.preset.blueprint":"蓝图","viewer.preset.blueprint.hint":"工程评审","viewer.preset.editorial":"编辑风格","viewer.preset.editorial.hint":"适合发布与上线说明","viewer.preset.badge.signalFlow":"信号流","viewer.preset.badge.blueprint":"蓝图 / 修订 01","viewer.preset.badge.editorial":"编辑风格 / 现场笔记","viewer.preset.badge.editorialPlate":"ARCHIFY / 图版 04","viewer.preset.current":"当前视觉风格：{style}。选择视觉风格","viewer.motion.live":"动态","viewer.motion.still":"静态","viewer.motion.pause":"暂停动效","viewer.motion.resume":"恢复动效","viewer.motion.reduced":"已根据减少动态效果偏好暂停动效","viewer.motion.hidden":"页面不可见时已暂停动效","viewer.motion.yielding":"暂停动效；当前让位于{owner}","viewer.motion.yielding.title":"动态预览已启用 · 正在让位于{owner}","viewer.owner.route":"路径探测","viewer.owner.lens":"语义透镜","viewer.owner.relationship":"关系预览","viewer.owner.intent":"意图追踪","viewer.owner.focus":"语义聚焦","viewer.owner.legend":"图例预览","viewer.owner.reader":"读者交互","viewer.present.enter":"进入演示模式","viewer.present.enter.title":"演示模式（F）","viewer.present.exit":"退出演示模式","viewer.present.exit.title":"退出演示模式（F 或 Escape）","viewer.present.present":"演示","viewer.present.exit.label":"退出","viewer.export.button":"导出","viewer.export.button.title":"导出图表（E）","viewer.export.diagram":"导出图表","viewer.export.menu":"导出","viewer.export.subtitle":"便携、整洁的输出","viewer.export.share":"分享","viewer.export.shareCard":"分享卡片","viewer.export.routeShareCard":"路径分享卡片","viewer.export.reachShareCard":"可达范围分享卡片","viewer.export.copyDiagram":"复制图表","viewer.export.clipboardPng":"复制 PNG 到剪贴板","viewer.export.raster":"位图","viewer.export.image":"图像","viewer.export.lossless":"无损图像","viewer.export.compact":"紧凑图像","viewer.export.modern":"现代图像格式","viewer.export.vectorMotion":"矢量与动效","viewer.export.vectorMotion.heading":"矢量与动效","viewer.export.editable":"可编辑矢量图","viewer.export.svg.auto":"SVG · 自动","viewer.export.svg.auto.hint":"匹配宿主主题","viewer.export.svg.light":"SVG · 浅色","viewer.export.svg.light.hint":"始终浅色","viewer.export.svg.dark":"SVG · 深色","viewer.export.svg.dark.hint":"始终深色","viewer.export.motion6s":"6 秒动效","viewer.export.unsupported":"当前浏览器不支持","viewer.export.clipboardUnsupported":"当前浏览器不支持写入图片剪贴板","viewer.export.clipboardUnsupported.short":"此浏览器不支持写入图片剪贴板。","viewer.export.motionUnavailable":"当前浏览器无法录制动效","viewer.export.webmUnavailable":"当前浏览器不支持 WebM","viewer.export.failed":"导出失败：{message}","viewer.export.unknownVariant":"未知的分享卡片类型：{variant}","viewer.export.routeRequired":"请先追踪路径，再导出路径分享卡片","viewer.export.reachRequired":"请先追踪编写可达范围，再导出可达范围分享卡片","viewer.export.unknown":"未知错误","viewer.export.routeFailed":"路径分享卡片导出失败：{message}","viewer.export.reachFailed":"可达范围分享卡片导出失败：{message}","viewer.export.copyFailed":"复制失败：{message}","viewer.export.copiedPng":"已将 PNG 复制到剪贴板","viewer.export.downloadedRoute":"已下载路径分享卡片","viewer.export.downloadedReach":"已下载可达范围分享卡片","viewer.export.downloadedWebm":"已下载 WebM","viewer.export.recording":"正在录制 6 秒动效…","viewer.export.card.routeSummary.one":"路径：{source} → {target} · {count} 步","viewer.export.card.routeSummary.other":"路径：{source} → {target} · {count} 步","viewer.export.card.reachSummary":"从{origin}开始的编写{direction} · {nodes} · {links} · 最深 {hops}","viewer.export.card.node.one":"{count} 个节点","viewer.export.card.node.other":"{count} 个节点","viewer.export.card.link.one":"{count} 条连接","viewer.export.card.link.other":"{count} 条连接","viewer.export.card.hop.one":"{count} 跳","viewer.export.card.hop.other":"{count} 跳","viewer.export.card.routeBadge":"ARCHIFY · 路径 · {hops}","viewer.export.card.reachBadge":"ARCHIFY · {direction}可达范围","viewer.export.direction.upstream":"上游","viewer.export.direction.downstream":"下游","viewer.export.error.canvasUnavailable":"无法为{label}使用画布","viewer.export.error.contextUnavailable":"无法为{label}创建二维画布上下文","viewer.export.error.toBlobUnavailable":"{label}无法使用 canvas.toBlob","viewer.export.error.toBlobNull":"{label}的 canvas.toBlob 未返回数据","viewer.export.error.variantsCombined":"无法同时组合多种分享卡片类型","viewer.export.error.viewerState":"分享卡片导出无法移除临时 Viewer 状态","viewer.export.error.routeState":"路径卡片导出无法安全保留已解析路径","viewer.export.error.reachState":"可达范围卡片导出无法安全保留编写的可达范围","viewer.export.error.webmRequirements":"WebM 动效导出需要追踪动画及浏览器 MediaRecorder 支持","viewer.export.error.mediaRecorder":"MediaRecorder 录制失败","viewer.export.error.emptyWebm":"MediaRecorder 生成了空的 WebM","viewer.export.error.webmBackground":"无法为 WebM 导出加载 SVG 背景","viewer.guide.title":"探索此系统","viewer.focus.selectedNodes":"已选择 {count} 个节点","viewer.guide.eyebrow":"图表指南","viewer.guide.close":"关闭图表指南","viewer.guide.inspecting":"正在检查已编译语义","viewer.guide.actions":"图表探索操作","viewer.guide.find":"查找任意节点","viewer.guide.find.hint":"搜索标签、职责、类型和稳定 ID。","viewer.guide.route":"追踪路径","viewer.guide.route.aria":"追踪有向路径","viewer.guide.route.hint":"查看两个语义节点如何按编写方向连接。","viewer.guide.map":"查看完整系统","viewer.guide.map.hint":"打开带实时视口和稳定节点的语义雷达。","viewer.guide.lens":"比较语义类型","viewer.guide.lens.hint":"统计角色、显示流量并比较直接编写的连接。","viewer.guide.present":"进入演示模式","viewer.guide.present.hint":"让实时图表占满视口，同时不改变导出。","viewer.guide.shortcuts":"其他键盘快捷键","viewer.guide.shortcut.export":"导出","viewer.guide.shortcut.theme":"主题","viewer.guide.shortcut.style":"风格","viewer.guide.shortcut.reset":"重置","viewer.guide.shortcut.zoomIn":"放大","viewer.guide.shortcut.zoomOut":"缩小","viewer.guide.shortcut.close":"关闭","viewer.guide.credit":"觉得好用？在 GitHub 给 Archify 点个 Star","viewer.guide.star":"Star","viewer.guide.facts":"{nodes} · {relationships}","viewer.guide.fact.node.one":"{count} 个语义节点","viewer.guide.fact.node.other":"{count} 个语义节点","viewer.guide.fact.relationship.one":"{count} 条关系","viewer.guide.fact.relationship.other":"{count} 条关系","viewer.guide.open":"打开图表指南","viewer.finder.title":"查找节点","viewer.finder.close":"关闭节点查找器","viewer.finder.placeholder":"搜索标签或 ID","viewer.finder.search":"搜索图表节点","viewer.finder.results":"图表节点","viewer.finder.empty":"没有匹配的节点","viewer.finder.result.focus":"聚焦{label}","viewer.finder.result.routeStart":"选择{label}作为路径起点","viewer.finder.result.routeTarget":"选择{label}作为路径终点，{links}","viewer.finder.status.empty":"没有匹配的节点","viewer.finder.status.count.one":"{count} 个匹配节点","viewer.finder.status.count.other":"{count} 个匹配节点","viewer.finder.noun.nodes":"个节点","viewer.finder.link.one":"{count} 条连接","viewer.finder.link.other":"{count} 条连接","viewer.finder.result.focus.one":"聚焦{label}，{count} 条相关连接","viewer.finder.result.focus.other":"聚焦{label}，{count} 条相关连接","viewer.finder.status.filtered":"{visible}/{available} {noun}","viewer.finder.status.all":"{available} {noun}","viewer.passport.eyebrow":"语义护照","viewer.passport.metadata":"节点元数据","viewer.passport.evidence":"已验证的源代码证据","viewer.passport.verified":"已验证来源","viewer.passport.verificationScope":"已按固定修订版本验证本地 Git 证据，未检查远程访问权限。","viewer.passport.reach":"编写可达范围","viewer.passport.reach.trace":"追踪编写的可达性","viewer.passport.upstream":"上游","viewer.passport.downstream":"下游","viewer.passport.upstream.trace":"追踪上游编写可达性","viewer.passport.downstream.trace":"追踪下游编写可达性","viewer.passport.close":"关闭语义护照","viewer.passport.move":"移动语义护照。可拖动、使用方向键移动，或按 Home 恢复自动位置。","viewer.passport.copy":"复制链接","viewer.passport.copy.focus":"复制聚焦节点的链接","viewer.passport.relations":"关系","viewer.passport.relations.show":"显示关联关系","viewer.passport.relations.hide":"隐藏关联关系","viewer.passport.relations.list":"关联关系","viewer.passport.copyRelation":"复制关系","viewer.passport.copyNode":"复制节点","viewer.passport.copyPinned":"复制固定关系的链接","viewer.passport.copySource":"复制来源节点的链接","viewer.passport.copy.focused.success":"已复制聚焦节点链接","viewer.passport.copy.pinned.success":"已复制固定关系链接","viewer.passport.copy.focused.failed":"无法复制聚焦节点链接","viewer.passport.copy.pinned.failed":"无法复制固定关系链接","viewer.passport.relationship.none":"没有关联关系","viewer.passport.relationship.count.one":"{count} 条关系","viewer.passport.relationship.count.other":"{count} 条关系","viewer.passport.relationship.show.one":"显示 {count} 条关联关系","viewer.passport.relationship.show.other":"显示 {count} 条关联关系","viewer.passport.relationship.summary":"{out} 条出向 · {in} 条入向{loops}","viewer.passport.relationship.loops":" · {count} 条自环","viewer.passport.relationship.explorer":"直接关系浏览器","viewer.passport.relationship.help":"使用方向键浏览关系。按 Enter 或空格键固定详情；按 Escape 清除。","viewer.passport.relationship.loopsBack":"回环","viewer.passport.relationship.connectsTo":"连接到","viewer.passport.relationship.connectsFrom":"连接自","viewer.passport.relationship.pinned":"已固定关系 · {from} → {to} · {label}","viewer.passport.relationship.inspect":"检查第 {index}/{total} 条关系：{from} 到 {to}，{label}。按 Enter 查看详情。","viewer.passport.relationship.group.out":"出向","viewer.passport.relationship.group.in":"入向","viewer.passport.relationship.group.loop":"自环","viewer.passport.relationship.row":"{group}：{relationship}，{neighbor}","viewer.passport.relationship.direction.out":"出 →","viewer.passport.relationship.direction.in":"← 入","viewer.passport.relationship.direction.loop":"自环","viewer.passport.sourceCount.one":"{count} 个已验证来源引用","viewer.passport.sourceCount.other":"{count} 个已验证来源引用","viewer.passport.repository.open":"打开已验证的仓库修订版本 {revision}","viewer.passport.source.open":"打开修订版本 {revision} 中已验证的来源 {path}","viewer.passport.source.openLink":"打开 ↗","viewer.passport.reach.upstream.one":"追踪 {count} 个上游编写节点","viewer.passport.reach.upstream.other":"追踪 {count} 个上游编写节点","viewer.passport.reach.downstream.one":"追踪 {count} 个下游编写节点","viewer.passport.reach.downstream.other":"追踪 {count} 个下游编写节点","viewer.passport.reach.noUpstream":"没有上游编写节点","viewer.passport.reach.noDownstream":"没有下游编写节点","viewer.passport.reach.status":"{direction} · {nodes} 个节点 · {links} 条连接 · 最深 {hops} 跳","viewer.route.eyebrow":"路径","viewer.route.start":"点击路径的起点","viewer.route.start.find":"查找起点","viewer.route.start.find.aria":"查找路径起点","viewer.route.copy":"复制链接","viewer.route.copy.aria":"复制已追踪路径的链接","viewer.route.clear":"清除","viewer.route.clear.aria":"清除路径探测","viewer.route.traced":"路径","viewer.route.pickTwo":"在图上点两个节点","viewer.route.pickOne":"在图上点一个节点","viewer.route.controls":"路径旅程控制","viewer.route.previous":"上一个路径位置","viewer.route.play":"播放路径旅程","viewer.route.pause":"暂停路径旅程","viewer.route.replay":"重播路径旅程","viewer.route.next":"下一个路径位置","viewer.route.journey":"旅程","viewer.route.pause.label":"暂停","viewer.route.replay.label":"重播","viewer.route.overview":"总览","viewer.route.overview.aria":"显示完整路径总览","viewer.route.instructions":"先点起点，再点终点，沿箭头方向找路。","viewer.route.destination":"从{label}出发，走到哪里？","viewer.route.destination.find":"查找目标","viewer.route.destination.find.aria":"查找可达的路径目标","viewer.route.differentDestination":"选择其他目标","viewer.route.distinct":"请选两个不同的节点。","viewer.route.unreachable":"走不到{label}","viewer.route.unreachable.detail":"沿箭头方向，从{source}走不到{target}。请选一个高亮节点。","viewer.route.start.instructions":"接着选终点，能走到的节点会亮起。","viewer.route.copy.success":"已复制路径链接","viewer.route.copy.failed":"无法复制路径链接","viewer.route.position":"路径位置 {index}/{total}：{label}","viewer.route.step":"第 {index}/{total} 步 · {phase} · {label}","viewer.route.motionRequired":"自动旅程需要动态模式","viewer.route.trigger.clear":"清除已追踪路径","viewer.route.overview.status":"{nodes} · {hops} · 最短路径","viewer.route.overview.node.one":"{count} 个节点","viewer.route.overview.node.other":"{count} 个节点","viewer.route.overview.hop.one":"{count} 步","viewer.route.overview.hop.other":"{count} 步","viewer.route.phase.playing":"播放中","viewer.route.phase.complete":"已完成","viewer.route.phase.inspecting":"检查中","viewer.route.destination.count.one":"有 {count} 个能走到的节点已高亮，点一下。","viewer.route.destination.count.other":"有 {count} 个能走到的节点已高亮，点一个。","viewer.route.noOutgoing":"这个节点没有向外的箭头。清除后换一个起点。","viewer.route.result.title":"{source} 到 {target}","viewer.route.finder.source.title":"选择路径起点","viewer.route.finder.source.placeholder":"搜索路径来源","viewer.route.finder.source.empty":"没有匹配的路径来源","viewer.route.finder.source.results":"可作为路径起点的节点","viewer.route.finder.source.noun":"个路径来源","viewer.route.finder.source.badge":"起点","viewer.route.finder.target.title":"从{label}出发的目标","viewer.route.finder.target.placeholder":"搜索可达目标","viewer.route.finder.target.empty":"没有匹配的可达目标","viewer.route.finder.target.results":"可达路径目标","viewer.route.finder.target.noun":"个可达目标","viewer.route.hop.one":"{count} 跳","viewer.route.hop.other":"{count} 跳","viewer.lens.eyebrow":"语义透镜","viewer.lens.title":"比较系统角色","viewer.lens.close":"关闭语义透镜","viewer.lens.instruction":"最多选择两种语义类型。选择一种可显示其真实流量；选择两种只比较直接编写的关系。","viewer.lens.kinds":"语义类型","viewer.lens.choose":"选择一种类型以检查其节点和相连关系。","viewer.lens.copy":"复制语义透镜链接","viewer.lens.clear":"清除语义透镜","viewer.lens.open":"打开语义透镜","viewer.lens.openActive":"打开当前语义透镜","viewer.lens.legend":"语义图例","viewer.lens.legend.inspect.one":"检查{label}，{count} 个节点","viewer.lens.legend.inspect.other":"检查{label}，{count} 个节点","viewer.lens.kind.count.one":"{label}，{count} 个节点","viewer.lens.kind.count.other":"{label}，{count} 个节点","viewer.lens.compare.one":"{first} → {second}：{forward} · {second} → {first}：{reverse} · 共 {count} 条直接关系","viewer.lens.compare.other":"{first} → {second}：{forward} · {second} → {first}：{reverse} · 共 {count} 条直接关系","viewer.lens.single":"{nodes} · {relationships} · 已连接节点保持可见","viewer.lens.node.one":"{count} 个{label}节点","viewer.lens.node.other":"{count} 个{label}节点","viewer.lens.relationship.one":"{count} 条相连关系","viewer.lens.relationship.other":"{count} 条相连关系","viewer.radar.title":"语义雷达","viewer.radar.building":"正在构建总览","viewer.radar.openFull":"打开完整语义雷达","viewer.radar.open":"打开雷达","viewer.radar.close":"关闭语义雷达","viewer.radar.surface":"图表总览。点击节点进行聚焦，或使用方向键平移。","viewer.radar.click":"点击节点","viewer.radar.drag":"拖动平移","viewer.radar.space":"语义雷达需要更多地图可见空间。","viewer.radar.nodes":"语义图表雷达节点","viewer.radar.focus":"从语义雷达聚焦{label}","viewer.radar.status":"{count} 个节点 · {viewport}","viewer.radar.fullMap":"{count} 个节点 · 完整地图","viewer.radar.compacted":"已收紧雷达，避免遮挡语义护照或地图控件。","viewer.radar.cancelWaiting":"取消等待更多地图空间的语义雷达","viewer.radar.needsSpace":"语义雷达需要更多可见地图空间","viewer.radar.viewport.full":"完整地图","viewer.radar.viewport.width":"宽度 {percent}%","viewer.radar.viewport.scale":"视口 {percent}%","viewer.nav.controls":"图表视图控制","viewer.nav.route":"追踪有向路径","viewer.nav.route.title":"追踪路径（R）","viewer.nav.route.short":"路径","viewer.nav.radar":"打开语义雷达","viewer.nav.radar.title":"语义雷达（M）","viewer.nav.radar.short":"地图","viewer.nav.lens":"打开语义透镜","viewer.nav.lens.title":"语义透镜（L）","viewer.nav.lens.short":"透镜","viewer.nav.find":"查找节点","viewer.nav.find.title":"查找节点（/）","viewer.outline.title":"节点索引","viewer.rail.show":"要点与索引","viewer.rail.controls":"侧栏","viewer.rail.collapse":"收起侧栏","viewer.rail.bottom":"移到图下方","viewer.rail.right":"移到图右侧","viewer.nav.guide":"打开图表指南","viewer.nav.guide.title":"图表指南（?）","viewer.nav.zoomOut":"缩小","viewer.nav.zoomOut.title":"缩小（-）","viewer.nav.reset":"重置图表视图","viewer.nav.reset.title":"重置视图（0）","viewer.nav.read":"阅读","viewer.nav.zoomIn":"放大","viewer.nav.zoomIn.title":"放大（+）","viewer.nav.camera":"{hint}。重置图表视图","viewer.nav.camera.title":"{semantic}{hint} · 重置视图（0）","viewer.nav.camera.semantic":"语义相机已启用 · ","viewer.nav.level.map":"概览","viewer.nav.level.read":"阅读","viewer.nav.level.full":"完整","viewer.nav.level.auto":"自动","viewer.nav.detail.map":"放大以显示关系标签和节点上下文","viewer.nav.detail.read":"再次放大以显示标签和注释","viewer.nav.detail.full":"完整图表详情","viewer.intent.summary":"{label}。{out} 条出向，{in} 条入向{loops}。共 {total} 条连接。按 Enter 查看详情。","viewer.intent.loops":"，{count} 条自环","viewer.common.copied":"已复制","viewer.common.copyFailed":"复制失败","viewer.common.copyLink":"复制链接","viewer.common.clear":"清除","viewer.common.close":"关闭"}}</script>
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / 图版 04">
-      <svg viewBox="0 0 1126 2004" data-reader-fit="width-first" data-layout-contract="readable-v2" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="">
-        <title id="archify-diagram-title">Redis 操作流程｜单 key Hash、只读投影与快照 CAS</title>
+      <svg viewBox="0 0 1240 3012" data-reader-fit="width-first" data-layout-contract="readable-v2" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="">
+        <title id="archify-diagram-title">Redis 操作流程｜Resource 更新锁与 owner / CommitWindow</title>
         <desc id="archify-diagram-description">由 Archify 生成的工作流图。</desc>
         <!-- Definitions -->
         <defs>
@@ -5249,39 +5249,58 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Swimlanes -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="1058" height="148" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="74" class="t-muted" font-size="10" font-weight="600">01 / 入口与物理 key</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="74" class="t-muted" font-size="10" font-weight="600">01 / 入口与同槽 key</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="220" width="1058" height="148" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="242" class="t-muted" font-size="10" font-weight="600">02 / 每轮尝试入口</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="220" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="242" class="t-muted" font-size="10" font-weight="600">02 / 每轮尝试</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="388" width="1058" height="148" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="410" class="t-muted" font-size="10" font-weight="600">03 / Observe 快速读</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="388" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="410" class="t-muted" font-size="10" font-weight="600">03 / Observe 只读快路径</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-3" x="40" y="556" width="1058" height="148" rx="10" class="c-lane" stroke-width="1"/>
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="exception-lane" data-composition-frame-id="lane-3-exception" x="46" y="562" width="1046" height="136" rx="8" class="c-security-group" stroke-width="1"/>
-        <text x="54" y="578" class="t-security" font-size="10" font-weight="600">EX / Observe 错误返回</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-3" x="40" y="556" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="exception-lane" data-composition-frame-id="lane-3-exception" x="46" y="562" width="1144" height="136" rx="8" class="c-security-group" stroke-width="1"/>
+        <text x="54" y="578" class="t-security" font-size="10" font-weight="600">EX / 未持锁的读取错误</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-4" x="40" y="724" width="1058" height="148" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="746" class="t-muted" font-size="10" font-weight="600">05 / 完整快照与核心</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-4" x="40" y="724" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="746" class="t-muted" font-size="10" font-weight="600">05 / 按 Resource 抢更新锁</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-5" x="40" y="892" width="1058" height="148" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="914" class="t-muted" font-size="10" font-weight="600">06 / Go 核心转换</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-5" x="40" y="892" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="914" class="t-muted" font-size="10" font-weight="600">06 / 确认持锁后的分流</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-6" x="40" y="1060" width="1058" height="148" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="1082" class="t-muted" font-size="10" font-weight="600">07 / 五类命令效果</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-6" x="40" y="1060" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="1082" class="t-muted" font-size="10" font-weight="600">07 / Observe 持锁复查</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-7" x="40" y="1228" width="1058" height="148" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="1250" class="t-muted" font-size="10" font-weight="600">08 / 核心状态输出</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-7" x="40" y="1228" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="1250" class="t-muted" font-size="10" font-weight="600">08 / 持锁读取权威状态</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-8" x="40" y="1396" width="1058" height="148" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="1418" class="t-muted" font-size="10" font-weight="600">09 / Go 提交准备</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-8" x="40" y="1396" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="1418" class="t-muted" font-size="10" font-weight="600">09 / Go 核心状态机</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-9" x="40" y="1564" width="1058" height="148" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="1586" class="t-muted" font-size="10" font-weight="600">10 / casScript 原子执行</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-9" x="40" y="1564" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="1586" class="t-muted" font-size="10" font-weight="600">10 / 五类命令效果</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-10" x="40" y="1732" width="1058" height="148" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="1754" class="t-muted" font-size="10" font-weight="600">11 / 结果与重试</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-10" x="40" y="1732" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="1754" class="t-muted" font-size="10" font-weight="600">11 / 最终状态与提交准备</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-11" x="40" y="1900" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="exception-lane" data-composition-frame-id="lane-11-exception" x="46" y="1906" width="1144" height="136" rx="8" class="c-security-group" stroke-width="1"/>
+        <text x="54" y="1922" class="t-security" font-size="10" font-weight="600">EX / 编码错误清理</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-12" x="40" y="2068" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="2090" class="t-muted" font-size="10" font-weight="600">13 / commitScript 原子发布</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-13" x="40" y="2236" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="2258" class="t-muted" font-size="10" font-weight="600">14 / 提交错误或重试清理</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-14" x="40" y="2404" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="2426" class="t-muted" font-size="10" font-weight="600">15 / 发布成功后的解锁</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-15" x="40" y="2572" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="2594" class="t-muted" font-size="10" font-weight="600">16 / 返回前检查操作 context</text>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-16" x="40" y="2740" width="1156" height="148" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="2762" class="t-muted" font-size="10" font-weight="600">17 / 返回或退避</text>
 
         <!-- Phase headers -->
 
@@ -5290,479 +5309,590 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 
         <!-- Edge paths -->
-        <path data-edge-from="cancel" data-edge-to="capture" data-edge-key="0" data-edge-id="cancel_capture" data-edge-role="branch" data-composition-points="329.8,1175;329.8,1218;469.8,1218;469.8,1262" d="M 329.8 1175 L 329.8 1210 Q 329.8 1218 337.8 1218 L 461.8 1218 Q 469.8 1218 469.8 1226 L 469.8 1262" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="capture" data-edge-to="next_gate" data-edge-key="1" data-edge-id="capture_next" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="539.8,1317;795.8,1317" d="M 539.8 1317 L 795.8 1317" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="command" data-edge-to="cancel" data-edge-key="2" data-edge-id="command_cancel" data-edge-role="branch" data-composition-points="469.8,1036;469.8,1062;329.8,1062;329.8,1123" d="M 469.8 1036 L 469.8 1054 Q 469.8 1062 461.8 1062 L 337.8 1062 Q 329.8 1062 329.8 1070 L 329.8 1123" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="command" data-edge-to="observe_command" data-edge-key="3" data-edge-id="command_observe_command" data-edge-role="branch" data-composition-points="511.8,1036;511.8,1062;841.8,1062;841.8,1123" d="M 511.8 1036 L 511.8 1054 Q 511.8 1062 519.8 1062 L 833.8 1062 Q 841.8 1062 841.8 1070 L 841.8 1123" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="command" data-edge-to="release" data-edge-key="4" data-edge-id="command_release" data-edge-role="branch" data-composition-points="497.8,1036;497.8,1074;651.8,1074;651.8,1123" d="M 497.8 1036 L 497.8 1066 Q 497.8 1074 505.8 1074 L 643.8 1074 Q 651.8 1074 651.8 1082 L 651.8 1123" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="command" data-edge-to="renew" data-edge-key="5" data-edge-id="command_renew" data-edge-role="branch" data-composition-points="483.8,1036;483.8,1123" d="M 483.8 1036 L 483.8 1123" class="a-default" data-animate="edge" style="--step:5" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="command" data-edge-to="submit" data-edge-key="6" data-edge-id="command_submit" data-edge-role="branch" data-composition-points="455.8,1036;455.8,1052;314.8,1052;314.8,1107;173.8,1107;173.8,1123" d="M 455.8 1036 L 455.8 1044 Q 455.8 1052 447.8 1052 L 322.8 1052 Q 314.8 1052 314.8 1060 L 314.8 1099 Q 314.8 1107 306.8 1107 L 181.8 1107 Q 173.8 1107 173.8 1115 L 173.8 1123" class="a-default" data-animate="edge" style="--step:6" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="decode" data-edge-to="maintenance" data-edge-key="7" data-edge-id="decode_maintain" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="397.8,813;651.8,813;651.8,955" d="M 397.8 813 L 643.8 813 Q 651.8 813 651.8 821 L 651.8 955" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="encode" data-edge-to="index" data-edge-key="8" data-edge-id="encode_index" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="1013.8,1343;1013.8,1459" d="M 1013.8 1343 L 1013.8 1459" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="entry" data-edge-to="validate" data-edge-key="9" data-edge-id="entry_validate" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="219.8,141;275.8,141" d="M 219.8 141 L 275.8 141" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="guards" data-edge-to="backoff" data-edge-label="不匹配 / 过窗：0" data-edge-key="10" data-edge-id="guard_reject" data-edge-role="branch" data-composition-points="848.8,1679;848.8,1722;1013.8,1722;1013.8,1795" d="M 848.8 1679 L 848.8 1714 Q 848.8 1722 856.8 1722 L 1005.8 1722 Q 1013.8 1722 1013.8 1730 L 1013.8 1795" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="guards" data-edge-to="prepare" data-edge-label="校验通过" data-edge-key="11" data-edge-id="guards_prepare" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="777.8,1653;707.8,1653" d="M 777.8 1653 L 707.8 1653" class="a-default" data-animate="edge" style="--step:11" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="observe_gate" data-edge-to="read_state" data-edge-label="需完整路径" data-edge-key="12" data-edge-id="index_fallback" data-edge-role="branch" data-composition-points="644.8,503;644.8,630;245.8,630;245.8,806;229.8,806" d="M 644.8 503 L 644.8 622 Q 644.8 630 636.8 630 L 253.8 630 Q 245.8 630 245.8 638 L 245.8 798 Q 245.8 806 237.8 806 L 229.8 806" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="observe_gate" data-edge-to="observe_return" data-edge-label="是" data-edge-key="13" data-edge-id="index_ready" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="723.8,477;761.8,477" d="M 723.8 477 L 761.8 477" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="index" data-edge-to="window" data-edge-key="14" data-edge-id="index_window" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="937.8,1485;905.8,1485" d="M 937.8 1485 L 905.8 1485" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="key" data-edge-to="route" data-edge-key="15" data-edge-id="key_route" data-edge-role="" data-composition-points="545.8,141;651.8,141;651.8,283" d="M 545.8 141 L 643.8 141 Q 651.8 141 651.8 149 L 651.8 283" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="guards" data-edge-to="unknown" data-edge-label="脚本 / 通信错误" data-edge-key="16" data-edge-id="lua_unknown" data-edge-role="error" data-composition-points="834.8,1679;834.8,1695;20,1695;20,1779;841.8,1779;841.8,1795" d="M 834.8 1679 L 834.8 1687 Q 834.8 1695 826.8 1695 L 28 1695 Q 20 1695 20 1703 L 20 1771 Q 20 1779 28 1779 L 833.8 1779 Q 841.8 1779 841.8 1787 L 841.8 1795" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="maintenance" data-edge-to="command" data-edge-key="17" data-edge-id="maintain_command" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="589.8,981;533.8,981" d="M 589.8 981 L 533.8 981" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="next_gate" data-edge-to="encode" data-edge-label="是" data-edge-key="18" data-edge-id="next_encode" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="887.8,1317;957.8,1317" d="M 887.8 1317 L 957.8 1317" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="next_gate" data-edge-to="nil_return" data-edge-label="否" data-edge-key="19" data-edge-id="no_next" data-edge-role="branch" data-composition-points="841.8,1343;841.8,1392;249.8,1392;249.8,1317;233.8,1317" d="M 841.8 1343 L 841.8 1384 Q 841.8 1392 833.8 1392 L 257.8 1392 Q 249.8 1392 249.8 1384 L 249.8 1325 Q 249.8 1317 241.8 1317 L 233.8 1317" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="observe_command" data-edge-to="capture" data-edge-key="20" data-edge-id="observe_command_capture" data-edge-role="branch" data-composition-points="841.8,1175;841.8,1218;511.8,1218;511.8,1262" d="M 841.8 1175 L 841.8 1210 Q 841.8 1218 833.8 1218 L 519.8 1218 Q 511.8 1218 511.8 1226 L 511.8 1262" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="observe_gate" data-edge-to="observe_error" data-edge-label="读取 / 校验错误" data-edge-key="21" data-edge-id="observe_invalid" data-edge-role="error" data-composition-points="658.8,503;658.8,546;1013.8,546;1013.8,619" d="M 658.8 503 L 658.8 538 Q 658.8 546 666.8 546 L 1005.8 546 Q 1013.8 546 1013.8 554 L 1013.8 619" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="route" data-edge-to="read_index" data-edge-label="是" data-edge-key="22" data-edge-id="observe_route" data-edge-role="branch" data-composition-points="658.8,335;658.8,378;483.8,378;483.8,451" d="M 658.8 335 L 658.8 370 Q 658.8 378 650.8 378 L 491.8 378 Q 483.8 378 483.8 386 L 483.8 451" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="prepare" data-edge-to="publish" data-edge-key="23" data-edge-id="prepare_publish" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="595.8,1653;543.8,1653" d="M 595.8 1653 L 543.8 1653" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="publish" data-edge-to="committed" data-edge-label="返回 1" data-edge-key="24" data-edge-id="publish_commit" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="423.8,1653;4,1653;4,1821;259.8,1821" d="M 423.8 1653 L 12 1653 Q 4 1653 4 1661 L 4 1813 Q 4 1821 12 1821 L 259.8 1821" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="read_state" data-edge-to="decode" data-edge-key="25" data-edge-id="read_decode" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="229.8,813;261.8,813" d="M 229.8 813 L 261.8 813" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="read_index" data-edge-to="observe_gate" data-edge-key="26" data-edge-id="read_index_gate" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="547.8,477;579.8,477" d="M 547.8 477 L 579.8 477" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="release" data-edge-to="capture" data-edge-key="27" data-edge-id="release_capture" data-edge-role="branch" data-composition-points="651.8,1175;651.8,1206;497.8,1206;497.8,1262" d="M 651.8 1175 L 651.8 1198 Q 651.8 1206 643.8 1206 L 505.8 1206 Q 497.8 1206 497.8 1214 L 497.8 1262" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="renew" data-edge-to="capture" data-edge-key="28" data-edge-id="renew_capture" data-edge-role="branch" data-composition-points="483.8,1175;483.8,1262" d="M 483.8 1175 L 483.8 1262" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="backoff" data-edge-to="route" data-edge-label="重新读取" data-edge-key="29" data-edge-id="retry_loop" data-edge-role="return" data-composition-points="1075.8,1821;1110,1821;1110,309;709.8,309" d="M 1075.8 1821 L 1102 1821 Q 1110 1821 1110 1813 L 1110 317 Q 1110 309 1102 309 L 709.8 309" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="submit" data-edge-to="capture" data-edge-key="30" data-edge-id="submit_capture" data-edge-role="branch" data-composition-points="173.8,1175;173.8,1230;455.8,1230;455.8,1262" d="M 173.8 1175 L 173.8 1222 Q 173.8 1230 181.8 1230 L 447.8 1230 Q 455.8 1230 455.8 1238 L 455.8 1262" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="validate" data-edge-to="invalid" data-edge-label="失败" data-edge-key="31" data-edge-id="validate_error" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="329.8,115;329.8,99;1013.8,99;1013.8,115" d="M 329.8 115 L 329.8 107 Q 329.8 99 337.8 99 L 1005.8 99 Q 1013.8 99 1013.8 107 L 1013.8 115" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="validate" data-edge-to="key" data-edge-label="通过" data-edge-key="32" data-edge-id="validate_key" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="383.8,141;421.8,141" d="M 383.8 141 L 421.8 141" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="window" data-edge-to="guards" data-edge-key="33" data-edge-id="window_guards" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="841.8,1511;841.8,1627" d="M 841.8 1511 L 841.8 1627" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="route" data-edge-to="read_state" data-edge-label="写命令" data-edge-key="34" data-edge-id="write_route" data-edge-role="branch" data-composition-points="644.8,335;644.8,351;20,351;20,771;173.8,771;173.8,787" d="M 644.8 335 L 644.8 343 Q 644.8 351 636.8 351 L 28 351 Q 20 351 20 359 L 20 763 Q 20 771 28 771 L 165.8 771 Q 173.8 771 173.8 779 L 173.8 787" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="parameters" data-edge-to="guards" data-edge-key="0" data-edge-id="args_commit" data-edge-role="" data-composition-points="1115.8000000000002,1847;1115.8000000000002,1917.6;939.8,1917.6;939.8,2131" d="M 1115.8000000000002 1847 L 1115.8000000000002 1909.6 Q 1115.8000000000002 1917.6 1107.8000000000002 1917.6 L 947.8 1917.6 Q 939.8 1917.6 939.8 1925.6 L 939.8 2131" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="parameters" data-edge-to="parameters_error" data-edge-label="编码 / 参数错误" data-edge-key="1" data-edge-id="args_error" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="1139.8000000000002,1847;1139.8000000000002,1947;1115.8000000000002,1947;1115.8000000000002,1963" d="M 1139.8000000000002 1847 L 1139.8000000000002 1939 Q 1139.8000000000002 1947 1131.8000000000002 1947 L 1123.8000000000002 1947 Q 1115.8000000000002 1947 1115.8000000000002 1955 L 1115.8000000000002 1963" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="cancel" data-edge-to="capture" data-edge-key="2" data-edge-id="cancel_capture" data-edge-role="branch" data-composition-points="387.79999999999995,1679;387.79999999999995,1722;537.8,1722;537.8,1766" d="M 387.79999999999995 1679 L 387.79999999999995 1714 Q 387.79999999999995 1722 395.79999999999995 1722 L 529.8 1722 Q 537.8 1722 537.8 1730 L 537.8 1766" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="capture" data-edge-to="next" data-edge-key="3" data-edge-id="capture_next" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="611.8,1821;873.8,1821" d="M 611.8 1821 L 873.8 1821" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="cleanup" data-edge-to="ctx" data-edge-key="4" data-edge-id="cleanup_ctx" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="551.8,2519;551.8,2635" d="M 551.8 2519 L 551.8 2635" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="command" data-edge-to="cancel" data-edge-key="5" data-edge-id="command_cancel" data-edge-role="branch" data-composition-points="537.8,1540;537.8,1566;387.79999999999995,1566;387.79999999999995,1627" d="M 537.8 1540 L 537.8 1558 Q 537.8 1566 529.8 1566 L 395.79999999999995 1566 Q 387.79999999999995 1566 387.79999999999995 1574 L 387.79999999999995 1627" class="a-default" data-animate="edge" style="--step:5" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="command" data-edge-to="observe_command" data-edge-key="6" data-edge-id="command_observe_command" data-edge-role="branch" data-composition-points="579.8,1540;579.8,1566;939.8,1566;939.8,1627" d="M 579.8 1540 L 579.8 1558 Q 579.8 1566 587.8 1566 L 931.8 1566 Q 939.8 1566 939.8 1574 L 939.8 1627" class="a-default" data-animate="edge" style="--step:6" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="command" data-edge-to="release" data-edge-key="7" data-edge-id="command_release" data-edge-role="branch" data-composition-points="565.8,1540;565.8,1578;729.8,1578;729.8,1627" d="M 565.8 1540 L 565.8 1570 Q 565.8 1578 573.8 1578 L 721.8 1578 Q 729.8 1578 729.8 1586 L 729.8 1627" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="command" data-edge-to="renew" data-edge-key="8" data-edge-id="command_renew" data-edge-role="branch" data-composition-points="551.8,1540;551.8,1627" d="M 551.8 1540 L 551.8 1627" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="command" data-edge-to="submit" data-edge-key="9" data-edge-id="command_submit" data-edge-role="branch" data-composition-points="523.8,1540;523.8,1556;342.59999999999997,1556;342.59999999999997,1611;161.4,1611;161.4,1627" d="M 523.8 1540 L 523.8 1548 Q 523.8 1556 515.8 1556 L 350.59999999999997 1556 Q 342.59999999999997 1556 342.59999999999997 1564 L 342.59999999999997 1603 Q 342.59999999999997 1611 334.59999999999997 1611 L 169.4 1611 Q 161.4 1611 161.4 1619 L 161.4 1627" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="guards" data-edge-to="owned_error" data-edge-label="脚本 / 通信错误" data-edge-key="10" data-edge-id="commit_error" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="939.8,2183;939.8,2299" d="M 939.8 2183 L 939.8 2299" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="ctx" data-edge-to="ctx_error" data-edge-label="是" data-edge-key="11" data-edge-id="ctx_expired" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="621.8,2661;883.8,2661" d="M 621.8 2661 L 883.8 2661" class="a-default" data-animate="edge" style="--step:11" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="ctx" data-edge-to="returned" data-edge-label="否" data-edge-key="12" data-edge-id="ctx_live_return" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="481.79999999999995,2661;387.79999999999995,2661;387.79999999999995,2803" d="M 481.79999999999995 2661 L 395.79999999999995 2661 Q 387.79999999999995 2661 387.79999999999995 2669 L 387.79999999999995 2803" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="probe" data-edge-to="fast_return" data-edge-label="是" data-edge-key="13" data-edge-id="fast_ready" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="781.8,477;859.8,477" d="M 781.8 477 L 859.8 477" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="guards" data-edge-to="prepare" data-edge-label="通过" data-edge-key="14" data-edge-id="guards_ok" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="851.8,2157;813.8,2157" d="M 851.8 2157 L 813.8 2157" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="guards" data-edge-to="saved_retry" data-edge-label="归属 / 窗口失效：0" data-edge-key="15" data-edge-id="guards_retry" data-edge-role="branch" data-composition-points="1027.8,2157;1043.8,2157;1043.8,2226;1115.8000000000002,2226;1115.8000000000002,2299" d="M 1027.8 2157 L 1035.8 2157 Q 1043.8 2157 1043.8 2165 L 1043.8 2218 Q 1043.8 2226 1051.8 2226 L 1107.8000000000002 2226 Q 1115.8000000000002 2226 1115.8000000000002 2234 L 1115.8000000000002 2299" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="validate" data-edge-to="invalid" data-edge-label="失败" data-edge-key="16" data-edge-id="input_bad" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="387.79999999999995,167;387.79999999999995,183;1115.8000000000002,183;1115.8000000000002,167" d="M 387.79999999999995 167 L 387.79999999999995 175 Q 387.79999999999995 183 395.79999999999995 183 L 1107.8000000000002 183 Q 1115.8000000000002 183 1115.8000000000002 175 L 1115.8000000000002 167" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="validate" data-edge-to="keys" data-edge-label="通过" data-edge-key="17" data-edge-id="input_ok" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="449.79999999999995,141;487.79999999999995,141" d="M 449.79999999999995 141 L 487.79999999999995 141" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="route" data-edge-to="probe" data-edge-label="是" data-edge-key="18" data-edge-id="is_observe" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="729.8,335;729.8,451" d="M 729.8 335 L 729.8 451" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="route" data-edge-to="acquire" data-edge-label="写命令" data-edge-key="19" data-edge-id="is_write" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="677.8,316;551.8,316;551.8,787" d="M 677.8 316 L 559.8 316 Q 551.8 316 551.8 324 L 551.8 787" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="keys" data-edge-to="route" data-edge-key="20" data-edge-id="key_route" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="551.8,115;551.8,99;1208,99;1208,267;729.8,267;729.8,283" d="M 551.8 115 L 551.8 107 Q 551.8 99 559.8 99 L 1200 99 Q 1208 99 1208 107 L 1208 259 Q 1208 267 1200 267 L 737.8 267 Q 729.8 267 729.8 275 L 729.8 283" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="acquire" data-edge-to="backoff" data-edge-label="竞争失败：0" data-edge-key="21" data-edge-id="lock_busy" data-edge-role="branch" data-composition-points="603.8,813;1202,813;1202,2829;1163.8000000000002,2829" d="M 603.8 813 L 1194 813 Q 1202 813 1202 821 L 1202 2821 Q 1202 2829 1194 2829 L 1163.8000000000002 2829" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="acquire" data-edge-to="acquire_error" data-edge-label="错误 / 异常响应" data-edge-key="22" data-edge-id="lock_unknown" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="499.79999999999995,813;247.4,813" d="M 499.79999999999995 813 L 247.4 813" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="acquire" data-edge-to="locked_route" data-edge-label="确认获得：1" data-edge-key="23" data-edge-id="lock_yes" data-edge-role="" data-composition-points="551.8,839;551.8,882;729.8,882;729.8,955" d="M 551.8 839 L 551.8 874 Q 551.8 882 559.8 882 L 721.8 882 Q 729.8 882 729.8 890 L 729.8 955" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="maintain" data-edge-to="command" data-edge-key="24" data-edge-id="maintenance_command" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="667.8,1485;623.8,1485" d="M 667.8 1485 L 623.8 1485" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="next" data-edge-to="parameters" data-edge-label="是" data-edge-key="25" data-edge-id="next_encode" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="1005.8,1821;1043.8000000000002,1821" d="M 1005.8 1821 L 1043.8000000000002 1821" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="next" data-edge-to="saved_result" data-edge-label="否" data-edge-key="26" data-edge-id="next_nil" data-edge-role="branch" data-composition-points="939.8,1847;939.8,1896;257.4,1896;257.4,1821;241.4,1821" d="M 939.8 1847 L 939.8 1888 Q 939.8 1896 931.8 1896 L 265.4 1896 Q 257.4 1896 257.4 1888 L 257.4 1829 Q 257.4 1821 249.4 1821 L 241.4 1821" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="observe_command" data-edge-to="capture" data-edge-key="27" data-edge-id="observe_command_capture" data-edge-role="branch" data-composition-points="939.8,1679;939.8,1722;579.8,1722;579.8,1766" d="M 939.8 1679 L 939.8 1714 Q 939.8 1722 931.8 1722 L 587.8 1722 Q 579.8 1722 579.8 1730 L 579.8 1766" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="prepare" data-edge-to="publish" data-edge-key="28" data-edge-id="prepare_publish" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="645.8,2157;617.8,2157" d="M 645.8 2157 L 617.8 2157" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="probe" data-edge-to="probe_error" data-edge-label="读取或校验错误" data-edge-key="29" data-edge-id="probe_bad" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="736.8,503;736.8,645;1063.8000000000002,645" d="M 736.8 503 L 736.8 637 Q 736.8 645 744.8 645 L 1063.8000000000002 645" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="probe" data-edge-to="acquire" data-edge-label="缺失 / 未发布 / 到期" data-edge-key="30" data-edge-id="probe_due" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="677.8,477;575.8,477;575.8,787" d="M 677.8 477 L 583.8 477 Q 575.8 477 575.8 485 L 575.8 787" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="publish" data-edge-to="cleanup" data-edge-label="提交返回 1" data-edge-key="31" data-edge-id="publish_result" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="551.8,2183;551.8,2467" d="M 551.8 2183 L 551.8 2467" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="recheck" data-edge-to="recheck_error" data-edge-label="读取或校验错误" data-edge-key="32" data-edge-id="recheck_bad" data-edge-role="error" data-composition-points="729.8,1175;729.8,1207;1115.8000000000002,1207;1115.8000000000002,1175" d="M 729.8 1175 L 729.8 1199 Q 729.8 1207 737.8 1207 L 1107.8000000000002 1207 Q 1115.8000000000002 1207 1115.8000000000002 1199 L 1115.8000000000002 1175" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="recheck" data-edge-to="snapshot" data-edge-label="仍需维护" data-edge-key="33" data-edge-id="recheck_due" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="705.8,1175;705.8,1310;453.79999999999995,1310" d="M 705.8 1175 L 705.8 1302 Q 705.8 1310 697.8 1310 L 453.79999999999995 1310" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="locked_route" data-edge-to="snapshot" data-edge-label="写命令" data-edge-key="34" data-edge-id="recheck_no" data-edge-role="branch" data-composition-points="663.8,981;293.79999999999995,981;293.79999999999995,1317;321.79999999999995,1317" d="M 663.8 981 L 301.79999999999995 981 Q 293.79999999999995 981 293.79999999999995 989 L 293.79999999999995 1309 Q 293.79999999999995 1317 301.79999999999995 1317 L 321.79999999999995 1317" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="recheck" data-edge-to="recheck_return" data-edge-label="可直接返回" data-edge-key="35" data-edge-id="recheck_ready" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="789.8,1149;859.8,1149" d="M 789.8 1149 L 859.8 1149" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="locked_route" data-edge-to="recheck" data-edge-label="Observe" data-edge-key="36" data-edge-id="recheck_yes" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="729.8,1007;729.8,1123" d="M 729.8 1007 L 729.8 1123" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="release" data-edge-to="capture" data-edge-key="37" data-edge-id="release_capture" data-edge-role="branch" data-composition-points="729.8,1679;729.8,1710;565.8,1710;565.8,1766" d="M 729.8 1679 L 729.8 1702 Q 729.8 1710 721.8 1710 L 573.8 1710 Q 565.8 1710 565.8 1718 L 565.8 1766" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="renew" data-edge-to="capture" data-edge-key="38" data-edge-id="renew_capture" data-edge-role="branch" data-composition-points="551.8,1679;551.8,1766" d="M 551.8 1679 L 551.8 1766" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="saved_retry" data-edge-to="backoff" data-edge-key="39" data-edge-id="retry_after_unlock" data-edge-role="" data-composition-points="1115.8000000000002,2351;1115.8000000000002,2803" d="M 1115.8000000000002 2351 L 1115.8000000000002 2803" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="backoff" data-edge-to="route" data-edge-label="context 未结束：重读投影 / 重抢锁" data-edge-key="40" data-edge-id="retry_loop" data-edge-role="return" data-composition-points="1115.8000000000002,2855;1115.8,2895;1224,2895;1224,309;781.8,309" d="M 1115.8000000000002 2855 L 1115.8 2887 Q 1115.8 2895 1123.8 2895 L 1216 2895 Q 1224 2895 1224 2887 L 1224 317 Q 1224 309 1216 309 L 781.8 309" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="snapshot" data-edge-to="snapshot_error" data-edge-label="读 / 解码错误" data-edge-key="41" data-edge-id="snapshot_bad" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="387.79999999999995,1343;387.79999999999995,1392;161.4,1392;161.4,1343" d="M 387.79999999999995 1343 L 387.79999999999995 1384 Q 387.79999999999995 1392 379.79999999999995 1392 L 169.4 1392 Q 161.4 1392 161.4 1384 L 161.4 1343" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="snapshot" data-edge-to="maintain" data-edge-key="42" data-edge-id="snapshot_good" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="453.79999999999995,1324;729.8,1324;729.8,1459" d="M 453.79999999999995 1324 L 721.8 1324 Q 729.8 1324 729.8 1332 L 729.8 1459" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="entry" data-edge-to="validate" data-edge-key="43" data-edge-id="start" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="261.4,141;325.79999999999995,141" d="M 261.4 141 L 325.79999999999995 141" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="submit" data-edge-to="capture" data-edge-key="44" data-edge-id="submit_capture" data-edge-role="branch" data-composition-points="161.4,1679;161.4,1734;523.8,1734;523.8,1766" d="M 161.4 1679 L 161.4 1726 Q 161.4 1734 169.4 1734 L 515.8 1734 Q 523.8 1734 523.8 1742 L 523.8 1766" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
 
         <!-- Nodes -->
-        <g id="node-entry" data-node-id="entry" data-node-label="Driver 操作" tabindex="0" role="button" aria-label="聚焦Driver 操作，五类业务接口, 入口与物理 key" aria-pressed="false" data-node-kind="external" data-node-sublabel="五类业务接口" data-node-context="入口与物理 key">
-          <title>Driver 操作 · 五类业务接口 · 入口与物理 key</title>
-          <rect x="127.80000000000001" y="115" width="92" height="52" rx="8" class="c-mask"/>
-          <rect x="127.80000000000001" y="115" width="92" height="52" rx="8" class="c-external" data-animate="node" style="--step:0" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(133.8 121) scale(0.6875)">
+        <g id="node-entry" data-node-id="entry" data-node-label="Driver 五类操作" tabindex="0" role="button" aria-label="聚焦Driver 五类操作，入口与同槽 key" aria-pressed="false" data-node-kind="external" data-node-context="入口与同槽 key">
+          <title>Driver 五类操作 · 入口与同槽 key</title>
+          <rect x="61.400000000000006" y="115" width="200" height="52" rx="8" class="c-mask"/>
+          <rect x="61.400000000000006" y="115" width="200" height="52" rx="8" class="c-external" data-animate="node" style="--step:0" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(67.4 121) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="173.8" y="147" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Driver 操作</text>
-          <text data-detail="context" x="173.8" y="159.3" class="t-muted" font-size="8" text-anchor="middle">五类业务接口</text>
+          <text data-node-label="" x="161.4" y="136" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Driver 五类操作</text>
         </g>
 
-        <g id="node-validate" data-node-id="validate" data-node-label="输入校验" tabindex="0" role="button" aria-label="聚焦输入校验，上下文、配置与请求字段, 入口与物理 key" aria-pressed="false" data-node-kind="backend" data-node-sublabel="上下文、配置与请求字段" data-node-context="入口与物理 key">
-          <title>输入校验 · 上下文、配置与请求字段 · 入口与物理 key</title>
-          <rect x="275.8" y="115" width="108" height="52" rx="8" class="c-mask"/>
-          <rect x="275.8" y="115" width="108" height="52" rx="8" class="c-backend" data-animate="node" style="--step:1" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(281.8 121) scale(0.6875)">
+        <g id="node-validate" data-node-id="validate" data-node-label="输入与 context 校验" tabindex="0" role="button" aria-label="聚焦输入与 context 校验，入口与同槽 key" aria-pressed="false" data-node-kind="backend" data-node-context="入口与同槽 key">
+          <title>输入与 context 校验 · 入口与同槽 key</title>
+          <rect x="325.79999999999995" y="115" width="124" height="52" rx="8" class="c-mask"/>
+          <rect x="325.79999999999995" y="115" width="124" height="52" rx="8" class="c-backend" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(331.79999999999995 121) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="329.8" y="147" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">输入校验</text>
-          <text data-detail="context" x="329.8" y="158.8" class="t-muted" font-size="7.5" text-anchor="middle">上下文、配置与请求字段</text>
+          <text data-node-label="" x="387.79999999999995" y="148.2" class="t-primary" font-size="10.1" font-weight="600" text-anchor="middle">输入与 context 校验</text>
         </g>
 
-        <g id="node-key" data-node-id="key" data-node-label="唯一 Redis key" tabindex="0" role="button" aria-label="聚焦唯一 Redis key，airlock:{资源哈希}:state, 入口与物理 key" aria-pressed="false" data-node-kind="database" data-node-sublabel="airlock:{资源哈希}:state" data-node-context="入口与物理 key">
-          <title>唯一 Redis key · airlock:{资源哈希}:state · 入口与物理 key</title>
-          <rect x="421.8" y="115" width="124" height="52" rx="8" class="c-mask"/>
-          <rect x="421.8" y="115" width="124" height="52" rx="8" class="c-database" data-animate="node" style="--step:2" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(427.8 121) scale(0.6875)">
+        <g id="node-keys" data-node-id="keys" data-node-label="同槽两类 key" tabindex="0" role="button" aria-label="聚焦同槽两类 key，入口与同槽 key" aria-pressed="false" data-node-kind="database" data-node-context="入口与同槽 key">
+          <title>同槽两类 key · 入口与同槽 key</title>
+          <rect x="487.79999999999995" y="115" width="128" height="52" rx="8" class="c-mask"/>
+          <rect x="487.79999999999995" y="115" width="128" height="52" rx="8" class="c-database" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(493.79999999999995 121) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="483.8" y="147" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">唯一 Redis key</text>
-          <text data-detail="context" x="483.8" y="159.3" class="t-muted" font-size="8" text-anchor="middle">airlock:{资源哈希}:state</text>
+          <text data-node-label="" x="551.8" y="149.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">同槽两类 key</text>
         </g>
 
-        <g id="node-invalid" data-node-id="invalid" data-node-label="校验错误返回" tabindex="0" role="button" aria-label="聚焦校验错误返回，不进入后端执行路径, 入口与物理 key" aria-pressed="false" data-node-kind="security" data-node-sublabel="不进入后端执行路径" data-node-context="入口与物理 key">
-          <title>校验错误返回 · 不进入后端执行路径 · 入口与物理 key</title>
-          <rect x="967.8" y="115" width="92" height="52" rx="8" class="c-mask"/>
-          <rect x="967.8" y="115" width="92" height="52" rx="8" class="c-security" data-animate="node" style="--step:3" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(973.8 121) scale(0.6875)">
+        <g id="node-invalid" data-node-id="invalid" data-node-label="输入错误直接返回" tabindex="0" role="button" aria-label="聚焦输入错误直接返回，入口与同槽 key" aria-pressed="false" data-node-kind="security" data-node-context="入口与同槽 key">
+          <title>输入错误直接返回 · 入口与同槽 key</title>
+          <rect x="1063.8000000000002" y="115" width="104" height="52" rx="8" class="c-mask"/>
+          <rect x="1063.8000000000002" y="115" width="104" height="52" rx="8" class="c-security" data-animate="node" style="--step:3" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1069.8000000000002 121) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1013.8" y="147" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">校验错误返回</text>
-          <text data-detail="context" x="1013.8" y="159" class="t-muted" font-size="7.7" text-anchor="middle">不进入后端执行路径</text>
+          <text data-node-label="" x="1115.8000000000002" y="148" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">输入错误直接返回</text>
         </g>
 
-        <g id="node-route" data-node-id="route" data-node-label="本轮是 Observe？" tabindex="0" role="button" aria-label="聚焦本轮是 Observe？，首次调用与冲突重试均检查, 每轮尝试入口" aria-pressed="false" data-node-kind="backend" data-node-sublabel="首次调用与冲突重试均检查" data-node-context="每轮尝试入口">
-          <title>本轮是 Observe？ · 首次调用与冲突重试均检查 · 每轮尝试入口</title>
-          <rect x="593.8" y="283" width="116" height="52" rx="8" class="c-mask"/>
-          <rect x="593.8" y="283" width="116" height="52" rx="8" class="c-backend" data-animate="node" style="--step:4" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(599.8 289) scale(0.6875)">
+        <g id="node-route" data-node-id="route" data-node-label="本轮是 Observe？" tabindex="0" role="button" aria-label="聚焦本轮是 Observe？，每轮尝试" aria-pressed="false" data-node-kind="backend" data-node-context="每轮尝试">
+          <title>本轮是 Observe？ · 每轮尝试</title>
+          <rect x="677.8" y="283" width="104" height="52" rx="8" class="c-mask"/>
+          <rect x="677.8" y="283" width="104" height="52" rx="8" class="c-backend" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(683.8 289) scale(0.6875)">
             <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="651.8" y="315" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">本轮是 Observe？</text>
-          <text data-detail="context" x="651.8" y="326.8" class="t-muted" font-size="7.5" text-anchor="middle">首次调用与冲突重试均检查</text>
+          <text data-node-label="" x="729.8" y="316" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">本轮是 Observe？</text>
         </g>
 
-        <g id="node-read_index" data-node-id="read_index" data-node-label="Lua 只读查询" tabindex="0" role="button" aria-label="聚焦Lua 只读查询，HMGET meta、r:&lt;id&gt; + TIME, Observe 快速读" aria-pressed="false" data-node-kind="database" data-node-sublabel="HMGET meta、r:&lt;id&gt; + TIME" data-node-context="Observe 快速读">
-          <title>Lua 只读查询 · HMGET meta、r:&lt;id&gt; + TIME · Observe 快速读</title>
-          <rect x="419.8" y="451" width="128" height="52" rx="8" class="c-mask"/>
-          <rect x="419.8" y="451" width="128" height="52" rx="8" class="c-database" data-animate="node" style="--step:5" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(425.8 457) scale(0.6875)">
-            <ellipse cx="8" cy="4" rx="5" ry="2"/>
-            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="483.8" y="483" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Lua 只读查询</text>
-          <text data-detail="context" x="483.8" y="495.3" class="t-muted" font-size="8" text-anchor="middle">HMGET meta、r:&lt;id&gt; + TIME</text>
-        </g>
-
-        <g id="node-observe_gate" data-node-id="observe_gate" data-node-label="索引可安全返回？" tabindex="0" role="button" aria-label="聚焦索引可安全返回？，Token 匹配，校验通过且未到期, Observe 快速读" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Token 匹配，校验通过且未到期" data-node-context="Observe 快速读">
-          <title>索引可安全返回？ · Token 匹配，校验通过且未到期 · Observe 快速读</title>
-          <rect x="579.8" y="451" width="144" height="52" rx="8" class="c-mask"/>
-          <rect x="579.8" y="451" width="144" height="52" rx="8" class="c-backend" data-animate="node" style="--step:6" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(585.8 457) scale(0.6875)">
+        <g id="node-probe" data-node-id="probe" data-node-label="投影可直接返回？" tabindex="0" role="button" aria-label="聚焦投影可直接返回？，Observe 只读快路径" aria-pressed="false" data-node-kind="backend" data-node-context="Observe 只读快路径">
+          <title>投影可直接返回？ · Observe 只读快路径</title>
+          <rect x="677.8" y="451" width="104" height="52" rx="8" class="c-mask"/>
+          <rect x="677.8" y="451" width="104" height="52" rx="8" class="c-backend" data-animate="node" style="--step:5" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(683.8 457) scale(0.6875)">
             <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="651.8" y="483" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">索引可安全返回？</text>
-          <text data-detail="context" x="651.8" y="495.3" class="t-muted" font-size="8" text-anchor="middle">Token 匹配，校验通过且未到期</text>
+          <text data-node-label="" x="729.8" y="484" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">投影可直接返回？</text>
         </g>
 
-        <g id="node-observe_return" data-node-id="observe_return" data-node-label="返回已提交结果" tabindex="0" role="button" aria-label="聚焦返回已提交结果，不读完整 state，不增加 revision, Observe 快速读" aria-pressed="false" data-node-kind="backend" data-node-sublabel="不读完整 state，不增加 revision" data-node-context="Observe 快速读">
-          <title>返回已提交结果 · 不读完整 state，不增加 revision · Observe 快速读</title>
-          <rect x="761.8" y="451" width="160" height="52" rx="8" class="c-mask"/>
-          <rect x="761.8" y="451" width="160" height="52" rx="8" class="c-backend" data-animate="node" style="--step:7" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(767.8 457) scale(0.6875)">
+        <g id="node-fast_return" data-node-id="fast_return" data-node-label="返回已提交结果" tabindex="0" role="button" aria-label="聚焦返回已提交结果，Observe 只读快路径" aria-pressed="false" data-node-kind="backend" data-node-context="Observe 只读快路径">
+          <title>返回已提交结果 · Observe 只读快路径</title>
+          <rect x="859.8" y="451" width="160" height="52" rx="8" class="c-mask"/>
+          <rect x="859.8" y="451" width="160" height="52" rx="8" class="c-backend" data-animate="node" style="--step:6" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(865.8 457) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="833.5999999999999" y="472" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">返回已提交结果</text>
-          <text data-detail="context" x="841.8" y="489" class="t-muted" font-size="8" text-anchor="middle">不读完整 state，不增加 revision</text>
+          <text data-node-label="" x="931.5999999999999" y="472" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">返回已提交结果</text>
         </g>
 
-        <g id="node-observe_error" data-node-id="observe_error" data-node-label="读取或校验错误" tabindex="0" role="button" aria-label="聚焦读取或校验错误，返回错误，不授权执行, Observe 错误返回" aria-pressed="false" data-node-kind="security" data-node-sublabel="返回错误，不授权执行" data-node-context="Observe 错误返回">
-          <title>读取或校验错误 · 返回错误，不授权执行 · Observe 错误返回</title>
-          <rect x="965.8" y="619" width="96" height="52" rx="8" class="c-mask"/>
-          <rect x="965.8" y="619" width="96" height="52" rx="8" class="c-security" data-animate="node" style="--step:8" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(971.8 625) scale(0.6875)">
+        <g id="node-probe_error" data-node-id="probe_error" data-node-label="只读查询错误返回" tabindex="0" role="button" aria-label="聚焦只读查询错误返回，未持锁的读取错误" aria-pressed="false" data-node-kind="security" data-node-context="未持锁的读取错误">
+          <title>只读查询错误返回 · 未持锁的读取错误</title>
+          <rect x="1063.8000000000002" y="619" width="104" height="52" rx="8" class="c-mask"/>
+          <rect x="1063.8000000000002" y="619" width="104" height="52" rx="8" class="c-security" data-animate="node" style="--step:7" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1069.8000000000002 625) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1013.8" y="652.5" class="t-primary" font-size="10.4" font-weight="600" text-anchor="middle">读取或校验错误</text>
-          <text data-detail="context" x="1013.8" y="666.4" class="t-muted" font-size="7.3" text-anchor="middle">返回错误，不授权执行</text>
+          <text data-node-label="" x="1115.8000000000002" y="652" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">只读查询错误返回</text>
         </g>
 
-        <g id="node-read_state" data-node-id="read_state" data-node-label="Lua 读取权威快照" tabindex="0" role="button" aria-label="聚焦Lua 读取权威快照，HGET field=state + TIME, 完整快照与核心" aria-pressed="false" data-node-kind="database" data-node-sublabel="HGET field=state + TIME" data-node-context="完整快照与核心">
-          <title>Lua 读取权威快照 · HGET field=state + TIME · 完整快照与核心</title>
-          <rect x="117.80000000000001" y="787" width="112" height="52" rx="8" class="c-mask"/>
-          <rect x="117.80000000000001" y="787" width="112" height="52" rx="8" class="c-database" data-animate="node" style="--step:9" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(123.80000000000001 793) scale(0.6875)">
-            <ellipse cx="8" cy="4" rx="5" ry="2"/>
-            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="173.8" y="818.8" class="t-primary" font-size="10.8" font-weight="600" text-anchor="middle">Lua 读取权威快照</text>
-          <text data-detail="context" x="173.8" y="830.6" class="t-muted" font-size="7.5" text-anchor="middle">HGET field=state + TIME</text>
-        </g>
-
-        <g id="node-decode" data-node-id="decode" data-node-label="Go 解码完整状态" tabindex="0" role="button" aria-label="聚焦Go 解码完整状态，DecodeState；不是 Lua 调度, 完整快照与核心" aria-pressed="false" data-node-kind="backend" data-node-sublabel="DecodeState；不是 Lua 调度" data-node-context="完整快照与核心">
-          <title>Go 解码完整状态 · DecodeState；不是 Lua 调度 · 完整快照与核心</title>
-          <rect x="261.8" y="787" width="136" height="52" rx="8" class="c-mask"/>
-          <rect x="261.8" y="787" width="136" height="52" rx="8" class="c-backend" data-animate="node" style="--step:10" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(267.8 793) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="329.8" y="819" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Go 解码完整状态</text>
-          <text data-detail="context" x="329.8" y="831.3" class="t-muted" font-size="8" text-anchor="middle">DecodeState；不是 Lua 调度</text>
-        </g>
-
-        <g id="node-command" data-node-id="command" data-node-label="统一命令分支" tabindex="0" role="button" aria-label="聚焦统一命令分支，Go 中选择生命周期规则, Go 核心转换" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Go 中选择生命周期规则" data-node-context="Go 核心转换">
-          <title>统一命令分支 · Go 中选择生命周期规则 · Go 核心转换</title>
-          <rect x="433.8" y="926" width="100" height="110" rx="8" class="c-mask"/>
-          <rect x="433.8" y="926" width="100" height="110" rx="8" class="c-backend" data-animate="node" style="--step:11" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(439.8 932) scale(0.6875)">
-            <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="483.8" y="960.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">统一命令分支</text>
-          <text data-detail="context" x="483.8" y="974.3" class="t-muted" font-size="7.3" text-anchor="middle">Go 中选择生命周期规则</text>
-        </g>
-
-        <g id="node-maintenance" data-node-id="maintenance" data-node-label="Transition 公共处理" tabindex="0" role="button" aria-label="聚焦Transition 公共处理，恢复、过期、GC、命令前调度, Go 核心转换" aria-pressed="false" data-node-kind="backend" data-node-sublabel="恢复、过期、GC、命令前调度" data-node-context="Go 核心转换">
-          <title>Transition 公共处理 · 恢复、过期、GC、命令前调度 · Go 核心转换</title>
-          <rect x="589.8" y="955" width="124" height="52" rx="8" class="c-mask"/>
-          <rect x="589.8" y="955" width="124" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(595.8 961) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="651.8" y="988.2" class="t-primary" font-size="10.1" font-weight="600" text-anchor="middle">Transition 公共处理</text>
-          <text data-detail="context" x="651.8" y="1002.2" class="t-muted" font-size="7.4" text-anchor="middle">恢复、过期、GC、命令前调度</text>
-        </g>
-
-        <g id="node-submit" data-node-id="submit" data-node-label="Submit" tabindex="0" role="button" aria-label="聚焦Submit，新建 / 排队 / 复用结果, 五类命令效果" aria-pressed="false" data-node-kind="backend" data-node-sublabel="新建 / 排队 / 复用结果" data-node-context="五类命令效果">
-          <title>Submit · 新建 / 排队 / 复用结果 · 五类命令效果</title>
-          <rect x="119.80000000000001" y="1123" width="108" height="52" rx="8" class="c-mask"/>
-          <rect x="119.80000000000001" y="1123" width="108" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(125.80000000000001 1129) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="166" y="1144" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Submit</text>
-          <text data-detail="context" x="173.8" y="1161" class="t-muted" font-size="7.5" text-anchor="middle">新建 / 排队 / 复用结果</text>
-        </g>
-
-        <g id="node-cancel" data-node-id="cancel" data-node-label="Cancel" tabindex="0" role="button" aria-label="聚焦Cancel，取消或建立取消墓碑, 五类命令效果" aria-pressed="false" data-node-kind="backend" data-node-sublabel="取消或建立取消墓碑" data-node-context="五类命令效果">
-          <title>Cancel · 取消或建立取消墓碑 · 五类命令效果</title>
-          <rect x="283.8" y="1123" width="92" height="52" rx="8" class="c-mask"/>
-          <rect x="283.8" y="1123" width="92" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(289.8 1129) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="329.8" y="1155" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Cancel</text>
-          <text data-detail="context" x="329.8" y="1167" class="t-muted" font-size="7.7" text-anchor="middle">取消或建立取消墓碑</text>
-        </g>
-
-        <g id="node-renew" data-node-id="renew" data-node-label="Renew" tabindex="0" role="button" aria-label="聚焦Renew，匹配有效租约才延长 Until, 五类命令效果" aria-pressed="false" data-node-kind="backend" data-node-sublabel="匹配有效租约才延长 Until" data-node-context="五类命令效果">
-          <title>Renew · 匹配有效租约才延长 Until · 五类命令效果</title>
-          <rect x="421.8" y="1123" width="124" height="52" rx="8" class="c-mask"/>
-          <rect x="421.8" y="1123" width="124" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(427.8 1129) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="483.8" y="1144" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Renew</text>
-          <text data-detail="context" x="483.8" y="1161" class="t-muted" font-size="8" text-anchor="middle">匹配有效租约才延长 Until</text>
-        </g>
-
-        <g id="node-release" data-node-id="release" data-node-label="Release" tabindex="0" role="button" aria-label="聚焦Release，匹配授予归还全部权重, 五类命令效果" aria-pressed="false" data-node-kind="backend" data-node-sublabel="匹配授予归还全部权重" data-node-context="五类命令效果">
-          <title>Release · 匹配授予归还全部权重 · 五类命令效果</title>
-          <rect x="603.8" y="1123" width="96" height="52" rx="8" class="c-mask"/>
-          <rect x="603.8" y="1123" width="96" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(609.8 1129) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="651.8" y="1155" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Release</text>
-          <text data-detail="context" x="651.8" y="1166.6" class="t-muted" font-size="7.3" text-anchor="middle">匹配授予归还全部权重</text>
-        </g>
-
-        <g id="node-observe_command" data-node-id="observe_command" data-node-label="Observe" tabindex="0" role="button" aria-label="聚焦Observe，到期维护后读取请求状态, 五类命令效果" aria-pressed="false" data-node-kind="backend" data-node-sublabel="到期维护后读取请求状态" data-node-context="五类命令效果">
-          <title>Observe · 到期维护后读取请求状态 · 五类命令效果</title>
-          <rect x="787.8" y="1123" width="108" height="52" rx="8" class="c-mask"/>
-          <rect x="787.8" y="1123" width="108" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(793.8 1129) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="830.6999999999999" y="1144" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Observe</text>
-          <text data-detail="context" x="841.8" y="1161" class="t-muted" font-size="7.5" text-anchor="middle">到期维护后读取请求状态</text>
-        </g>
-
-        <g id="node-nil_return" data-node-id="nil_return" data-node-label="返回核心错误或结果" tabindex="0" role="button" aria-label="聚焦返回核心错误或结果，next=nil，不提交, 核心状态输出" aria-pressed="false" data-node-kind="backend" data-node-sublabel="next=nil，不提交" data-node-context="核心状态输出">
-          <title>返回核心错误或结果 · next=nil，不提交 · 核心状态输出</title>
-          <rect x="113.80000000000001" y="1291" width="120" height="52" rx="8" class="c-mask"/>
-          <rect x="113.80000000000001" y="1291" width="120" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(119.80000000000001 1297) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="173.8" y="1322.3" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">返回核心错误或结果</text>
-          <text data-detail="context" x="173.8" y="1334.4" class="t-muted" font-size="8" text-anchor="middle">next=nil，不提交</text>
-        </g>
-
-        <g id="node-capture" data-node-id="capture" data-node-label="再次调度与捕获" tabindex="0" role="button" aria-label="聚焦再次调度与捕获，Time 更新；Revision + 1, 核心状态输出" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Time 更新；Revision + 1" data-node-context="核心状态输出">
-          <title>再次调度与捕获 · Time 更新；Revision + 1 · 核心状态输出</title>
-          <rect x="427.8" y="1262" width="112" height="110" rx="8" class="c-mask"/>
-          <rect x="427.8" y="1262" width="112" height="110" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(433.8 1268) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="483.8" y="1296.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">再次调度与捕获</text>
-          <text data-detail="context" x="483.8" y="1310.5" class="t-muted" font-size="7.5" text-anchor="middle">Time 更新；Revision + 1</text>
-        </g>
-
-        <g id="node-next_gate" data-node-id="next_gate" data-node-label="有新状态？" tabindex="0" role="button" aria-label="聚焦有新状态？，next != nil 才提交, 核心状态输出" aria-pressed="false" data-node-kind="backend" data-node-sublabel="next != nil 才提交" data-node-context="核心状态输出">
-          <title>有新状态？ · next != nil 才提交 · 核心状态输出</title>
-          <rect x="795.8" y="1291" width="92" height="52" rx="8" class="c-mask"/>
-          <rect x="795.8" y="1291" width="92" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(801.8 1297) scale(0.6875)">
-            <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="841.8" y="1323" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">有新状态？</text>
-          <text data-detail="context" x="841.8" y="1335" class="t-muted" font-size="7.7" text-anchor="middle">next != nil 才提交</text>
-        </g>
-
-        <g id="node-encode" data-node-id="encode" data-node-label="编码完整新快照" tabindex="0" role="button" aria-label="聚焦编码完整新快照，EncodeState → next JSON, 核心状态输出" aria-pressed="false" data-node-kind="backend" data-node-sublabel="EncodeState → next JSON" data-node-context="核心状态输出">
-          <title>编码完整新快照 · EncodeState → next JSON · 核心状态输出</title>
-          <rect x="957.8" y="1291" width="112" height="52" rx="8" class="c-mask"/>
-          <rect x="957.8" y="1291" width="112" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(963.8 1297) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1013.8" y="1323" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">编码完整新快照</text>
-          <text data-detail="context" x="1013.8" y="1334.8" class="t-muted" font-size="7.5" text-anchor="middle">EncodeState → next JSON</text>
-        </g>
-
-        <g id="node-window" data-node-id="window" data-node-label="准备提交参数" tabindex="0" role="button" aria-label="聚焦准备提交参数，旧/新快照、时间窗口、投影, Go 提交准备" aria-pressed="false" data-node-kind="backend" data-node-sublabel="旧/新快照、时间窗口、投影" data-node-context="Go 提交准备">
-          <title>准备提交参数 · 旧/新快照、时间窗口、投影 · Go 提交准备</title>
-          <rect x="777.8" y="1459" width="128" height="52" rx="8" class="c-mask"/>
-          <rect x="777.8" y="1459" width="128" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(783.8 1465) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="841.8" y="1491" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">准备提交参数</text>
-          <text data-detail="context" x="841.8" y="1503.3" class="t-muted" font-size="8" text-anchor="middle">旧/新快照、时间窗口、投影</text>
-        </g>
-
-        <g id="node-index" data-node-id="index" data-node-label="Go 构建查询投影" tabindex="0" role="button" aria-label="聚焦Go 构建查询投影，meta + 全部 r:&lt;id&gt;，同一 Token, Go 提交准备" aria-pressed="false" data-node-kind="backend" data-node-sublabel="meta + 全部 r:&lt;id&gt;，同一 Token" data-node-context="Go 提交准备">
-          <title>Go 构建查询投影 · meta + 全部 r:&lt;id&gt;，同一 Token · Go 提交准备</title>
-          <rect x="937.8" y="1459" width="152" height="52" rx="8" class="c-mask"/>
-          <rect x="937.8" y="1459" width="152" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(943.8 1465) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1013.8" y="1491" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Go 构建查询投影</text>
-          <text data-detail="context" x="1013.8" y="1503.3" class="t-muted" font-size="8" text-anchor="middle">meta + 全部 r:&lt;id&gt;，同一 Token</text>
-        </g>
-
-        <g id="node-publish" data-node-id="publish" data-node-label="最后 HSET 原子发布" tabindex="0" role="button" aria-label="聚焦最后 HSET 原子发布，同一 key：state 与 meta, casScript 原子执行" aria-pressed="false" data-node-kind="database" data-node-sublabel="同一 key：state 与 meta" data-node-context="casScript 原子执行">
-          <title>最后 HSET 原子发布 · 同一 key：state 与 meta · casScript 原子执行</title>
-          <rect x="423.8" y="1627" width="120" height="52" rx="8" class="c-mask"/>
-          <rect x="423.8" y="1627" width="120" height="52" rx="8" class="c-database" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(429.8 1633) scale(0.6875)">
-            <ellipse cx="8" cy="4" rx="5" ry="2"/>
-            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="483.8" y="1658.3" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">最后 HSET 原子发布</text>
-          <text data-detail="context" x="483.8" y="1670.4" class="t-muted" font-size="8" text-anchor="middle">同一 key：state 与 meta</text>
-        </g>
-
-        <g id="node-prepare" data-node-id="prepare" data-node-label="准备派生记录" tabindex="0" role="button" aria-label="聚焦准备派生记录，HKEYS/HDEL，再 HSET r:*, casScript 原子执行" aria-pressed="false" data-node-kind="database" data-node-sublabel="HKEYS/HDEL，再 HSET r:*" data-node-context="casScript 原子执行">
-          <title>准备派生记录 · HKEYS/HDEL，再 HSET r:* · casScript 原子执行</title>
-          <rect x="595.8" y="1627" width="112" height="52" rx="8" class="c-mask"/>
-          <rect x="595.8" y="1627" width="112" height="52" rx="8" class="c-database" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(601.8 1633) scale(0.6875)">
-            <ellipse cx="8" cy="4" rx="5" ry="2"/>
-            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="651.8" y="1659" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">准备派生记录</text>
-          <text data-detail="context" x="651.8" y="1670.8" class="t-muted" font-size="7.5" text-anchor="middle">HKEYS/HDEL，再 HSET r:*</text>
-        </g>
-
-        <g id="node-guards" data-node-id="guards" data-node-label="Lua 校验快照与时间" tabindex="0" role="button" aria-label="聚焦Lua 校验快照与时间，state CAS + Redis TIME 窗口, casScript 原子执行" aria-pressed="false" data-node-kind="backend" data-node-sublabel="state CAS + Redis TIME 窗口" data-node-context="casScript 原子执行">
-          <title>Lua 校验快照与时间 · state CAS + Redis TIME 窗口 · casScript 原子执行</title>
-          <rect x="777.8" y="1627" width="128" height="52" rx="8" class="c-mask"/>
-          <rect x="777.8" y="1627" width="128" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(783.8 1633) scale(0.6875)">
-            <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="841.8" y="1659" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Lua 校验快照与时间</text>
-          <text data-detail="context" x="841.8" y="1670.7" class="t-muted" font-size="7.4" text-anchor="middle">state CAS + Redis TIME 窗口</text>
-        </g>
-
-        <g id="node-committed" data-node-id="committed" data-node-label="已提交：返回结果" tabindex="0" role="button" aria-label="聚焦已提交：返回结果，Lua 返回 1，检查 ctx 后返回, 结果与重试" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Lua 返回 1，检查 ctx 后返回" data-node-context="结果与重试">
-          <title>已提交：返回结果 · Lua 返回 1，检查 ctx 后返回 · 结果与重试</title>
-          <rect x="259.8" y="1795" width="140" height="52" rx="8" class="c-mask"/>
-          <rect x="259.8" y="1795" width="140" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(265.8 1801) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="329.8" y="1827" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">已提交：返回结果</text>
-          <text data-detail="context" x="329.8" y="1839.3" class="t-muted" font-size="8" text-anchor="middle">Lua 返回 1，检查 ctx 后返回</text>
-        </g>
-
-        <g id="node-unknown" data-node-id="unknown" data-node-label="后端错误：结果不确定" tabindex="0" role="button" aria-label="聚焦后端错误：结果不确定，不盲目重放，不授权工作, 结果与重试" aria-pressed="false" data-node-kind="security" data-node-sublabel="不盲目重放，不授权工作" data-node-context="结果与重试">
-          <title>后端错误：结果不确定 · 不盲目重放，不授权工作 · 结果与重试</title>
-          <rect x="775.8" y="1795" width="132" height="52" rx="8" class="c-mask"/>
-          <rect x="775.8" y="1795" width="132" height="52" rx="8" class="c-security" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(781.8 1801) scale(0.6875)">
+        <g id="node-acquire_error" data-node-id="acquire_error" data-node-label="抢锁结果不确定" tabindex="0" role="button" aria-label="聚焦抢锁结果不确定，按 Resource 抢更新锁" aria-pressed="false" data-node-kind="security" data-node-context="按 Resource 抢更新锁">
+          <title>抢锁结果不确定 · 按 Resource 抢更新锁</title>
+          <rect x="75.4" y="787" width="172" height="52" rx="8" class="c-mask"/>
+          <rect x="75.4" y="787" width="172" height="52" rx="8" class="c-security" data-animate="node" style="--step:8" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(81.4 793) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="841.8" y="1826.3" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">后端错误：结果不确定</text>
-          <text data-detail="context" x="841.8" y="1838.4" class="t-muted" font-size="8" text-anchor="middle">不盲目重放，不授权工作</text>
+          <text data-node-label="" x="159.2" y="808" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">抢锁结果不确定</text>
         </g>
 
-        <g id="node-backoff" data-node-id="backoff" data-node-label="已确认未提交：退避" tabindex="0" role="button" aria-label="聚焦已确认未提交：退避，1–10ms；取消退出，否则重读, 结果与重试" aria-pressed="false" data-node-kind="backend" data-node-sublabel="1–10ms；取消退出，否则重读" data-node-context="结果与重试">
-          <title>已确认未提交：退避 · 1–10ms；取消退出，否则重读 · 结果与重试</title>
-          <rect x="951.8" y="1795" width="124" height="52" rx="8" class="c-mask"/>
-          <rect x="951.8" y="1795" width="124" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="waiting" class="semantic-sigil s-backend" transform="translate(957.8 1801) scale(0.6875)">
+        <g id="node-acquire" data-node-id="acquire" data-node-label="确认抢到更新锁？" tabindex="0" role="button" aria-label="聚焦确认抢到更新锁？，按 Resource 抢更新锁" aria-pressed="false" data-node-kind="database" data-node-context="按 Resource 抢更新锁">
+          <title>确认抢到更新锁？ · 按 Resource 抢更新锁</title>
+          <rect x="499.79999999999995" y="787" width="104" height="52" rx="8" class="c-mask"/>
+          <rect x="499.79999999999995" y="787" width="104" height="52" rx="8" class="c-database" data-animate="node" style="--step:9" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-database" transform="translate(505.79999999999995 793) scale(0.6875)">
+            <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
+          </g>
+          <text data-node-label="" x="551.8" y="820" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">确认抢到更新锁？</text>
+        </g>
+
+        <g id="node-locked_route" data-node-id="locked_route" data-node-label="持锁后仍是 Observe？" tabindex="0" role="button" aria-label="聚焦持锁后仍是 Observe？，确认持锁后的分流" aria-pressed="false" data-node-kind="backend" data-node-context="确认持锁后的分流">
+          <title>持锁后仍是 Observe？ · 确认持锁后的分流</title>
+          <rect x="663.8" y="955" width="132" height="52" rx="8" class="c-mask"/>
+          <rect x="663.8" y="955" width="132" height="52" rx="8" class="c-backend" data-animate="node" style="--step:10" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(669.8 961) scale(0.6875)">
+            <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
+          </g>
+          <text data-node-label="" x="729.8" y="988.4" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">持锁后仍是 Observe？</text>
+        </g>
+
+        <g id="node-recheck" data-node-id="recheck" data-node-label="投影已可直接返回？" tabindex="0" role="button" aria-label="聚焦投影已可直接返回？，Observe 持锁复查" aria-pressed="false" data-node-kind="backend" data-node-context="Observe 持锁复查">
+          <title>投影已可直接返回？ · Observe 持锁复查</title>
+          <rect x="669.8" y="1123" width="120" height="52" rx="8" class="c-mask"/>
+          <rect x="669.8" y="1123" width="120" height="52" rx="8" class="c-backend" data-animate="node" style="--step:11" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(675.8 1129) scale(0.6875)">
+            <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
+          </g>
+          <text data-node-label="" x="729.8" y="1156.4" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">投影已可直接返回？</text>
+        </g>
+
+        <g id="node-recheck_return" data-node-id="recheck_return" data-node-label="解锁后返回复查结果" tabindex="0" role="button" aria-label="聚焦解锁后返回复查结果，Observe 持锁复查" aria-pressed="false" data-node-kind="backend" data-node-context="Observe 持锁复查">
+          <title>解锁后返回复查结果 · Observe 持锁复查</title>
+          <rect x="859.8" y="1123" width="160" height="52" rx="8" class="c-mask"/>
+          <rect x="859.8" y="1123" width="160" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(865.8 1129) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="939.8" y="1157.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">解锁后返回复查结果</text>
+        </g>
+
+        <g id="node-recheck_error" data-node-id="recheck_error" data-node-label="解锁后返回读取错误" tabindex="0" role="button" aria-label="聚焦解锁后返回读取错误，Observe 持锁复查" aria-pressed="false" data-node-kind="security" data-node-context="Observe 持锁复查">
+          <title>解锁后返回读取错误 · Observe 持锁复查</title>
+          <rect x="1043.8000000000002" y="1123" width="144" height="52" rx="8" class="c-mask"/>
+          <rect x="1043.8000000000002" y="1123" width="144" height="52" rx="8" class="c-security" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1049.8000000000002 1129) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" x="1115.8000000000002" y="1157.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">解锁后返回读取错误</text>
+        </g>
+
+        <g id="node-snapshot_error" data-node-id="snapshot_error" data-node-label="解锁后返回快照错误" tabindex="0" role="button" aria-label="聚焦解锁后返回快照错误，持锁读取权威状态" aria-pressed="false" data-node-kind="security" data-node-context="持锁读取权威状态">
+          <title>解锁后返回快照错误 · 持锁读取权威状态</title>
+          <rect x="81.4" y="1291" width="160" height="52" rx="8" class="c-mask"/>
+          <rect x="81.4" y="1291" width="160" height="52" rx="8" class="c-security" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(87.4 1297) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" x="161.4" y="1325.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">解锁后返回快照错误</text>
+        </g>
+
+        <g id="node-snapshot" data-node-id="snapshot" data-node-label="持锁读取并解码 state" tabindex="0" role="button" aria-label="聚焦持锁读取并解码 state，持锁读取权威状态" aria-pressed="false" data-node-kind="database" data-node-context="持锁读取权威状态">
+          <title>持锁读取并解码 state · 持锁读取权威状态</title>
+          <rect x="321.79999999999995" y="1291" width="132" height="52" rx="8" class="c-mask"/>
+          <rect x="321.79999999999995" y="1291" width="132" height="52" rx="8" class="c-database" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(327.79999999999995 1297) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" x="387.79999999999995" y="1324.4" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">持锁读取并解码 state</text>
+        </g>
+
+        <g id="node-command" data-node-id="command" data-node-label="Go 命令分支" tabindex="0" role="button" aria-label="聚焦Go 命令分支，Go 核心状态机" aria-pressed="false" data-node-kind="backend" data-node-context="Go 核心状态机">
+          <title>Go 命令分支 · Go 核心状态机</title>
+          <rect x="479.79999999999995" y="1430" width="144" height="110" rx="8" class="c-mask"/>
+          <rect x="479.79999999999995" y="1430" width="144" height="110" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(485.79999999999995 1436) scale(0.6875)">
+            <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
+          </g>
+          <text data-node-label="" x="545.5" y="1451" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Go 命令分支</text>
+        </g>
+
+        <g id="node-maintain" data-node-id="maintain" data-node-label="恢复与到期维护" tabindex="0" role="button" aria-label="聚焦恢复与到期维护，Go 核心状态机" aria-pressed="false" data-node-kind="backend" data-node-context="Go 核心状态机">
+          <title>恢复与到期维护 · Go 核心状态机</title>
+          <rect x="667.8" y="1459" width="124" height="52" rx="8" class="c-mask"/>
+          <rect x="667.8" y="1459" width="124" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(673.8 1465) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="729.8" y="1493.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">恢复与到期维护</text>
+        </g>
+
+        <g id="node-submit" data-node-id="submit" data-node-label="Submit" tabindex="0" role="button" aria-label="聚焦Submit，五类命令效果" aria-pressed="false" data-node-kind="backend" data-node-context="五类命令效果">
+          <title>Submit · 五类命令效果</title>
+          <rect x="95.4" y="1627" width="132" height="52" rx="8" class="c-mask"/>
+          <rect x="95.4" y="1627" width="132" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(101.4 1633) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="161.4" y="1648" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Submit</text>
+        </g>
+
+        <g id="node-cancel" data-node-id="cancel" data-node-label="Cancel" tabindex="0" role="button" aria-label="聚焦Cancel，五类命令效果" aria-pressed="false" data-node-kind="backend" data-node-context="五类命令效果">
+          <title>Cancel · 五类命令效果</title>
+          <rect x="325.79999999999995" y="1627" width="124" height="52" rx="8" class="c-mask"/>
+          <rect x="325.79999999999995" y="1627" width="124" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(331.79999999999995 1633) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="387.79999999999995" y="1648" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Cancel</text>
+        </g>
+
+        <g id="node-renew" data-node-id="renew" data-node-label="Renew" tabindex="0" role="button" aria-label="聚焦Renew，五类命令效果" aria-pressed="false" data-node-kind="backend" data-node-context="五类命令效果">
+          <title>Renew · 五类命令效果</title>
+          <rect x="489.79999999999995" y="1627" width="124" height="52" rx="8" class="c-mask"/>
+          <rect x="489.79999999999995" y="1627" width="124" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(495.79999999999995 1633) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="551.8" y="1648" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Renew</text>
+        </g>
+
+        <g id="node-release" data-node-id="release" data-node-label="Release" tabindex="0" role="button" aria-label="聚焦Release，五类命令效果" aria-pressed="false" data-node-kind="backend" data-node-context="五类命令效果">
+          <title>Release · 五类命令效果</title>
+          <rect x="667.8" y="1627" width="124" height="52" rx="8" class="c-mask"/>
+          <rect x="667.8" y="1627" width="124" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(673.8 1633) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="726.6999999999999" y="1648" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Release</text>
+        </g>
+
+        <g id="node-observe_command" data-node-id="observe_command" data-node-label="Observe" tabindex="0" role="button" aria-label="聚焦Observe，五类命令效果" aria-pressed="false" data-node-kind="backend" data-node-context="五类命令效果">
+          <title>Observe · 五类命令效果</title>
+          <rect x="871.8" y="1627" width="136" height="52" rx="8" class="c-mask"/>
+          <rect x="871.8" y="1627" width="136" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(877.8 1633) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="939.8" y="1648" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Observe</text>
+        </g>
+
+        <g id="node-saved_result" data-node-id="saved_result" data-node-label="解锁后返回核心结果" tabindex="0" role="button" aria-label="聚焦解锁后返回核心结果，最终状态与提交准备" aria-pressed="false" data-node-kind="backend" data-node-context="最终状态与提交准备">
+          <title>解锁后返回核心结果 · 最终状态与提交准备</title>
+          <rect x="81.4" y="1795" width="160" height="52" rx="8" class="c-mask"/>
+          <rect x="81.4" y="1795" width="160" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(87.4 1801) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="161.4" y="1829.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">解锁后返回核心结果</text>
+        </g>
+
+        <g id="node-capture" data-node-id="capture" data-node-label="再次调度与整理状态" tabindex="0" role="button" aria-label="聚焦再次调度与整理状态，最终状态与提交准备" aria-pressed="false" data-node-kind="backend" data-node-context="最终状态与提交准备">
+          <title>再次调度与整理状态 · 最终状态与提交准备</title>
+          <rect x="491.79999999999995" y="1766" width="120" height="110" rx="8" class="c-mask"/>
+          <rect x="491.79999999999995" y="1766" width="120" height="110" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(497.79999999999995 1772) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="551.8" y="1799.4" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">再次调度与整理状态</text>
+        </g>
+
+        <g id="node-next" data-node-id="next" data-node-label="next 非 nil？" tabindex="0" role="button" aria-label="聚焦next 非 nil？，最终状态与提交准备" aria-pressed="false" data-node-kind="backend" data-node-context="最终状态与提交准备">
+          <title>next 非 nil？ · 最终状态与提交准备</title>
+          <rect x="873.8" y="1795" width="132" height="52" rx="8" class="c-mask"/>
+          <rect x="873.8" y="1795" width="132" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(879.8 1801) scale(0.6875)">
+            <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
+          </g>
+          <text data-node-label="" x="939.8" y="1829.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">next 非 nil？</text>
+        </g>
+
+        <g id="node-parameters" data-node-id="parameters" data-node-label="Go 编码提交参数" tabindex="0" role="button" aria-label="聚焦Go 编码提交参数，最终状态与提交准备" aria-pressed="false" data-node-kind="backend" data-node-context="最终状态与提交准备">
+          <title>Go 编码提交参数 · 最终状态与提交准备</title>
+          <rect x="1043.8000000000002" y="1795" width="144" height="52" rx="8" class="c-mask"/>
+          <rect x="1043.8000000000002" y="1795" width="144" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1049.8000000000002 1801) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="1115.8000000000002" y="1829.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Go 编码提交参数</text>
+        </g>
+
+        <g id="node-parameters_error" data-node-id="parameters_error" data-node-label="解锁后返回编码错误" tabindex="0" role="button" aria-label="聚焦解锁后返回编码错误，编码错误清理" aria-pressed="false" data-node-kind="security" data-node-context="编码错误清理">
+          <title>解锁后返回编码错误 · 编码错误清理</title>
+          <rect x="1043.8000000000002" y="1963" width="144" height="52" rx="8" class="c-mask"/>
+          <rect x="1043.8000000000002" y="1963" width="144" height="52" rx="8" class="c-security" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1049.8000000000002 1969) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" x="1115.8000000000002" y="1997.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">解锁后返回编码错误</text>
+        </g>
+
+        <g id="node-publish" data-node-id="publish" data-node-label="最后 HSET 发布" tabindex="0" role="button" aria-label="聚焦最后 HSET 发布，commitScript 原子发布" aria-pressed="false" data-node-kind="database" data-node-context="commitScript 原子发布">
+          <title>最后 HSET 发布 · commitScript 原子发布</title>
+          <rect x="485.79999999999995" y="2131" width="132" height="52" rx="8" class="c-mask"/>
+          <rect x="485.79999999999995" y="2131" width="132" height="52" rx="8" class="c-database" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(491.79999999999995 2137) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" x="551.8" y="2165.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">最后 HSET 发布</text>
+        </g>
+
+        <g id="node-prepare" data-node-id="prepare" data-node-label="准备查询记录" tabindex="0" role="button" aria-label="聚焦准备查询记录，commitScript 原子发布" aria-pressed="false" data-node-kind="database" data-node-context="commitScript 原子发布">
+          <title>准备查询记录 · commitScript 原子发布</title>
+          <rect x="645.8" y="2131" width="168" height="52" rx="8" class="c-mask"/>
+          <rect x="645.8" y="2131" width="168" height="52" rx="8" class="c-database" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(651.8 2137) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" x="729.8" y="2152" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">准备查询记录</text>
+        </g>
+
+        <g id="node-guards" data-node-id="guards" data-node-label="owner 与窗口有效？" tabindex="0" role="button" aria-label="聚焦owner 与窗口有效？，commitScript 原子发布" aria-pressed="false" data-node-kind="backend" data-node-context="commitScript 原子发布">
+          <title>owner 与窗口有效？ · commitScript 原子发布</title>
+          <rect x="851.8" y="2131" width="176" height="52" rx="8" class="c-mask"/>
+          <rect x="851.8" y="2131" width="176" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(857.8 2137) scale(0.6875)">
+            <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
+          </g>
+          <text data-node-label="" x="939.8" y="2165.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">owner 与窗口有效？</text>
+        </g>
+
+        <g id="node-owned_error" data-node-id="owned_error" data-node-label="解锁后返回提交错误" tabindex="0" role="button" aria-label="聚焦解锁后返回提交错误，提交错误或重试清理" aria-pressed="false" data-node-kind="security" data-node-context="提交错误或重试清理">
+          <title>解锁后返回提交错误 · 提交错误或重试清理</title>
+          <rect x="859.8" y="2299" width="160" height="52" rx="8" class="c-mask"/>
+          <rect x="859.8" y="2299" width="160" height="52" rx="8" class="c-security" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(865.8 2305) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" x="939.8" y="2333.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">解锁后返回提交错误</text>
+        </g>
+
+        <g id="node-saved_retry" data-node-id="saved_retry" data-node-label="解锁后重新尝试" tabindex="0" role="button" aria-label="聚焦解锁后重新尝试，提交错误或重试清理" aria-pressed="false" data-node-kind="backend" data-node-context="提交错误或重试清理">
+          <title>解锁后重新尝试 · 提交错误或重试清理</title>
+          <rect x="1043.8000000000002" y="2299" width="144" height="52" rx="8" class="c-mask"/>
+          <rect x="1043.8000000000002" y="2299" width="144" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1049.8000000000002 2305) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="1115.8000000000002" y="2333.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">解锁后重新尝试</text>
+        </g>
+
+        <g id="node-cleanup" data-node-id="cleanup" data-node-label="校验 owner 后解锁" tabindex="0" role="button" aria-label="聚焦校验 owner 后解锁，发布成功后的解锁" aria-pressed="false" data-node-kind="database" data-node-context="发布成功后的解锁">
+          <title>校验 owner 后解锁 · 发布成功后的解锁</title>
+          <rect x="495.79999999999995" y="2467" width="112" height="52" rx="8" class="c-mask"/>
+          <rect x="495.79999999999995" y="2467" width="112" height="52" rx="8" class="c-database" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(501.79999999999995 2473) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" x="551.8" y="2500.2" class="t-primary" font-size="10.1" font-weight="600" text-anchor="middle">校验 owner 后解锁</text>
+        </g>
+
+        <g id="node-ctx" data-node-id="ctx" data-node-label="操作 context 已结束？" tabindex="0" role="button" aria-label="聚焦操作 context 已结束？，返回前检查操作 context" aria-pressed="false" data-node-kind="backend" data-node-context="返回前检查操作 context">
+          <title>操作 context 已结束？ · 返回前检查操作 context</title>
+          <rect x="481.79999999999995" y="2635" width="140" height="52" rx="8" class="c-mask"/>
+          <rect x="481.79999999999995" y="2635" width="140" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(487.79999999999995 2641) scale(0.6875)">
+            <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
+          </g>
+          <text data-node-label="" x="551.8" y="2668.5" class="t-primary" font-size="10.4" font-weight="600" text-anchor="middle">操作 context 已结束？</text>
+        </g>
+
+        <g id="node-ctx_error" data-node-id="ctx_error" data-node-label="返回 context 错误" tabindex="0" role="button" aria-label="聚焦返回 context 错误，返回前检查操作 context" aria-pressed="false" data-node-kind="security" data-node-context="返回前检查操作 context">
+          <title>返回 context 错误 · 返回前检查操作 context</title>
+          <rect x="883.8" y="2635" width="112" height="52" rx="8" class="c-mask"/>
+          <rect x="883.8" y="2635" width="112" height="52" rx="8" class="c-security" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(889.8 2641) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" x="939.8" y="2668.2" class="t-primary" font-size="10.1" font-weight="600" text-anchor="middle">返回 context 错误</text>
+        </g>
+
+        <g id="node-returned" data-node-id="returned" data-node-label="返回本轮结果或错误" tabindex="0" role="button" aria-label="聚焦返回本轮结果或错误，返回或退避" aria-pressed="false" data-node-kind="backend" data-node-context="返回或退避">
+          <title>返回本轮结果或错误 · 返回或退避</title>
+          <rect x="327.79999999999995" y="2803" width="120" height="52" rx="8" class="c-mask"/>
+          <rect x="327.79999999999995" y="2803" width="120" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(333.79999999999995 2809) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="387.79999999999995" y="2836.4" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">返回本轮结果或错误</text>
+        </g>
+
+        <g id="node-backoff" data-node-id="backoff" data-node-label="1–10ms 有界退避" tabindex="0" role="button" aria-label="聚焦1–10ms 有界退避，返回或退避" aria-pressed="false" data-node-kind="backend" data-node-context="返回或退避">
+          <title>1–10ms 有界退避 · 返回或退避</title>
+          <rect x="1067.8000000000002" y="2803" width="96" height="52" rx="8" class="c-mask"/>
+          <rect x="1067.8000000000002" y="2803" width="96" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="waiting" class="semantic-sigil s-backend" transform="translate(1073.8000000000002 2809) scale(0.6875)">
             <path d="M4 2.5h8M4 13.5h8M5 3c0 2.8 2 3.2 3 5-1 1.8-3 2.2-3 5M11 3c0 2.8-2 3.2-3 5 1 1.8 3 2.2 3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1013.8" y="1826.7" class="t-primary" font-size="10.7" font-weight="600" text-anchor="middle">已确认未提交：退避</text>
-          <text data-detail="context" x="1013.8" y="1838.4" class="t-muted" font-size="7.4" text-anchor="middle">1–10ms；取消退出，否则重读</text>
+          <text data-node-label="" x="1115.8000000000002" y="2835.7" class="t-primary" font-size="9.7" font-weight="600" text-anchor="middle">1–10ms 有界退避</text>
         </g>
 
         <!-- Edge labels -->
 
-
-
-
-
-
-
-
-
-
-        <g data-detail="context" data-edge-from="guards" data-edge-to="backoff" data-edge-label="不匹配 / 过窗：0" data-edge-key="10" data-edge-id="guard_reject">
-          <rect x="887.9" y="1702" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="931.3" y="1712" class="t-muted" font-size="8" text-anchor="middle">不匹配 / 过窗：0</text>
-        </g>
-        <g data-detail="context" data-edge-from="guards" data-edge-to="prepare" data-edge-label="校验通过" data-edge-key="11" data-edge-id="guards_prepare">
-          <rect x="718.5999999999999" y="1633" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="742.8" y="1643" class="t-muted" font-size="8" text-anchor="middle">校验通过</text>
-        </g>
-        <g data-detail="context" data-edge-from="observe_gate" data-edge-to="read_state" data-edge-label="需完整路径" data-edge-key="12" data-edge-id="index_fallback">
-          <rect x="416.29999999999995" y="610" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="445.29999999999995" y="620" class="t-muted" font-size="8" text-anchor="middle">需完整路径</text>
-        </g>
-        <g data-detail="context" data-edge-from="observe_gate" data-edge-to="observe_return" data-edge-label="是" data-edge-key="13" data-edge-id="index_ready">
-          <rect x="727.8" y="457" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="742.8" y="467" class="t-muted" font-size="8" text-anchor="middle">是</text>
-        </g>
-
-
-        <g data-detail="context" data-edge-from="guards" data-edge-to="unknown" data-edge-label="脚本 / 通信错误" data-edge-key="16" data-edge-id="lua_unknown">
-          <rect x="389.9" y="1759" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="430.9" y="1769" class="t-muted" font-size="8" text-anchor="middle">脚本 / 通信错误</text>
-        </g>
-
-        <g data-detail="context" data-edge-from="next_gate" data-edge-to="encode" data-edge-label="是" data-edge-key="18" data-edge-id="next_encode">
-          <rect x="907.8" y="1297" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="922.8" y="1307" class="t-muted" font-size="8" text-anchor="middle">是</text>
-        </g>
-        <g data-detail="context" data-edge-from="next_gate" data-edge-to="nil_return" data-edge-label="否" data-edge-key="19" data-edge-id="no_next">
-          <rect x="530.8" y="1372" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="545.8" y="1382" class="t-muted" font-size="8" text-anchor="middle">否</text>
-        </g>
-
-        <g data-detail="context" data-edge-from="observe_gate" data-edge-to="observe_error" data-edge-label="读取 / 校验错误" data-edge-key="21" data-edge-id="observe_invalid">
-          <rect x="795.3" y="526" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="836.3" y="536" class="t-muted" font-size="8" text-anchor="middle">读取 / 校验错误</text>
-        </g>
-        <g data-detail="context" data-edge-from="route" data-edge-to="read_index" data-edge-label="是" data-edge-key="22" data-edge-id="observe_route">
-          <rect x="556.3" y="358" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="571.3" y="368" class="t-muted" font-size="8" text-anchor="middle">是</text>
-        </g>
-
-        <g data-detail="context" data-edge-from="publish" data-edge-to="committed" data-edge-label="返回 1" data-edge-key="24" data-edge-id="publish_commit">
-          <rect x="194.5" y="1633" width="38.8" height="14" rx="3" class="c-mask"/>
-          <text x="213.9" y="1643" class="t-muted" font-size="8" text-anchor="middle">返回 1</text>
+        <g data-detail="context" data-edge-from="parameters" data-edge-to="parameters_error" data-edge-label="编码 / 参数错误" data-edge-key="1" data-edge-id="args_error">
+          <rect x="1098.8000000000002" y="1927" width="82" height="14" rx="3" class="c-mask"/>
+          <text x="1139.8000000000002" y="1937" class="t-muted" font-size="8" text-anchor="middle">编码 / 参数错误</text>
         </g>
 
 
 
 
-        <g data-detail="context" data-edge-from="backoff" data-edge-to="route" data-edge-label="重新读取" data-edge-key="29" data-edge-id="retry_loop">
-          <rect x="885.6999999999999" y="289" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="909.9" y="299" class="t-muted" font-size="8" text-anchor="middle">重新读取</text>
+
+
+
+
+        <g data-detail="context" data-edge-from="guards" data-edge-to="owned_error" data-edge-label="脚本 / 通信错误" data-edge-key="10" data-edge-id="commit_error">
+          <rect x="898.8" y="2231" width="82" height="14" rx="3" class="c-mask"/>
+          <text x="939.8" y="2241" class="t-muted" font-size="8" text-anchor="middle">脚本 / 通信错误</text>
+        </g>
+        <g data-detail="context" data-edge-from="ctx" data-edge-to="ctx_error" data-edge-label="是" data-edge-key="11" data-edge-id="ctx_expired">
+          <rect x="737.8" y="2641" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="752.8" y="2651" class="t-muted" font-size="8" text-anchor="middle">是</text>
+        </g>
+        <g data-detail="context" data-edge-from="ctx" data-edge-to="returned" data-edge-label="否" data-edge-key="12" data-edge-id="ctx_live_return">
+          <rect x="419.79999999999995" y="2641" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="434.79999999999995" y="2651" class="t-muted" font-size="8" text-anchor="middle">否</text>
+        </g>
+        <g data-detail="context" data-edge-from="probe" data-edge-to="fast_return" data-edge-label="是" data-edge-key="13" data-edge-id="fast_ready">
+          <rect x="805.8" y="457" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="820.8" y="467" class="t-muted" font-size="8" text-anchor="middle">是</text>
+        </g>
+        <g data-detail="context" data-edge-from="guards" data-edge-to="prepare" data-edge-label="通过" data-edge-key="14" data-edge-id="guards_ok">
+          <rect x="817.8" y="2137" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="832.8" y="2147" class="t-muted" font-size="8" text-anchor="middle">通过</text>
+        </g>
+        <g data-detail="context" data-edge-from="guards" data-edge-to="saved_retry" data-edge-label="归属 / 窗口失效：0" data-edge-key="15" data-edge-id="guards_retry">
+          <rect x="1031.6000000000001" y="2206" width="96.39999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="1079.8000000000002" y="2216" class="t-muted" font-size="8" text-anchor="middle">归属 / 窗口失效：0</text>
+        </g>
+        <g data-detail="context" data-edge-from="validate" data-edge-to="invalid" data-edge-label="失败" data-edge-key="16" data-edge-id="input_bad">
+          <rect x="736.8000000000001" y="163" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="751.8000000000001" y="173" class="t-muted" font-size="8" text-anchor="middle">失败</text>
+        </g>
+        <g data-detail="context" data-edge-from="validate" data-edge-to="keys" data-edge-label="通过" data-edge-key="17" data-edge-id="input_ok">
+          <rect x="453.79999999999995" y="121" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="468.79999999999995" y="131" class="t-muted" font-size="8" text-anchor="middle">通过</text>
+        </g>
+        <g data-detail="context" data-edge-from="route" data-edge-to="probe" data-edge-label="是" data-edge-key="18" data-edge-id="is_observe">
+          <rect x="714.8" y="383" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="729.8" y="393" class="t-muted" font-size="8" text-anchor="middle">是</text>
+        </g>
+        <g data-detail="context" data-edge-from="route" data-edge-to="acquire" data-edge-label="写命令" data-edge-key="19" data-edge-id="is_write">
+          <rect x="595.4" y="296" width="38.8" height="14" rx="3" class="c-mask"/>
+          <text x="614.8" y="306" class="t-muted" font-size="8" text-anchor="middle">写命令</text>
         </g>
 
-        <g data-detail="context" data-edge-from="validate" data-edge-to="invalid" data-edge-label="失败" data-edge-key="31" data-edge-id="validate_error">
-          <rect x="656.8" y="79" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="671.8" y="89" class="t-muted" font-size="8" text-anchor="middle">失败</text>
+        <g data-detail="context" data-edge-from="acquire" data-edge-to="backoff" data-edge-label="竞争失败：0" data-edge-key="21" data-edge-id="lock_busy">
+          <rect x="871.5" y="793" width="62.8" height="14" rx="3" class="c-mask"/>
+          <text x="902.9" y="803" class="t-muted" font-size="8" text-anchor="middle">竞争失败：0</text>
         </g>
-        <g data-detail="context" data-edge-from="validate" data-edge-to="key" data-edge-label="通过" data-edge-key="32" data-edge-id="validate_key">
-          <rect x="387.8" y="121" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="402.8" y="131" class="t-muted" font-size="8" text-anchor="middle">通过</text>
+        <g data-detail="context" data-edge-from="acquire" data-edge-to="acquire_error" data-edge-label="错误 / 异常响应" data-edge-key="22" data-edge-id="lock_unknown">
+          <rect x="332.59999999999997" y="793" width="82" height="14" rx="3" class="c-mask"/>
+          <text x="373.59999999999997" y="803" class="t-muted" font-size="8" text-anchor="middle">错误 / 异常响应</text>
+        </g>
+        <g data-detail="context" data-edge-from="acquire" data-edge-to="locked_route" data-edge-label="确认获得：1" data-edge-key="23" data-edge-id="lock_yes">
+          <rect x="609.4" y="862" width="62.8" height="14" rx="3" class="c-mask"/>
+          <text x="640.8" y="872" class="t-muted" font-size="8" text-anchor="middle">确认获得：1</text>
         </g>
 
-        <g data-detail="context" data-edge-from="route" data-edge-to="read_state" data-edge-label="写命令" data-edge-key="34" data-edge-id="write_route">
-          <rect x="313" y="331" width="38.8" height="14" rx="3" class="c-mask"/>
-          <text x="332.4" y="341" class="t-muted" font-size="8" text-anchor="middle">写命令</text>
+        <g data-detail="context" data-edge-from="next" data-edge-to="parameters" data-edge-label="是" data-edge-key="25" data-edge-id="next_encode">
+          <rect x="1009.8000000000002" y="1801" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="1024.8000000000002" y="1811" class="t-muted" font-size="8" text-anchor="middle">是</text>
         </g>
+        <g data-detail="context" data-edge-from="next" data-edge-to="saved_result" data-edge-label="否" data-edge-key="26" data-edge-id="next_nil">
+          <rect x="583.5999999999999" y="1876" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="598.5999999999999" y="1886" class="t-muted" font-size="8" text-anchor="middle">否</text>
+        </g>
+
+
+        <g data-detail="context" data-edge-from="probe" data-edge-to="probe_error" data-edge-label="读取或校验错误" data-edge-key="29" data-edge-id="probe_bad">
+          <rect x="861.7" y="625" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="900.3000000000001" y="635" class="t-muted" font-size="8" text-anchor="middle">读取或校验错误</text>
+        </g>
+        <g data-detail="context" data-edge-from="probe" data-edge-to="acquire" data-edge-label="缺失 / 未发布 / 到期" data-edge-key="30" data-edge-id="probe_due">
+          <rect x="573.8" y="457" width="106" height="14" rx="3" class="c-mask"/>
+          <text x="626.8" y="467" class="t-muted" font-size="8" text-anchor="middle">缺失 / 未发布 / 到期</text>
+        </g>
+        <g data-detail="context" data-edge-from="publish" data-edge-to="cleanup" data-edge-label="提交返回 1" data-edge-key="31" data-edge-id="publish_result">
+          <rect x="522.8" y="2315" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="551.8" y="2325" class="t-muted" font-size="8" text-anchor="middle">提交返回 1</text>
+        </g>
+        <g data-detail="context" data-edge-from="recheck" data-edge-to="recheck_error" data-edge-label="读取或校验错误" data-edge-key="32" data-edge-id="recheck_bad">
+          <rect x="884.2" y="1187" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="922.8000000000001" y="1197" class="t-muted" font-size="8" text-anchor="middle">读取或校验错误</text>
+        </g>
+        <g data-detail="context" data-edge-from="recheck" data-edge-to="snapshot" data-edge-label="仍需维护" data-edge-key="33" data-edge-id="recheck_due">
+          <rect x="555.5999999999999" y="1290" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="579.8" y="1300" class="t-muted" font-size="8" text-anchor="middle">仍需维护</text>
+        </g>
+        <g data-detail="context" data-edge-from="locked_route" data-edge-to="snapshot" data-edge-label="写命令" data-edge-key="34" data-edge-id="recheck_no">
+          <rect x="459.4" y="961" width="38.8" height="14" rx="3" class="c-mask"/>
+          <text x="478.79999999999995" y="971" class="t-muted" font-size="8" text-anchor="middle">写命令</text>
+        </g>
+        <g data-detail="context" data-edge-from="recheck" data-edge-to="recheck_return" data-edge-label="可直接返回" data-edge-key="35" data-edge-id="recheck_ready">
+          <rect x="795.8" y="1129" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="824.8" y="1139" class="t-muted" font-size="8" text-anchor="middle">可直接返回</text>
+        </g>
+        <g data-detail="context" data-edge-from="locked_route" data-edge-to="recheck" data-edge-label="Observe" data-edge-key="36" data-edge-id="recheck_yes">
+          <rect x="708" y="1055" width="43.6" height="14" rx="3" class="c-mask"/>
+          <text x="729.8" y="1065" class="t-muted" font-size="8" text-anchor="middle">Observe</text>
+        </g>
+
+
+
+        <g data-detail="context" data-edge-from="backoff" data-edge-to="route" data-edge-label="context 未结束：重读投影 / 重抢锁" data-edge-key="40" data-edge-id="retry_loop">
+          <rect x="918.6999999999999" y="289" width="168.4" height="14" rx="3" class="c-mask"/>
+          <text x="1002.9" y="299" class="t-muted" font-size="8" text-anchor="middle">context 未结束：重读投影 / 重抢锁</text>
+        </g>
+        <g data-detail="context" data-edge-from="snapshot" data-edge-to="snapshot_error" data-edge-label="读 / 解码错误" data-edge-key="41" data-edge-id="snapshot_bad">
+          <rect x="238.39999999999998" y="1372" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="274.59999999999997" y="1382" class="t-muted" font-size="8" text-anchor="middle">读 / 解码错误</text>
+        </g>
+
+
+
 
         <!-- Legend -->
         <g data-legend="" data-legend-bridge="">
-          <text x="20" y="1904" class="t-primary" font-size="12" font-weight="650">图例</text>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="计算与控制" data-legend-x="20" data-legend-baseline="1924" data-legend-width="90">
-            <rect x="20" y="1916" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
-            <text x="42" y="1924" class="t-muted" font-size="7.5" font-weight="500">计算与控制</text>
+          <text x="20" y="2912" class="t-primary" font-size="12" font-weight="650">图例</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="计算与控制" data-legend-x="20" data-legend-baseline="2932" data-legend-width="90">
+            <rect x="20" y="2924" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
+            <text x="42" y="2932" class="t-muted" font-size="7.5" font-weight="500">计算与控制</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="异常返回" data-legend-x="117" data-legend-baseline="1924" data-legend-width="81">
-            <rect x="117" y="1916" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
-            <text x="139" y="1924" class="t-muted" font-size="7.5" font-weight="500">异常返回</text>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="错误或不确定结果" data-legend-x="117" data-legend-baseline="2932" data-legend-width="118">
+            <rect x="117" y="2924" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
+            <text x="139" y="2932" class="t-muted" font-size="7.5" font-weight="500">错误或不确定结果</text>
           </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="存储操作" data-legend-x="205" data-legend-baseline="1924" data-legend-width="81">
-            <rect x="205" y="1916" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
-            <text x="227" y="1924" class="t-muted" font-size="7.5" font-weight="500">存储操作</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Redis 读写" data-legend-x="242" data-legend-baseline="2932" data-legend-width="90">
+            <rect x="242" y="2924" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
+            <text x="264" y="2932" class="t-muted" font-size="7.5" font-weight="500">Redis 读写</text>
           </g>
-          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="调用入口" data-legend-x="293" data-legend-baseline="1924" data-legend-width="81">
-            <rect x="293" y="1916" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
-            <text x="315" y="1924" class="t-muted" font-size="7.5" font-weight="500">调用入口</text>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="调用入口" data-legend-x="339" data-legend-baseline="2932" data-legend-width="81">
+            <rect x="339" y="2924" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
+            <text x="361" y="2932" class="t-muted" font-size="7.5" font-weight="500">调用入口</text>
           </g>
         </g>
       </svg>
@@ -5945,66 +6075,64 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       <div class="card">
         <div class="card-header">
           <div class="card-dot cyan"></div>
-          <h3>一个 Redis key，多个 Hash 字段</h3>
+          <h3>同一资源：永久 Hash + 有 TTL 的锁</h3>
         </div>
         <ul>
-          <li>物理 key = airlock:{SHA256(namespace + NUL + resource)}:state；花括号中的摘要决定 Cluster slot。不同 namespace/Resource 不共享权威快照。</li>
-          <li>注意两处 state：key 末尾的 :state 是 key 名的一部分；HGET key state 中最后的 state 才是 Hash 字段名。</li>
-          <li>Hash 字段 state：完整 SharedState JSON，是唯一权威快照；含 Config、Records、Queues、Rotations、Protected、Cursor、Revision、Time。</li>
-          <li>Hash 字段 meta：JSON{Resource, Config, Time, Revision, NextMaintenance, Token}。字段 r:&lt;请求ID&gt;：JSON{Token, Record}。它们是只读查询投影，不是独立 Redis key。</li>
+          <li>资源哈希 = SHA256(namespace + NUL + resource)。状态 key 为 airlock:{哈希}:state；更新锁为同槽 airlock:{哈希}:update-lock。不同 namespace/Resource 独立；不同 Driver 指向相同资源则竞争同一把锁。</li>
+          <li>状态 Hash 永久保留。字段 state 是完整 SharedState JSON；meta 为 JSON{Resource, Config, Time, Revision, NextMaintenance, Token}；r:&lt;id&gt; 为 JSON{Token, Record}，这些是字段，不是独立 key。</li>
+          <li>更新锁是 string，value 为每次尝试新生成的 32 个小写十六进制字符的随机 owner（128 位）；默认 PX 1000ms，可配 WithUpdateLockTTL，无后台续锁。它与业务 LeaseTTL 是不同租约。</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot emerald"></div>
-          <h3>Observe 怎么读 Hash</h3>
+          <h3>Observe：先只读，再竞争，持锁复查</h3>
         </div>
         <ul>
-          <li>observeScript 在一次 Lua 内 HMGET meta 与指定 r:&lt;id&gt;，并读取 TIME；没有取互斥锁，也不传输完整 state。</li>
-          <li>Go 解析 JSON，要求记录与头部的非空 Token 一致，再通过核心 Observation 校验配置、请求身份、状态和期限。</li>
-          <li>投影缺失、Token 不匹配或到维护时间时回退完整路径；损坏 JSON/非法字段等错误返回错误，不能作为正常回退或授予。</li>
-          <li>冲突重试会再次经过 Observe 快速检查：其他实例可能已完成维护，因而无需再次写入。</li>
+          <li>投影 Token 一致、身份/配置/状态校验通过且未到维护时间，直接返回已提交结果，不取更新锁，不加载完整 state，不增加 Revision。损坏/通信错误返回错误，不视为正常维护信号。</li>
+          <li>投影缺失、Token 不匹配或维护到期才尝试更新锁。获得锁后再做同一投影检查；其他实例可能已完成维护，复查可直接返回时也必须先解锁。</li>
+          <li>锁竞争失败不读完整快照，不做完整状态转换。每轮重试重新检查投影；即使没获得锁，也可能读到其他实例刚发布的结果。</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot violet"></div>
-          <h3>各命令的效果</h3>
+          <h3>五类命令仍由 Go Transition 决定</h3>
         </div>
         <ul>
-          <li>Submit：已存在请求复用结果而不刷新租约；新请求按容量与队列规则授予、排队或拒绝，也检查提交/等待期限及记录上限。</li>
-          <li>Cancel：可取消排队/已授予请求，也可先建立取消墓碑；释放占用并维护队列。</li>
-          <li>Renew：匹配请求和 LeaseID，且租约仍有效时延长 Until；不会额外占用容量。</li>
-          <li>Release：匹配且仍 Granted 时转 Released、归还全部权重；匹配终态不重复归还。</li>
-          <li>Observe 完整路径执行过期、回收和公平调度，再读取结果；未知请求不会因 Observe 新建。所有规则来自共用 Go Transition。</li>
+          <li>Submit 复用已有结果且不刷新租约；新请求按完整权重授予、排队、拒绝或过期。Cancel 取消等待/授予，也可预先建立取消墓碑。</li>
+          <li>Renew 只延长匹配且仍有效的业务租约，不增加容量占用。Release 仅归还匹配授予的完整权重，重复终态不重复归还。Observe 维护后读取结果，不新建未知请求。</li>
+          <li>公共处理包括恢复、过期与历史回收、命令前后公平调度；非 nil next 即使带业务错误仍需提交，nil next 不提交。Lua 不执行公平调度。</li>
+          <li>状态转换先恢复配置并维护旧状态，再执行命令；命令前后调度、最终整理和 Revision + 1 仍由核心完成。提交参数为 owner、新 state、CommitWindow 与完整查询投影。</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot amber"></div>
-          <h3>Go 与 Lua 的分工及原子边界</h3>
+          <h3>CommitWindow 与原子发布</h3>
         </div>
         <ul>
-          <li>Lua readScript：读取旧 state 与后端时间。Go：解码、完整 Transition、编码、生成所有查询记录。Lua casScript：校验并提交；Lua 不执行公平调度。</li>
-          <li>完整 Lua 校验实际旧 state 是否与读出时相同，并检查 NotBefore &lt;= Redis TIME &lt; Before；Before=0 表示无上界。CAS 比较的是完整 JSON，不只是 revision。</li>
-          <li>只有确认 CAS 冲突或窗口失效返回 0 才退避重算；传输/脚本错误可能已经产生效果，不自动重放。EVALSHA 仅在 NOSCRIPT 确认未运行时回退 EVAL。</li>
-          <li>在一次 casScript 中有序执行守卫、投影准备、最终发布。业务错误也可能携带非空新状态，提交维护变化后再返回错误。</li>
+          <li>NotBefore 使用读取快照的原始后端时间；Before 取旧/新状态及当前请求中最早的未来边界，含租约/队列期限、历史回收、提交及等待窗口。原地续租必须保留旧租约期限。</li>
+          <li>边界收集合并进配置恢复与最终整理循环，不为窗口再单独扫描两遍记录。Lua 同时检查 GET update-lock == owner 和 NotBefore ≤ Redis TIME &lt; Before；Before=0 表示无上界。</li>
+          <li>提交只传 owner、新 state、窗口上下界与查询投影，不传或比较旧快照，不做 CAS。锁过期后，即使没有后继写入，旧 owner 仍无法提交。</li>
+          <li>index 另生成一次候选发布 Token，所有 meta/r:&lt;id&gt; 共用；它不是锁 owner 或 fencing token。Lua 先准备查询记录，最后 HSET 同时发布 state/meta；错误不回滚先前写入，Token 不匹配时只读路径必须回退。</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot orange"></div>
-          <h3>为什么有 Token 与最后一次 HSET</h3>
+          <h3>解锁、重试与成本边界</h3>
         </div>
         <ul>
-          <li>index 给 meta 和本次所有 r:&lt;id&gt; 同一个随机 Token；这是候选发布标识，不是锁、fencing token 或单纯 revision。</li>
-          <li>脚本先准备候选查询记录，最终一次 HSET 同时更新权威 state 和 meta。Lua 准备中途失败不等同于回滚：旧头与候选记录 Token 不匹配时，读者回退权威快照，不能误授权。</li>
-          <li>脚本 HKEYS/HDEL 同时清理旧/孤立 r: 字段。请求终态按核心保留策略保留；字段没有独立的请求 key TTL。</li>
-          <li>当前每次写入仍全量加载、计算、编码并重建全部查询记录。尚未采用增量权威布局、Resource 更新锁或 anylock；这些属于 #51 等讨论提案。</li>
+          <li>每次确认获得锁后，复查命中、无新状态、提交成功或失败均经过 owner 校验清理，不能删后继的锁。独立清理 context 预算 min(操作超时,100ms)，可能让返回晚于原截止时间；遗留锁由 TTL 回收，最终仍检查原操作 context。</li>
+          <li>图中各个“解锁后返回/重试”节点展示同一个 defer releaseUpdateLock 的不同出口；每次确认持锁的尝试只执行一次清理。抢锁失败与只读快路径不执行解锁。</li>
+          <li>已知锁竞争或提交返回 0 才进行 1–10ms 退避；未知抢锁/提交结果不自动重放，不授权工作。每条脚本命令 NoRetry；只有 NOSCRIPT 明确未执行时回退 EVAL。</li>
+          <li>连接与脚本预热、无竞争重试时，实际写入需 4 次往返：获取锁、读快照、提交、解锁；只读 Observe 1 次，完整维护 Observe 通常 6 次（含两次投影读）。</li>
+          <li>当前仍全量解码、计算、编码及构建查询索引，整体 O(records)；更新锁不承诺 FIFO，不提供外部 fencing，也不改变 Redis 异步复制/故障切换的容量安全边界。#50/#51 增量转换仍是提案。</li>
         </ul>
       </div>
     </div>

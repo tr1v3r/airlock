@@ -61,15 +61,17 @@ errors that do not create that status. The client Lease view is a separate state
 space and must never be merged with authoritative backend status.
 
 Diagrams 01–08 retain implementation snapshot `ca393a3031c310c21515cec04e98b4f009f50e08`.
-Backend operation/schema views 09–11 use `cbdfca745233d8cd3a67fd7d236c76d13d07f436`;
-the relevant implementation files are identical between these revisions. Every
-candidate and verification entry carries its own source revision.
-The first eight views realign citations after the Shared renames
-(`shared.go`, `shared_state.go`, `driver_transition.go`) and add coverage of
-local `Resize`, local waiter notifications and read-only observations. The three
-backend views add PostgreSQL table/operation coverage and Redis key/Hash/CAS paths. They document current behavior, not the incremental
-proposals or an update lock. These documentation changes do not alter Go behavior
-or claim new backend integration/performance results.
+PG operation/schema views 09–10 retain `cbdfca745233d8cd3a67fd7d236c76d13d07f436`.
+Redis view 11 follows `dev` at `f9de5e5e79bd2d06d97b0eba4ce45dbbb99b6410` after #53:
+per-Resource update leases, read-only Observe and under-lock rechecks, atomic
+owner/CommitWindow publication without old-snapshot CAS, and owner-checked cleanup.
+The window collector uses existing record passes; single updates still load and
+encode complete state. Every candidate and verification entry records its own
+source revision. Earlier views retain their pinned snapshots.
+
+These views describe implemented behavior; #50/#51 incremental state transitions
+remain proposals. This refresh changes documentation and diagram artifacts, with
+no new backend integration or performance claim.
 
 ## Viewer attribution
 
