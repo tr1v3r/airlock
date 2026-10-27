@@ -76,6 +76,12 @@ func (d *Driver) observe(ctx context.Context, q observerQuery, request airlock.R
 			return airlock.Result{}, true, airlock.ErrCorruptState
 		}
 
+		// BIGINT is signed 64-bit; reject values that do not fit this process's
+		// int instead of silently truncating on 32-bit builds.
+		if weight.Int64 <= 0 || int64(int(weight.Int64)) != weight.Int64 {
+			return airlock.Result{}, true, airlock.ErrCorruptState
+		}
+
 		r := request
 		r.ID, r.Owner, r.Tenant, r.Weight = id.String, owner.String, tenant.String, int(weight.Int64)
 		r.SubmitUntil = time.UnixMilli(submit.Int64).UTC()

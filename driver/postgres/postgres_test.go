@@ -438,7 +438,7 @@ func TestObserveProjectionErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, mode := range []string{"query", "missing", "revision", "config", "initial", "missing-record", "null-field", "backward"} {
+	for _, mode := range []string{"query", "missing", "revision", "config", "initial", "missing-record", "null-field", "backward", "negative-weight"} {
 		t.Run(mode, func(t *testing.T) {
 			d, m := mockDriver(t)
 			e := m.ExpectQuery("SELECT r.config")
@@ -461,6 +461,8 @@ func TestObserveProjectionErrors(t *testing.T) {
 				switch mode {
 				case "revision":
 					values[2] = "invalid"
+				case "negative-weight":
+					values[7] = int64(-1)
 				case "config":
 					values[0] = []byte("{")
 				case "initial":

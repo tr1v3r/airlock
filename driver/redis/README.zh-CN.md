@@ -38,6 +38,11 @@ AIRLOCK_REDIS_ADDR=127.0.0.1:6379 go run ./examples/basic
 
 ## 原子性、时间和重试
 
+容量与请求重量使用正 Go `int`：64 位最大 `2^63-1`，32 位最大 `2^31-1`。
+快照及投影的嵌套 JSON 保留精确整数文本，Lua 不把容量或重量转成浮点数。所有参与者
+须支持所选数值范围；解码超范围整数或已授予重量总和溢出时拒绝操作。记录和队列数限制
+不变。Lua 的精确时间边界针对后端时间戳，与容量无关。
+
 每个资源使用一个永久 key：`airlock:{sha256(namespace + NUL + resource)}:state`。
 namespace 必须为合法 UTF-8、无 NUL、最多 256 字节；hash tag 保证每个操作只访问
 一个 Cluster slot。key 为 hash：`state` 保存权威 JSON 快照，`meta` 保存观察元数据，

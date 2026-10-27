@@ -98,9 +98,14 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 			return airlock.Result{}, codecErr
 		}
 
+		observation, err := next.Observation()
+		if err != nil {
+			return airlock.Result{}, err
+		}
+
 		r.snapshot = data
 		r.state = next
-		r.observation = next.Observation()
+		r.observation = observation
 	}
 
 	if err := ctx.Err(); err != nil {

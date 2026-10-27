@@ -70,6 +70,15 @@ a deferred unique constraint protects each tenant's FIFO position. Stable bigint
 positions allow dequeue without renumbering all remaining waiters. Millisecond
 instants are bigint epoch values; absent instants are SQL NULL. Revision uses
 `numeric(20,0)` to preserve the full uint64 protocol range.
+Capacity and weight use positive `BIGINT` columns. The Go API accepts positive
+`int` values (maximum `2^63-1` on 64-bit, `2^31-1` on 32-bit); scans reject values
+outside the client's range. Charged sums are checked before restoring state or
+publishing a projection. MaxRecords and queue limits still cap record counts,
+not token weights.
+
+容量与重量列为正 `BIGINT`；Go API 接受正 `int`，64 位最大 `2^63-1`、32 位最大
+`2^31-1`。所有参与者应使用彼此能表示的范围，扫描拒绝超范围整数；恢复状态和构建观察
+投影前检查占用总和溢出。记录数、队列数上限不随容量增大而放宽。
 
 Read-only operational queries can use these columns (the result is not permission
 to execute work):
