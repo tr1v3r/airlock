@@ -47,7 +47,7 @@ inventory of checked artifacts; it is not a replacement for rerunning the gates.
 
 ## Scope decisions
 
-The atlas contains eight complementary views rather than every supported diagram
+The atlas contains eleven complementary views rather than every supported diagram
 type. The source/test entry-point tables cover repository navigation without a
 second directory tree. There is no class diagram that merely repeats every API,
 no proposed-but-unmerged feature presented as shipped, and no timing waterfall without
@@ -60,11 +60,16 @@ This drawing distinguishes `Rejected` (a stored queue rejection) from protocol
 errors that do not create that status. The client Lease view is a separate state
 space and must never be merged with authoritative backend status.
 
-The pinned implementation snapshot is `ca393a3031c310c21515cec04e98b4f009f50e08`.
-This documentation-only refresh realigns citations after the Shared renames
-(`shared.go`, `shared_state.go`, `driver_transition.go`) and adds coverage of
-local `Resize`, local waiter notifications and read-only observations. It does
-not alter Go behavior or claim new backend integration/performance results.
+Diagrams 01–08 retain implementation snapshot `ca393a3031c310c21515cec04e98b4f009f50e08`.
+Backend operation/schema views 09–11 use `cbdfca745233d8cd3a67fd7d236c76d13d07f436`;
+the relevant implementation files are identical between these revisions. Every
+candidate and verification entry carries its own source revision.
+The first eight views realign citations after the Shared renames
+(`shared.go`, `shared_state.go`, `driver_transition.go`) and add coverage of
+local `Resize`, local waiter notifications and read-only observations. The three
+backend views add PostgreSQL table/operation coverage and Redis key/Hash/CAS paths. They document current behavior, not the incremental
+proposals or an update lock. These documentation changes do not alter Go behavior
+or claim new backend integration/performance results.
 
 ## Viewer attribution
 

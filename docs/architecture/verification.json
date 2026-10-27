@@ -20,7 +20,8 @@
       "preview": "previews/overview.png",
       "preview_sha256": "94b63a3c1988dd60473ea4726baea51cf40b18a096d91d58364a962ee24aa43e",
       "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
-      "route_advisory": {}
+      "route_advisory": {},
+      "source_revision": "ca393a3031c310c21515cec04e98b4f009f50e08"
     },
     {
       "slug": "local-admission",
@@ -37,7 +38,8 @@
       "preview": "previews/local-admission.png",
       "preview_sha256": "a20da4d540b3fdbe91f7c350996d5a5460561a114a05fb16ee8d9a5ef9f7dfd3",
       "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
-      "route_advisory": {}
+      "route_advisory": {},
+      "source_revision": "ca393a3031c310c21515cec04e98b4f009f50e08"
     },
     {
       "slug": "scheduler",
@@ -54,7 +56,8 @@
       "preview": "previews/scheduler.png",
       "preview_sha256": "8d058c0eedf5fed7248d68c5aa1f7af61ed957a4e497691e8136d9ebec6325e3",
       "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
-      "route_advisory": {}
+      "route_advisory": {},
+      "source_revision": "ca393a3031c310c21515cec04e98b4f009f50e08"
     },
     {
       "slug": "request-states",
@@ -74,7 +77,8 @@
       "route_advisory": {
         "resolvedCrossovers": 16,
         "routesOverSuggestedStretch": 1
-      }
+      },
+      "source_revision": "ca393a3031c310c21515cec04e98b4f009f50e08"
     },
     {
       "slug": "lease-states",
@@ -91,7 +95,8 @@
       "preview": "previews/lease-states.png",
       "preview_sha256": "ce3e95a5d746910002a03dc421263e960f824857c8f36242f7c7176c8f8d4861",
       "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
-      "route_advisory": {}
+      "route_advisory": {},
+      "source_revision": "ca393a3031c310c21515cec04e98b4f009f50e08"
     },
     {
       "slug": "shared-sequence",
@@ -108,7 +113,8 @@
       "preview": "previews/shared-sequence.png",
       "preview_sha256": "b1ffbfa522ce19a3c2ca8b52e90320991038a56677b3437afad40518c0dfc20f",
       "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
-      "route_advisory": {}
+      "route_advisory": {},
+      "source_revision": "ca393a3031c310c21515cec04e98b4f009f50e08"
     },
     {
       "slug": "driver-boundaries",
@@ -125,7 +131,8 @@
       "preview": "previews/driver-boundaries.png",
       "preview_sha256": "7a0c17c46243e7152b173b784b80f1b481e55d5cb720c93d59c1b12524fccc18",
       "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
-      "route_advisory": {}
+      "route_advisory": {},
+      "source_revision": "ca393a3031c310c21515cec04e98b4f009f50e08"
     },
     {
       "slug": "application-lifecycle",
@@ -142,7 +149,67 @@
       "preview": "previews/application-lifecycle.png",
       "preview_sha256": "eec06a683e1782719e8ca46af8c4b0f7ec6eb8949acc5d123d6c5755c16f7089",
       "manual_review": "Automated finalize gates and real-browser check passed; full-page light-theme preview captured at 1440 CSS pixels. No manual perceptual re-review in this refresh.",
+      "route_advisory": {},
+      "source_revision": "ca393a3031c310c21515cec04e98b4f009f50e08"
+    },
+    {
+      "slug": "pg-operations",
+      "source_revision": "cbdfca745233d8cd3a67fd7d236c76d13d07f436",
+      "candidate": ".archify/workflow-pg-operations-20261027-140038/candidate.json",
+      "candidate_sha256": "db19e0f151eb6cf620da894867b20f6e5abd2b7f8143e460824c7f79932d5c07",
+      "html": ".archify/workflow-pg-operations-20261027-140038/pg-operations.html",
+      "html_sha256": "0c45d93c0c92b2e3ab0504aca6585e07a1d7fc6edc7eea2996ddb683437bdad4",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/pg-operations.png",
+      "preview_sha256": "a84445ce48fdf24ae546fbb23b18d695de87860b10a5669ba5e260dfbeb1a098",
+      "manual_review": "Inspected full-page light-theme Chrome preview at 1440 CSS pixels, including below-fold paths and notes. Automatic browser checks also cover desktop light/dark states.",
+      "route_advisory": {}
+    },
+    {
+      "slug": "pg-tables",
+      "source_revision": "cbdfca745233d8cd3a67fd7d236c76d13d07f436",
+      "candidate": ".archify/erd-pg-tables-20261027-140038/candidate.json",
+      "candidate_sha256": "8576fa12408dd5d37c0a1607315a7a74b51c9f6f6c2623f9e2d37d2b2628b2d3",
+      "html": ".archify/erd-pg-tables-20261027-140038/pg-tables.html",
+      "html_sha256": "0dc1e14e1b886dddbaf541325e3ad6e7bb2d183c0bd5dec1becfa9a8359f2bb3",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/pg-tables.png",
+      "preview_sha256": "19080c1ee0810579f6eec49f6448921fa0775044a8ab256f54f5ac6ec9508a55",
+      "manual_review": "Inspected full-page light-theme Chrome preview at 1440 CSS pixels, including below-fold paths and notes. Automatic browser checks also cover desktop light/dark states.",
+      "route_advisory": {}
+    },
+    {
+      "slug": "redis-operations",
+      "source_revision": "cbdfca745233d8cd3a67fd7d236c76d13d07f436",
+      "candidate": ".archify/workflow-redis-operations-20261027-143337/candidate.json",
+      "candidate_sha256": "2033070b610fb442a771b5990722bb12ccb436cb8ce5f5dcac392e794dc447d3",
+      "html": ".archify/workflow-redis-operations-20261027-143337/redis-operations.html",
+      "html_sha256": "8214ff61811a56cd55fb93c1f058b95d3c31e2d126cfea35d48e2d53dfe9b747",
+      "gates": {
+        "validate": "pass",
+        "deliver": "pass",
+        "check": "pass",
+        "browser-check": "pass"
+      },
+      "preview": "previews/redis-operations.png",
+      "preview_sha256": "421ab5f18ebb0b13719886a29fcde67c45e9c02026398af0df1aa723875caeef",
+      "manual_review": "Inspected full-page light-theme Chrome preview at 1440 CSS pixels, including below-fold paths and notes. Automatic browser checks also cover desktop light/dark states.",
       "route_advisory": {}
     }
-  ]
+  ],
+  "source_revision_note": "Default revision for views 01–08; each diagram entry records its own pinned revision.",
+  "source_revisions": {
+    "views_01_08": "ca393a3031c310c21515cec04e98b4f009f50e08",
+    "views_09_11": "cbdfca745233d8cd3a67fd7d236c76d13d07f436"
+  }
 }
