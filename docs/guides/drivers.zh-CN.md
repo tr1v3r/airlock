@@ -26,7 +26,7 @@ type Driver interface {
 Submit 不等待容量，而是返回 Queued、Granted 或错误；调用仍可能等待后端 I/O 或锁，
 受 ctx 约束。轮询与取消清理由 Shared 负责，不隐式重试网络错误。
 
-Request 包含资源、不可变配置、ID、Owner、租户、重量、提交和等待截止时间，后续需原样复用。
+Request 包含资源、不可变策略与首次创建容量提示、ID、Owner、租户、重量、提交和等待截止时间，后续需原样复用。
 LeaseRef 包含原 Request，ID 字段是授予时的 LeaseID。Result 表达生命周期状态、租约 ID、
 重量、剩余有效期和后端 revision。即使写入可能已提交，带有错误的结果也不能授权工作。
 
@@ -96,3 +96,6 @@ Resize 清理过期时不先按旧容量调度，移除超重等待者后才按�
 state.Observation() 生成当前容量/版本、占用与排队计数、下一维护时间，并与请求变化一致发布。
 Inspect 不运行 Transition。Redis 仍在 Lua 中检查 owner + CommitWindow，不比较旧快照；
 PG 在资源行事务中同时写容量、容量版本和请求差异。
+
+ValidateCommand 只校验重量固定范围 1..10000，不校验资源当前容量。自定义 driver 即使
+不实现 ResourceManager，也必须在原子边界内按当前容量检查新 Submit；Transition 已包含此规则。

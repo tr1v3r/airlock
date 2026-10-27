@@ -178,3 +178,69 @@ func TestResourceInspectionValidation(t *testing.T) {
 		t.Fatal(got, err)
 	}
 }
+
+func TestResizeDoesNotDispatchAtOldCapacity(t *testing.T) {
+	h := newStateHarness(t)
+	cfg := stateTestConfig()
+	holder := stateTestRequest(h.now, cfg, "holder", 3)
+	heavy := stateTestRequest(h.now, cfg, "heavy", 3)
+	light := stateTestRequest(h.now, cfg, "light", 1)
+	h.call(Submit, holder, "", nil)
+	h.call(Submit, heavy, "", nil)
+	h.call(Submit, light, "", nil)
+	h.now = h.now.Add(cfg.LeaseTTL)
+	next, result, _, err := transitionOptimistic(h.data, h.now, Command{Kind: Resize, Resize: ResizeRequest{Resource: holder.Resource, Capacity: 2, ExpectedVersion: 1}})
+	if err != nil || result.ResourceStatus.Used != 1 {
+		t.Fatal(result, err)
+	}
+	h.data = next
+	s := h.snapshot()
+	if s.Records[heavy.ID].Status != Rejected || s.Records[heavy.ID].LeaseID != "" || s.Records[light.ID].Status != Granted {
+		t.Fatal("old-capacity dispatch occurred")
+	}
+	h.call(Observe, heavy, "", ErrWeightExceedsCapacity)
+}
+
+func TestResizePreservesRejectedIdentityAfterExpansion(t *testing.T) {
+	h := newStateHarness(t)
+	cfg := stateTestConfig()
+	r := stateTestRequest(h.now, cfg, "too-large", 4)
+	h.call(Submit, r, "", ErrWeightExceedsCapacity)
+	next, _, _, err := transitionOptimistic(h.data, h.now, Command{Kind: Resize, Resize: ResizeRequest{Resource: r.Resource, Capacity: 5, ExpectedVersion: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.data = next
+	h.call(Submit, r, "", ErrWeightExceedsCapacity)
+	fresh := stateTestRequest(h.now, cfg, "fresh", 4)
+	expectState(t, h.call(Submit, fresh, "", nil), Granted)
+}
+
+func TestResizePreservesPriorityTurnAfterProtectedRejection(t *testing.T) {
+	h := newStateHarness(t)
+	cfg := stateTestConfig()
+	cfg.Admission.MaxQueued = 6
+	cfg.Admission.MaxQueuedPerTenant = 6
+	cfg.Admission.Priority = &PriorityPolicy{Groups: []PriorityGroup{{Name: "high", Turns: 2, MaxQueued: 3}, {Name: "low", Turns: 1, MaxQueued: 3}}, DefaultGroup: "low", TenantGroups: map[string]string{"heavy": "high", "h1": "high", "h2": "high"}}
+	holder := stateTestRequest(h.now, cfg, "holder", 2)
+	grant := h.call(Submit, holder, "", nil)
+	heavy := stateTestRequest(h.now, cfg, "heavy", 3)
+	h1 := stateTestRequest(h.now, cfg, "h1", 1)
+	h2 := stateTestRequest(h.now, cfg, "h2", 1)
+	low := stateTestRequest(h.now, cfg, "low", 1)
+	for _, r := range []Request{heavy, h1, h2, low} {
+		expectState(t, h.call(Submit, r, "", nil), Queued)
+	}
+	if h.snapshot().Protected != heavy.ID {
+		t.Fatal("missing protected heavy head")
+	}
+	next, _, _, err := transitionOptimistic(h.data, h.now, Command{Kind: Resize, Resize: ResizeRequest{Resource: holder.Resource, Capacity: 2, ExpectedVersion: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.data = next
+	h.call(Release, holder, grant.LeaseID, nil)
+	expectState(t, h.call(Observe, h1, "", nil), Granted)
+	expectState(t, h.call(Observe, low, "", nil), Granted)
+	expectState(t, h.call(Observe, h2, "", nil), Queued)
+}

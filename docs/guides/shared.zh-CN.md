@@ -63,8 +63,7 @@ Redis 把每个资源存放在 `airlock:{SHA256(namespace + "\0" + resource)}:st
 不同资源仍共享后端物理资源和连接池；逻辑隔离不代表性能隔离。
 
 创建不同 Driver 对象本身不会隔离容量。使用同一 PostgreSQL 数据库/表/namespace/resource，
-或同一 Redis keyspace/namespace/resource 的客户端会共享容量，必须使用相同的、补齐默认值后的
-`ResourceConfig`。独立容量池使用不同 Resource 即可；需要不同命名空间、连接或 PostgreSQL
+或同一 Redis keyspace/namespace/resource 的客户端会共享容量，必须使用相同的、补齐默认值后的队列/租约策略（首次创建容量提示可不同）。独立容量池使用不同 Resource 即可；需要不同命名空间、连接或 PostgreSQL
 表时再创建不同 Driver。Memory 没有 namespace 参数，其共享范围是 driver 实例，实例内每个
 Resource 拥有独立状态。
 
@@ -120,7 +119,7 @@ if err != nil {
 ```
 
 上述两个容量池分别限制为 4 和 8 个 token，即使租户名字相同也互不占用容量。
-每个池可以使用不同的 `ResourceConfig`，同一个池的所有客户端则必须使用一致的配置。
+每个池可以使用不同的 `ResourceConfig`，同一个池的客户端必须使用一致的不可变策略，首次创建容量提示可不同。
 申请成功会创建租约：工作停止后释放，并按第 3 节管理过期和续租。
 
 可执行的[多资源示例](../../driver/memory/example_test.go)复用一个 memory driver，
@@ -217,7 +216,7 @@ SDK 不执行任务、不自动续租，也无法杀死忽略取消信号的工�
 快照计算成本越高。这些默认值是起步策略，不保证吞吐或延迟。driver 自身更短的操作上限，
 以及调用者更早的 deadline，仍可优先生效。
 
-同一资源的所有参与者必须使用相同的**补齐默认值后的 ResourceConfig**。默认值在发往后端前
+同一资源的所有参与者必须使用相同的**补齐默认值后的队列/租约策略**（不含首次创建容量提示）。默认值在发往后端前
 补齐。已有资源的配置不会被改写：升级时若省略了以前显式配置且与默认值不同的参数，会得到
 `ErrConfigConflict`，不会在线迁移策略。升级时保留现有显式策略，或规划切换到另一个资源。
 OperationTimeout、PollInterval 与 ClockSkewAllowance 是客户端自己的设置。

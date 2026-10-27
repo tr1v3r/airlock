@@ -27,7 +27,7 @@ tradeoffs in the repository's decisions directory. Multiple processes share
 capacity only when they use the same database, table, namespace and resource.
 The `namespace` argument to `New` is fixed for that driver. Namespace and resource
 are separate columns, avoiding concatenation collisions.
-Use identical immutable `ResourceConfig` for all clients of that resource.
+Use the same immutable queue/lease policy for all clients; creation-capacity hints may differ.
 
 Each command uses a short `READ COMMITTED` transaction: insert the resource if
 absent, lock its row, read its request rows, read `clock_timestamp()` in a **subsequent statement**, apply
@@ -51,7 +51,7 @@ this is not a comprehensive schema/constraint audit.
 
 | Table | Key | Stored fields |
 | --- | --- | --- |
-| `public.airlock_resources` | `(namespace, resource)` | `state_version`, immutable `config` JSONB, tenant `rotations` JSONB, `protected`, `cursor`, `revision`, `observed_ms`, `next_maintenance_ms` |
+| `public.airlock_resources` | `(namespace, resource)` | `state_version`, immutable-policy/creation-hint `config` JSONB, current `capacity`, `capacity_version`, tenant `rotations` JSONB, `protected`, `cursor`, `revision`, `observed_ms`, `next_maintenance_ms` |
 | `public.airlock_requests` | `(namespace, resource, id)` | `owner`, `tenant`, `weight`, `submit_until_ms`, `wait_until_ms`, `status`, `lease_id`, `until_ms`, `finished_ms`, `failure`, `queue_position` |
 
 The default tables are `public.airlock_resources` and `public.airlock_requests`.
@@ -131,3 +131,14 @@ access. Tenant mapping is not authentication.
 Relational tests also verify request-row write isolation, queue-order preservation on dequeue, and rejection of schemas missing required columns.
 
 多表专用测试还覆盖请求行写入隔离、出队时的队列顺序保留，以及对缺失必需列的表结构的拒绝。
+
+## Resource management / 资源管理
+
+ResourceManager.Resize reuses the resource row lock and transaction; capacity and
+capacity_version live on airlock_resources and persist with request deltas.
+InspectResource uses a single read-only MVCC statement, with no maintenance or
+update lock. See [Shared dynamic capacity](../../docs/guides/shared.md#shared-dynamic-capacity).
+
+Resize 复用资源行锁事务，airlock_resources 的 capacity 与 capacity_version 随请求差异
+一起提交。InspectResource 通过单条只读 MVCC 查询返回快照，不执行维护、不抢更新锁。
+完整语义见 [Shared 动态容量](../../docs/guides/shared.zh-CN.md#shared-动态容量)。

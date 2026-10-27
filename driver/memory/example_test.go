@@ -92,3 +92,45 @@ func ExampleNew_multipleResources() {
 	// export-jobs: 4
 	// image-jobs: 8
 }
+
+func ExampleDriver_Resize() {
+	ctx := context.Background()
+	shared, err := airlock.NewShared(memory.New(), airlock.SharedOptions{
+		Resource: "resizable", Config: airlock.ResourceConfig{Admission: airlock.Config{Capacity: 2}},
+	})
+	if err != nil {
+		panic(err)
+	}
+	lease, err := shared.AcquireN(ctx, 2)
+	if err != nil {
+		panic(err)
+	}
+	status, err := shared.Inspect(ctx)
+	if err != nil {
+		panic(err)
+	}
+	status, err = shared.Resize(ctx, 1, status.CapacityVersion)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(status.Capacity, status.Used, status.CapacityVersion)
+	if err := lease.Release(ctx); err != nil {
+		panic(err)
+	}
+	status, err = shared.Resize(ctx, 4, status.CapacityVersion)
+	if err != nil {
+		panic(err)
+	}
+	// The original Shared still has creation hint 2, but uses current capacity 4.
+	larger, err := shared.AcquireN(ctx, 3)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(status.Capacity, larger.Weight(), status.CapacityVersion)
+	if err := larger.Release(ctx); err != nil {
+		panic(err)
+	}
+	// Output:
+	// 1 2 2
+	// 4 3 3
+}

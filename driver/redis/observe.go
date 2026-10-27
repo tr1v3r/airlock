@@ -30,14 +30,8 @@ func index(state *airlock.SharedState) ([]byte, error) {
 	token := airlock.NewRequest(state.Time).Owner
 
 	meta, err := json.Marshal(observationHeader{
-		Observation: airlock.Observation{
-			Resource:        state.Resource,
-			Config:          state.Config,
-			Time:            state.Time,
-			Revision:        state.Revision,
-			NextMaintenance: state.NextMaintenance(),
-		},
-		Token: token,
+		Observation: state.Observation(),
+		Token:       token,
 	})
 	if err != nil {
 		return nil, err

@@ -27,7 +27,7 @@ Submit does not wait for capacity: it returns Queued or Granted (or an error).
 Calls may still wait for backend I/O/locks, bounded by their context. Shared owns
 polling and cancellation cleanup. It does not implicitly retry network failures.
 
-Request contains resource, immutable configuration, ID, Owner, tenant, weight and
+Request contains resource, immutable policy plus a creation-capacity hint, ID, Owner, tenant, weight and
 submission/waiting deadlines. Reuse it unchanged. LeaseRef contains that original
 Request plus the granted LeaseID in its ID field. Result reports lifecycle status,
 lease ID, weight, remaining lease duration and backend revision. An error never
@@ -118,3 +118,7 @@ with current capacity/version, charged counters and the next maintenance boundar
 publish it atomically with all affected request results. Inspect never runs Transition.
 Redis still requires atomic owner + CommitWindow checks, not old-snapshot comparison.
 PG updates capacity/version on airlock_resources with request deltas in one transaction.
+
+ValidateCommand checks the fixed weight range 1..10000, not live resource capacity.
+Every custom driver must enforce current capacity for a fresh Submit inside its atomic
+boundary (Transition does this), even if it does not implement ResourceManager.

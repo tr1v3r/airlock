@@ -153,7 +153,13 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 		}
 	}
 
-	state, before, err := d.load(ctx, tx, cmd.Request)
+	var state *airlock.SharedState
+	var before map[string]row
+	if cmd.Kind == airlock.Resize {
+		state, before, err = d.loadResource(ctx, tx, cmd.Resource(), nil)
+	} else {
+		state, before, err = d.load(ctx, tx, cmd.Request)
+	}
 	if err != nil {
 		return airlock.Result{}, err
 	}

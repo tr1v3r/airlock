@@ -218,7 +218,7 @@ func (d *Driver) execute(ctx context.Context, command airlock.Command) (airlock.
 
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()
-	key := d.key(command.Request.Resource)
+	key := d.key(command.Resource())
 
 	for attempt := 0; ; attempt++ {
 		if command.Kind == airlock.Observe {

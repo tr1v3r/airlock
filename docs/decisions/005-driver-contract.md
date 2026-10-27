@@ -8,6 +8,10 @@ driver 契约不限定持久化布局，结构化状态入口与快照入口都�
 [决策 007](007-redis-driver.md)；PostgreSQL 的存储布局演进见[决策 009](009-postgres-relational.md)。
 不代表已有标签版本。
 
+更新：Shared 支持可选 ResourceManager 的版本化 Resize 与只读 Inspect。Config 中容量是首次创建提示，
+当前容量/容量版本独立持久化；不改变请求身份。扩缩容、合法超限、查询时间口径见
+[Shared 指南](../guides/shared.zh-CN.md#shared-动态容量)。以下背景中的固定容量不变量应按该契约理解。
+
 ## API 与原子边界
 
 公开 Driver 使用五个有明确含义的方法：
@@ -85,7 +89,8 @@ Cancel 可以先于 Submit 到达：创建 Cancelled tombstone，迟到 Submit �
 晚到成功不能复活 Lease。Release 在网络调用之前本地失效，失败允许同对象重试清理。
 定时器负责关闭 Done，Valid 还直接检查 deadline，不能用“定时器尚未运行”当成仍然有效。
 
-`sum(valid lease weights)<=Capacity` 是授权账本保证，不是任意暂停/分区下的物理运行并发上限。
+新增授予必须在当前容量内；平滑缩容允许已有授权总重量暂时超过新 Capacity，此时不新增授予。
+这属于授权账本规则，不是任意暂停/分区下的物理运行并发上限。
 调用者须在失效时停止工作，且工作真正结束后再释放。库不执行任务、不自动重试业务，也不提供通用 fencing。
 多个合法 holder 并存时，单个最大 fencing token 会错误废掉其他合法 holder。
 

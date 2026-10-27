@@ -54,6 +54,8 @@ func (d *Driver) schema() []string {
 			resource               text COLLATE pg_catalog."C" NOT NULL,
 			state_version          integer NOT NULL DEFAULT 1 CHECK (state_version=1),
 			config                 jsonb NOT NULL,
+			capacity               integer NOT NULL CHECK (capacity BETWEEN 1 AND 10000),
+			capacity_version       numeric(20,0) NOT NULL DEFAULT 1 CHECK (capacity_version>=1 AND capacity_version<=18446744073709551615),
 			rotations              jsonb NOT NULL DEFAULT '[]',
 			protected              text COLLATE pg_catalog."C" NOT NULL DEFAULT '',
 			cursor                 integer NOT NULL DEFAULT 0 CHECK (cursor>=0),
