@@ -4,5 +4,7 @@
 /go.work
 /go.work.sum
 __pycache__/
+/.gocache/
+/bench-results/
 
 /driver/*/coverage.out
