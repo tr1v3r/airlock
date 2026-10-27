@@ -192,9 +192,9 @@
       "slug": "redis-operations",
       "source_revision": "f9de5e5e79bd2d06d97b0eba4ce45dbbb99b6410",
       "candidate": ".archify/workflow-redis-operations-20261027-224623/candidate.json",
-      "candidate_sha256": "3f6aae2ffd339554d7ef2bf363188599d7cb2b2b59ba3a407655135354f33e0e",
+      "candidate_sha256": "f869ba5c21d9b91962a7f581d9b3ad77b9d4a66e1e050ad013b6e64048a389b1",
       "html": ".archify/workflow-redis-operations-20261027-224623/redis-operations.html",
-      "html_sha256": "de6e3584eee5583fc99170ccd11cd8671841e35f5a5ad121fa69a51912b58a6f",
+      "html_sha256": "f3129129d1dce26d2db36c9e8361204dcac2299f174feb342a9e018419a84ed4",
       "gates": {
         "validate": "pass",
         "deliver": "pass",
@@ -202,8 +202,8 @@
         "browser-check": "pass"
       },
       "preview": "previews/redis-operations.png",
-      "preview_sha256": "b69283ee746fae1cd5cf0ad3b137db089ec897581966fae576cad304d667d274",
-      "manual_review": "Inspected full-page light-theme Chrome preview at 1440 CSS pixels and a full-size middle viewport, including five command branches, under-lock exits, commit guards and retry corridors. Finalize also passed real-browser light/dark desktop checks. Diagram labels carry the flow; accompanying cards explain Hash fields, TTL, tokens and time boundaries.",
+      "preview_sha256": "5b9a1e8bec5f0426c1c4a5f019ebc817d7d1c2ca0693e0a93d234881769b8737",
+      "manual_review": "Inspected regenerated full-page light-theme Chrome preview and a full-size middle viewport at 1440 CSS pixels. The decision reads “有可提交的新状态？” with “有 / 无” branches; labels and surrounding routes are clear. Finalize also passed real-browser light/dark desktop checks.",
       "route_advisory": {}
     }
   ],

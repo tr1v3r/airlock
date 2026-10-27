@@ -516,7 +516,7 @@
       "lane": "plan",
       "col": 4,
       "type": "backend",
-      "label": "next 非 nil？",
+      "label": "有可提交的新状态？",
       "sources": [
         {
           "path": "driver/redis/redis.go",
@@ -1135,13 +1135,13 @@
       "id": "next_encode",
       "from": "next",
       "to": "parameters",
-      "label": "是"
+      "label": "有"
     },
     {
       "id": "next_nil",
       "from": "next",
       "to": "saved_result",
-      "label": "否",
+      "label": "无",
       "role": "branch",
       "fromSide": "bottom",
       "toSide": "right"
@@ -1270,7 +1270,7 @@
       "items": [
         "Submit 复用已有结果且不刷新租约；新请求按完整权重授予、排队、拒绝或过期。Cancel 取消等待/授予，也可预先建立取消墓碑。",
         "Renew 只延长匹配且仍有效的业务租约，不增加容量占用。Release 仅归还匹配授予的完整权重，重复终态不重复归还。Observe 维护后读取结果，不新建未知请求。",
-        "公共处理包括恢复、过期与历史回收、命令前后公平调度；非 nil next 即使带业务错误仍需提交，nil next 不提交。Lua 不执行公平调度。",
+        "公共处理包括恢复、过期与历史回收、命令前后公平调度；有可提交的新状态时，即使同时返回业务错误仍需提交。前置校验或状态恢复失败、没有可提交的新状态时，解锁并返回错误。Lua 不执行公平调度。",
         "状态转换先恢复配置并维护旧状态，再执行命令；命令前后调度、最终整理和 Revision + 1 仍由核心完成。提交参数为 owner、新 state、CommitWindow 与完整查询投影。"
       ]
     },

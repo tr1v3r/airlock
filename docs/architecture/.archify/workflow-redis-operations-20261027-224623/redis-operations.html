@@ -5334,8 +5334,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <path data-edge-from="acquire" data-edge-to="acquire_error" data-edge-label="错误 / 异常响应" data-edge-key="22" data-edge-id="lock_unknown" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="499.79999999999995,813;247.4,813" d="M 499.79999999999995 813 L 247.4 813" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <path data-edge-from="acquire" data-edge-to="locked_route" data-edge-label="确认获得：1" data-edge-key="23" data-edge-id="lock_yes" data-edge-role="" data-composition-points="551.8,839;551.8,882;729.8,882;729.8,955" d="M 551.8 839 L 551.8 874 Q 551.8 882 559.8 882 L 721.8 882 Q 729.8 882 729.8 890 L 729.8 955" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <path data-edge-from="maintain" data-edge-to="command" data-edge-key="24" data-edge-id="maintenance_command" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="667.8,1485;623.8,1485" d="M 667.8 1485 L 623.8 1485" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="next" data-edge-to="parameters" data-edge-label="是" data-edge-key="25" data-edge-id="next_encode" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="1005.8,1821;1043.8000000000002,1821" d="M 1005.8 1821 L 1043.8000000000002 1821" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="next" data-edge-to="saved_result" data-edge-label="否" data-edge-key="26" data-edge-id="next_nil" data-edge-role="branch" data-composition-points="939.8,1847;939.8,1896;257.4,1896;257.4,1821;241.4,1821" d="M 939.8 1847 L 939.8 1888 Q 939.8 1896 931.8 1896 L 265.4 1896 Q 257.4 1896 257.4 1888 L 257.4 1829 Q 257.4 1821 249.4 1821 L 241.4 1821" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="next" data-edge-to="parameters" data-edge-label="有" data-edge-key="25" data-edge-id="next_encode" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="1005.8,1821;1043.8000000000002,1821" d="M 1005.8 1821 L 1043.8000000000002 1821" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="next" data-edge-to="saved_result" data-edge-label="无" data-edge-key="26" data-edge-id="next_nil" data-edge-role="branch" data-composition-points="939.8,1847;939.8,1896;257.4,1896;257.4,1821;241.4,1821" d="M 939.8 1847 L 939.8 1888 Q 939.8 1896 931.8 1896 L 265.4 1896 Q 257.4 1896 257.4 1888 L 257.4 1829 Q 257.4 1821 249.4 1821 L 241.4 1821" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <path data-edge-from="observe_command" data-edge-to="capture" data-edge-key="27" data-edge-id="observe_command_capture" data-edge-role="branch" data-composition-points="939.8,1679;939.8,1722;579.8,1722;579.8,1766" d="M 939.8 1679 L 939.8 1714 Q 939.8 1722 931.8 1722 L 587.8 1722 Q 579.8 1722 579.8 1730 L 579.8 1766" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <path data-edge-from="prepare" data-edge-to="publish" data-edge-key="28" data-edge-id="prepare_publish" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="645.8,2157;617.8,2157" d="M 645.8 2157 L 617.8 2157" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <path data-edge-from="probe" data-edge-to="probe_error" data-edge-label="读取或校验错误" data-edge-key="29" data-edge-id="probe_bad" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="736.8,503;736.8,645;1063.8000000000002,645" d="M 736.8 503 L 736.8 637 Q 736.8 645 744.8 645 L 1063.8000000000002 645" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
@@ -5614,14 +5614,14 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text data-node-label="" x="551.8" y="1799.4" class="t-primary" font-size="10.3" font-weight="600" text-anchor="middle">再次调度与整理状态</text>
         </g>
 
-        <g id="node-next" data-node-id="next" data-node-label="next 非 nil？" tabindex="0" role="button" aria-label="聚焦next 非 nil？，最终状态与提交准备" aria-pressed="false" data-node-kind="backend" data-node-context="最终状态与提交准备">
-          <title>next 非 nil？ · 最终状态与提交准备</title>
+        <g id="node-next" data-node-id="next" data-node-label="有可提交的新状态？" tabindex="0" role="button" aria-label="聚焦有可提交的新状态？，最终状态与提交准备" aria-pressed="false" data-node-kind="backend" data-node-context="最终状态与提交准备">
+          <title>有可提交的新状态？ · 最终状态与提交准备</title>
           <rect x="873.8" y="1795" width="132" height="52" rx="8" class="c-mask"/>
           <rect x="873.8" y="1795" width="132" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="decision" class="semantic-sigil s-backend" transform="translate(879.8 1801) scale(0.6875)">
             <path d="M8 2.2 13.8 8 8 13.8 2.2 8Z"/>
           </g>
-          <text data-node-label="" x="939.8" y="1829.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">next 非 nil？</text>
+          <text data-node-label="" x="939.8" y="1829.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">有可提交的新状态？</text>
         </g>
 
         <g id="node-parameters" data-node-id="parameters" data-node-label="Go 编码提交参数" tabindex="0" role="button" aria-label="聚焦Go 编码提交参数，最终状态与提交准备" aria-pressed="false" data-node-kind="backend" data-node-context="最终状态与提交准备">
@@ -5818,13 +5818,13 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text x="640.8" y="872" class="t-muted" font-size="8" text-anchor="middle">确认获得：1</text>
         </g>
 
-        <g data-detail="context" data-edge-from="next" data-edge-to="parameters" data-edge-label="是" data-edge-key="25" data-edge-id="next_encode">
+        <g data-detail="context" data-edge-from="next" data-edge-to="parameters" data-edge-label="有" data-edge-key="25" data-edge-id="next_encode">
           <rect x="1009.8000000000002" y="1801" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="1024.8000000000002" y="1811" class="t-muted" font-size="8" text-anchor="middle">是</text>
+          <text x="1024.8000000000002" y="1811" class="t-muted" font-size="8" text-anchor="middle">有</text>
         </g>
-        <g data-detail="context" data-edge-from="next" data-edge-to="saved_result" data-edge-label="否" data-edge-key="26" data-edge-id="next_nil">
+        <g data-detail="context" data-edge-from="next" data-edge-to="saved_result" data-edge-label="无" data-edge-key="26" data-edge-id="next_nil">
           <rect x="583.5999999999999" y="1876" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="598.5999999999999" y="1886" class="t-muted" font-size="8" text-anchor="middle">否</text>
+          <text x="598.5999999999999" y="1886" class="t-muted" font-size="8" text-anchor="middle">无</text>
         </g>
 
 
@@ -6104,7 +6104,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <ul>
           <li>Submit 复用已有结果且不刷新租约；新请求按完整权重授予、排队、拒绝或过期。Cancel 取消等待/授予，也可预先建立取消墓碑。</li>
           <li>Renew 只延长匹配且仍有效的业务租约，不增加容量占用。Release 仅归还匹配授予的完整权重，重复终态不重复归还。Observe 维护后读取结果，不新建未知请求。</li>
-          <li>公共处理包括恢复、过期与历史回收、命令前后公平调度；非 nil next 即使带业务错误仍需提交，nil next 不提交。Lua 不执行公平调度。</li>
+          <li>公共处理包括恢复、过期与历史回收、命令前后公平调度；有可提交的新状态时，即使同时返回业务错误仍需提交。前置校验或状态恢复失败、没有可提交的新状态时，解锁并返回错误。Lua 不执行公平调度。</li>
           <li>状态转换先恢复配置并维护旧状态，再执行命令；命令前后调度、最终整理和 Revision + 1 仍由核心完成。提交参数为 owner、新 state、CommitWindow 与完整查询投影。</li>
         </ul>
       </div>
