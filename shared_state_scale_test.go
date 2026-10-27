@@ -30,7 +30,7 @@ func scaleSnapshot(tb testing.TB, records, mappings, queued int) (durableSnapsho
 		cfg.Admission.Priority = p
 	}
 
-	s := durableSnapshot{Version: 1, Resource: "scale", Config: cfg, Records: make(map[string]*durableRecord, records), Queues: make(map[string][]string), Revision: 1, Time: now, Rotations: [][]string{{}}}
+	s := durableSnapshot{Version: 1, Resource: "scale", Config: cfg, Capacity: cfg.Admission.Capacity, CapacityVersion: 1, Records: make(map[string]*durableRecord, records), Queues: make(map[string][]string), Revision: 1, Time: now, Rotations: [][]string{{}}}
 	var cmd Command
 
 	for i := 0; i < records; i++ {

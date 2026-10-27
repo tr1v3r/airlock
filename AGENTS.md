@@ -20,6 +20,8 @@ PostgreSQL uses resource/request tables, structured transitions and delta writes
 Redis serializes updates with per-resource leases and atomically checks owner
 and CommitWindow using backend time; Observe reads projections before attempting maintenance.
 Both are independent modules with explicit deployment limits.
+Shared supports versioned Resize and read-only Inspect through optional ResourceManager;
+Config.Admission.Capacity is only a creation hint, independent of persisted capacity.
 
 - Keep runtime dependencies limited to the standard library unless justified.
 - Define atomic acquisition, cancellation, weight validation, release accounting,

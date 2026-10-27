@@ -108,3 +108,37 @@ func TestCorruptSnapshotIsNotPublished(t *testing.T) {
 		})
 	}
 }
+
+func TestResourceInspectionCancellation(t *testing.T) {
+	d := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := d.InspectResource(ctx, "r"); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if _, err := d.InspectResource(context.Background(), ""); !errors.Is(err, airlock.ErrInvalidRequest) {
+		t.Fatal(err)
+	}
+	d.resources = map[string]*resource{"empty": {gate: make(chan struct{}, 1)}}
+	if _, err := d.InspectResource(context.Background(), "empty"); !errors.Is(err, airlock.ErrResourceNotFound) {
+		t.Fatal(err)
+	}
+	r := d.resources["empty"]
+	r.gate <- struct{}{}
+	wait, stop := context.WithTimeout(context.Background(), time.Millisecond)
+	defer stop()
+	if _, err := d.InspectResource(wait, "empty"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	<-r.gate
+	request := memoryRequest("real")
+	if _, err := d.Submit(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	for _, at := range []int{2, 3} {
+		staged := &stagedCancellation{Context: context.Background(), at: at}
+		if result, err := d.InspectResource(staged, "real"); !errors.Is(err, context.Canceled) || result != (airlock.ResourceStatus{}) {
+			t.Fatal(at, result, err)
+		}
+	}
+}

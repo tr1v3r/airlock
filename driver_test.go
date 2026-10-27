@@ -38,18 +38,18 @@ func TestNewRequestIdentity(t *testing.T) {
 
 func TestDriverConfigValidation(t *testing.T) {
 	cases := map[string]func(*ResourceConfig){
-		"capacity upper":  func(c *ResourceConfig) { c.Admission.Capacity = 10001 },
-		"capacity zero":   func(c *ResourceConfig) { c.Admission.Capacity = 0 },
-		"queue upper":     func(c *ResourceConfig) { c.Admission.MaxQueued = 10001 },
-		"records zero":    func(c *ResourceConfig) { c.MaxRecords = 0 },
-		"records upper":   func(c *ResourceConfig) { c.MaxRecords = 10001 },
-		"lease zero":      func(c *ResourceConfig) { c.LeaseTTL = 0 },
-		"wait negative":   func(c *ResourceConfig) { c.MaxWait = -time.Second },
-		"fractional":      func(c *ResourceConfig) { c.Retention = time.Second + time.Nanosecond },
-		"lease upper":     func(c *ResourceConfig) { c.LeaseTTL = time.Hour + time.Millisecond },
-		"wait upper":      func(c *ResourceConfig) { c.MaxWait = time.Hour + time.Millisecond },
-		"submit upper":    func(c *ResourceConfig) { c.SubmitWindow = time.Hour + time.Millisecond },
-		"retention upper": func(c *ResourceConfig) { c.Retention = 24*time.Hour + time.Millisecond },
+		"capacity negative": func(c *ResourceConfig) { c.Admission.Capacity = -1 },
+		"capacity zero":     func(c *ResourceConfig) { c.Admission.Capacity = 0 },
+		"queue upper":       func(c *ResourceConfig) { c.Admission.MaxQueued = maxCountLimit + 1 },
+		"records zero":      func(c *ResourceConfig) { c.MaxRecords = 0 },
+		"records upper":     func(c *ResourceConfig) { c.MaxRecords = maxCountLimit + 1 },
+		"lease zero":        func(c *ResourceConfig) { c.LeaseTTL = 0 },
+		"wait negative":     func(c *ResourceConfig) { c.MaxWait = -time.Second },
+		"fractional":        func(c *ResourceConfig) { c.Retention = time.Second + time.Nanosecond },
+		"lease upper":       func(c *ResourceConfig) { c.LeaseTTL = time.Hour + time.Millisecond },
+		"wait upper":        func(c *ResourceConfig) { c.MaxWait = time.Hour + time.Millisecond },
+		"submit upper":      func(c *ResourceConfig) { c.SubmitWindow = time.Hour + time.Millisecond },
+		"retention upper":   func(c *ResourceConfig) { c.Retention = 24*time.Hour + time.Millisecond },
 	}
 
 	for name, mutate := range cases {
@@ -67,9 +67,9 @@ func TestDriverConfigValidation(t *testing.T) {
 	c.MaxWait = time.Hour
 	c.SubmitWindow = time.Hour
 	c.Retention = 24 * time.Hour
-	c.MaxRecords = 10000
-	c.Admission.Capacity = 10000
-	c.Admission.MaxQueued = 10000
+	c.MaxRecords = maxCountLimit
+	c.Admission.Capacity = maxInt
+	c.Admission.MaxQueued = maxCountLimit
 	if err := validConfig(c); err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,6 @@ func TestDriverRequestValidation(t *testing.T) {
 		{"wait bound", func(r *Request) { r.WaitUntil = r.SubmitUntil.Add(r.Config.MaxWait + time.Millisecond) }, ErrInvalidRequest},
 		{"zero weight", func(r *Request) { r.Weight = 0 }, ErrInvalidWeight},
 		{"negative weight", func(r *Request) { r.Weight = -1 }, ErrInvalidWeight},
-		{"excess weight", func(r *Request) { r.Weight = r.Config.Admission.Capacity + 1 }, ErrWeightExceedsCapacity},
 	}
 
 	for _, tc := range cases {

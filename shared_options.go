@@ -23,7 +23,7 @@ func (o SharedOptions) withDefaults() SharedOptions {
 	}
 
 	if o.Config.MaxRecords == 0 {
-		o.Config.MaxRecords = 10000
+		o.Config.MaxRecords = maxCountLimit
 	}
 
 	if o.OperationTimeout == 0 {

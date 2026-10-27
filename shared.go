@@ -16,9 +16,10 @@ import (
 type SharedOptions struct {
 	// Resource is a nonempty UTF-8 name without NUL, at most 256 bytes, shared by all contenders.
 	Resource string
-	// Config fixes resource-wide admission and lease policy. Zero protocol fields
+	// Config fixes queue/lease policy; Admission.Capacity is a first-creation hint.
+	// Current capacity is backend-owned and changes via Resize. Zero protocol fields
 	// default to LeaseTTL=30s, MaxWait=30s, SubmitWindow=5s, Retention=1m, and
-	// MaxRecords=10000. All clients of a resource must use the same resolved Config.
+	// MaxRecords=1000000. All clients must use the same resolved queue/lease policy.
 	Config ResourceConfig
 	// OperationTimeout bounds each backend call; zero defaults to 5s.
 	// Nonzero values must be positive and at most one minute.
@@ -133,9 +134,6 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 	}
 	if n <= 0 {
 		return nil, ErrInvalidWeight
-	}
-	if n > d.options.Config.Admission.Capacity {
-		return nil, ErrWeightExceedsCapacity
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err

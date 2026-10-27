@@ -70,7 +70,7 @@ and connection pool; logical isolation does not guarantee performance isolation.
 
 Separate Driver objects do not imply separate capacity. Clients using the same
 PostgreSQL database/table/namespace/resource, or the same Redis keyspace/namespace/resource,
-share capacity and must use the same resolved `ResourceConfig`. Use different
+share capacity and must use the same resolved queue/lease policy (creation-capacity hints may differ). Use different
 Resources for independent pools; create separate drivers when different namespaces,
 connections or PostgreSQL tables are needed. Memory has no namespace argument:
 its sharing scope is the driver instance, with separate state per Resource.
@@ -129,7 +129,7 @@ if err != nil {
 
 The pools above have independent limits of 4 and 8 tokens, even for the same tenant
 name. A full export pool does not consume image capacity. Each pool can have its
-own `ResourceConfig`; clients of the same pool must agree on that configuration.
+own `ResourceConfig`; clients of the same pool must agree on its immutable policy; creation-capacity hints may differ.
 Acquire starts a lease: release it after work stops, and supervise expiry/renewal
 as described in section 3.
 
@@ -224,7 +224,7 @@ implementation and uses the same defaults.
 | `Config.MaxWait` | 30s | Maximum queued lifetime; an earlier caller deadline wins |
 | `Config.SubmitWindow` | 5s | Window in which the initial request can be submitted |
 | `Config.Retention` | 1m | Recovery retention after reaching a terminal state |
-| `Config.MaxRecords` | 10000 | Bound on active, queued and retained terminal records together |
+| `Config.MaxRecords` | 1000000 | Bound on active, queued and retained terminal records together |
 | `OperationTimeout` | 5s | Maximum duration of each client-side backend call |
 | `PollInterval` | 50ms | Delay between queries while queued |
 | `ClockSkewAllowance` | 0 | Opt-in budget for a known client/backend clock-offset bound |
@@ -244,7 +244,7 @@ large histories increase snapshot processing cost. These defaults are a starting
 policy, not a throughput or latency guarantee. A driver's own shorter operation
 bound or the caller's earlier deadline can still take precedence.
 
-All participants of the same resource must use the same **resolved ResourceConfig**.
+All participants of the same resource must use the same **resolved queue/lease policy**, excluding the first-creation capacity hint.
 Defaults are filled before requests reach the backend. Existing resources retain
 their configuration: upgrading and omitting previously explicit, different values
 will yield `ErrConfigConflict`, not an online policy migration. Keep the existing
@@ -292,3 +292,65 @@ See [ADR 009](../decisions/009-clock-skew.md).
 
 For protocol internals, use the separate [custom driver guide](drivers.md).
 For the choices behind these defaults, see [ADR 008](../decisions/008-shared-usability.md).
+
+## Shared dynamic capacity
+
+Memory, PostgreSQL and Redis implement the optional `ResourceManager` interface;
+the five Driver business methods remain unchanged. For an already initialized
+Resource, use `Shared.Inspect` and versioned `Shared.Resize`:
+
+```go
+status, err := shared.Inspect(ctx)
+if err != nil {
+    return err
+}
+status, err = shared.Resize(ctx, 8, status.CapacityVersion)
+if err != nil {
+    return err
+}
+fmt.Println(status.Capacity, status.Used, status.CapacityVersion)
+```
+
+`Config.Admission.Capacity` is the positive first-creation hint. The first
+successful resource creation wins; later clients with the same queue/lease policy
+may use different hints. Construction performs no backend I/O. Current capacity
+and `CapacityVersion` are persisted separately; reconnecting never resets them.
+Hints are excluded from request identity and policy comparisons. New weights are
+validated against the backend's current capacity, so existing Shared clients can
+use expanded capacity without reconstruction.
+
+Capacity and request weight accept any positive Go `int`: up to `2^63-1` on
+64-bit processes and `2^31-1` on 32-bit processes. Participants must stay within
+the range supported by every client; out-of-range stored integers fail to decode
+or scan rather than being truncated. Capacity does not allocate one record per
+token. `MaxRecords` and `MaxQueued` remain capped at 1000000; tenant/group limits
+also remain unchanged. PostgreSQL stores capacity and weight as `BIGINT`. Redis
+preserves their exact integer JSON text without Lua numeric conversion. Restoring
+state or building observation counters rejects an overflowing charged-weight sum
+with `ErrCorruptState`; legal shrink overcommit remains supported.
+
+Shrink never revokes grants or forbids their normal renewal/release. `Used` may
+exceed `Capacity` until holders release/expire; no new grants occur while over
+capacity. Queued requests heavier than the new capacity become stable Rejected
+results with `ErrWeightExceedsCapacity`; the remaining queue keeps its fairness
+and protected-head rules. Expansion dispatches under the new limit; waiting
+clients discover grants on their next Observe (default polling: 50ms).
+
+`ExpectedVersion` is mandatory and compares `CapacityVersion`, not `Revision`.
+Only an actual capacity change increments it. A matching same-capacity call still
+performs maintenance and publishes a new Revision. Version conflict returns
+`ErrCapacityVersionConflict` without this operation committing maintenance; version
+exhaustion fails closed. Retry an ambiguous operation with the same absolute target
+and expected version, then Inspect on conflict; do not silently adopt a new version.
+There is no management-operation deduplication history or implicit retry of an
+unknown commit. Successful Resize means the limit was published, not that work drained.
+
+Inspect is read-only and reports one committed snapshot. Used/Queued may include
+expired records not yet maintained; `StateTime` and `Revision` identify its scope.
+It does not count actual executing tasks. Missing resources return
+`ErrResourceNotFound`; Inspect/Resize do not create them. Drivers without the optional
+capability return `ErrResourceManagementUnsupported` through Shared. Authorization
+belongs to the application/backend ACL, not Tenant. Capacity zero is not supported.
+
+The executable memory example `ExampleDriver_Resize` covers shrink-overcommit,
+release and expansion using the original Shared client.

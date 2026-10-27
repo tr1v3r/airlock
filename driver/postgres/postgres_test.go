@@ -50,7 +50,7 @@ func request(now time.Time) airlock.Request {
 }
 
 func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
-	s := airlock.SharedState{Version: 1, Config: request(now).Config, Rotations: [][]string{}}
+	s := airlock.SharedState{Version: 1, Config: request(now).Config, Capacity: request(now).Config.Admission.Capacity, CapacityVersion: 1, Rotations: [][]string{}}
 	if len(snapshot) > 0 {
 		_ = json.Unmarshal(snapshot, &s)
 	}
@@ -60,7 +60,7 @@ func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
 	if string(snapshot) == "corrupt" {
 		config = []byte("corrupt")
 	}
-	return sqlmock.NewRows(strings.Split(strings.ReplaceAll(resourceColumns, " ", ""), ",")).AddRow(s.Version, config, rotations, s.Protected, s.Cursor, strconv.FormatUint(s.Revision, 10), millis(s.Time))
+	return sqlmock.NewRows(strings.Split(strings.ReplaceAll(resourceColumns, " ", ""), ",")).AddRow(s.Version, config, rotations, s.Protected, s.Cursor, strconv.FormatUint(s.Revision, 10), millis(s.Time), s.Capacity, strconv.FormatUint(s.CapacityVersion, 10))
 }
 
 func requestRows(snapshot []byte) *sqlmock.Rows {
@@ -346,7 +346,7 @@ func TestConflictingCommandsRollbackWithoutPersist(t *testing.T) {
 				if conflict == "owner" {
 					wrong.Owner = airlock.NewRequest(now).Owner
 				} else {
-					wrong.Config.Admission.Capacity++
+					wrong.Config.Retention += time.Millisecond
 					want = airlock.ErrConfigConflict
 				}
 
@@ -438,7 +438,7 @@ func TestObserveProjectionErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, mode := range []string{"query", "missing", "revision", "config", "initial", "missing-record", "null-field", "backward"} {
+	for _, mode := range []string{"query", "missing", "revision", "config", "initial", "missing-record", "null-field", "backward", "negative-weight"} {
 		t.Run(mode, func(t *testing.T) {
 			d, m := mockDriver(t)
 			e := m.ExpectQuery("SELECT r.config")
@@ -461,6 +461,8 @@ func TestObserveProjectionErrors(t *testing.T) {
 				switch mode {
 				case "revision":
 					values[2] = "invalid"
+				case "negative-weight":
+					values[7] = int64(-1)
 				case "config":
 					values[0] = []byte("{")
 				case "initial":

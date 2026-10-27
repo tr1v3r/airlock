@@ -277,14 +277,14 @@ func TestTransitionModelTraces(t *testing.T) {
 
 func TestTransitionRestoredRequestFieldValidation(t *testing.T) {
 	mutations := map[string]func(*Request){
-		"owner":            func(r *Request) { r.Owner = "invalid" },
-		"tenant NUL":       func(r *Request) { r.Tenant = "tenant\x00" },
-		"tenant length":    func(r *Request) { r.Tenant = strings.Repeat("t", 257) },
-		"ID deadline":      func(r *Request) { r.SubmitUntil = r.SubmitUntil.Add(time.Millisecond) },
-		"fractional wait":  func(r *Request) { r.WaitUntil = r.WaitUntil.Add(time.Nanosecond) },
-		"future wait":      func(r *Request) { r.WaitUntil = r.SubmitUntil.Add(r.Config.MaxWait + time.Millisecond) },
-		"negative weight":  func(r *Request) { r.Weight = -1 },
-		"excessive weight": func(r *Request) { r.Weight = r.Config.Admission.Capacity + 1 },
+		"owner":           func(r *Request) { r.Owner = "invalid" },
+		"tenant NUL":      func(r *Request) { r.Tenant = "tenant\x00" },
+		"tenant length":   func(r *Request) { r.Tenant = strings.Repeat("t", 257) },
+		"ID deadline":     func(r *Request) { r.SubmitUntil = r.SubmitUntil.Add(time.Millisecond) },
+		"fractional wait": func(r *Request) { r.WaitUntil = r.WaitUntil.Add(time.Nanosecond) },
+		"future wait":     func(r *Request) { r.WaitUntil = r.SubmitUntil.Add(r.Config.MaxWait + time.Millisecond) },
+		"negative weight": func(r *Request) { r.Weight = -1 },
+		"zero weight":     func(r *Request) { r.Weight = 0 },
 	}
 
 	for name, mutate := range mutations {

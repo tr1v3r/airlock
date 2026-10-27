@@ -1,0 +1,325 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Shared 资源管理：Inspect 与 Resize 的执行路径",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/sequence-resource-management-20261028-0245/resource-management.html",
+    "column_fit": "spread",
+    "repository": {
+      "url": "git@github.com:tr1v3r/airlock.git",
+      "revision": "9fb6c6af01374f1e757afd3e60133398db2a93df",
+      "link_mode": "local-only"
+    }
+  },
+  "participants": [
+    {
+      "id": "admin",
+      "type": "external",
+      "label": "管理端",
+      "sublabel": "运维 / 控制面"
+    },
+    {
+      "id": "shared",
+      "type": "backend",
+      "label": "Shared 客户端",
+      "sublabel": "Inspect / Resize 便捷方法",
+      "sources": [
+        {
+          "path": "shared_resource.go",
+          "line": 33,
+          "end_line": 56,
+          "label": "ResourceManager 可选能力"
+        },
+        {
+          "path": "shared_resource.go",
+          "line": 126,
+          "end_line": 172,
+          "label": "Inspect / Resize 方法"
+        }
+      ]
+    },
+    {
+      "id": "core",
+      "type": "backend",
+      "label": "Go Transition",
+      "sublabel": "版本门与容量替换（两后端共用）",
+      "sources": [
+        {
+          "path": "shared_state.go",
+          "line": 87,
+          "end_line": 99,
+          "label": "ExpectedVersion / 溢出门"
+        },
+        {
+          "path": "shared_state.go",
+          "line": 153,
+          "end_line": 166,
+          "label": "改容量与超重等待拒绝"
+        }
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "行锁事务",
+      "sources": [
+        {
+          "path": "driver/postgres/resource.go",
+          "line": 13,
+          "end_line": 20,
+          "label": "Resize 入口"
+        },
+        {
+          "path": "driver/postgres/resource.go",
+          "line": 24,
+          "end_line": 67,
+          "label": "Inspect 单语句快照"
+        },
+        {
+          "path": "driver/postgres/storage.go",
+          "line": 63,
+          "end_line": 96,
+          "label": "FOR UPDATE 资源行"
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "更新锁 + Lua 原子提交",
+      "sources": [
+        {
+          "path": "driver/redis/resource.go",
+          "line": 11,
+          "end_line": 16,
+          "label": "只读 Lua"
+        },
+        {
+          "path": "driver/redis/resource.go",
+          "line": 18,
+          "end_line": 68,
+          "label": "Resize / Inspect 入口"
+        },
+        {
+          "path": "driver/redis/redis.go",
+          "line": 251,
+          "end_line": 320,
+          "label": "executeUpdate 与 commitScript"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 140,
+      "to": 318,
+      "label": "Inspect：只读"
+    },
+    {
+      "from": 330,
+      "to": 500,
+      "label": "Resize：PG 行锁事务"
+    },
+    {
+      "from": 512,
+      "to": 680,
+      "label": "Resize：Redis 更新锁"
+    }
+  ],
+  "messages": [
+    {
+      "id": "m1",
+      "from": "admin",
+      "to": "shared",
+      "y": 160,
+      "label": "Inspect(resource)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m2",
+      "from": "shared",
+      "to": "pg",
+      "y": 190,
+      "label": "InspectResource：MVCC 单语句（资源头 + SUM/COUNT）"
+    },
+    {
+      "id": "m3",
+      "from": "pg",
+      "to": "shared",
+      "y": 218,
+      "label": "ResourceStatus / ErrResourceNotFound",
+      "variant": "return"
+    },
+    {
+      "id": "m4",
+      "from": "shared",
+      "to": "redis",
+      "y": 248,
+      "label": "InspectResource：只读 Lua（HGET meta）",
+      "variant": "dashed"
+    },
+    {
+      "id": "m5",
+      "from": "redis",
+      "to": "shared",
+      "y": 276,
+      "label": "ResourceStatus（已发布投影）",
+      "variant": "return"
+    },
+    {
+      "id": "m6",
+      "from": "shared",
+      "to": "admin",
+      "y": 304,
+      "label": "容量 / 已用 / 排队 / CapacityVersion",
+      "variant": "return"
+    },
+    {
+      "id": "m7",
+      "from": "admin",
+      "to": "shared",
+      "y": 346,
+      "label": "Resize(capacity, expectedVersion)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m8",
+      "from": "shared",
+      "to": "pg",
+      "y": 374,
+      "label": "Resize 命令（复用业务事务）"
+    },
+    {
+      "id": "m9",
+      "from": "pg",
+      "to": "core",
+      "y": 402,
+      "label": "FOR UPDATE 锁资源行，重建状态"
+    },
+    {
+      "id": "m10",
+      "from": "core",
+      "to": "pg",
+      "y": 430,
+      "label": "版本门通过：改容量；超重等待者转稳定 Rejected"
+    },
+    {
+      "id": "m11",
+      "from": "pg",
+      "to": "shared",
+      "y": 458,
+      "label": "COMMIT：capacity / capacity_version / Revision"
+    },
+    {
+      "id": "m12",
+      "from": "pg",
+      "to": "shared",
+      "y": 486,
+      "label": "ErrCapacityVersionConflict（不自动跟随新版本）",
+      "variant": "security"
+    },
+    {
+      "id": "m13",
+      "from": "admin",
+      "to": "shared",
+      "y": 526,
+      "label": "Resize（Redis 后端）",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m14",
+      "from": "shared",
+      "to": "redis",
+      "y": 554,
+      "label": "execute(Resize)：抢每资源更新锁"
+    },
+    {
+      "id": "m15",
+      "from": "redis",
+      "to": "core",
+      "y": 582,
+      "label": "重读权威快照 → Transition"
+    },
+    {
+      "id": "m16",
+      "from": "core",
+      "to": "redis",
+      "y": 610,
+      "label": "冲突即放弃；成功产出新快照与投影"
+    },
+    {
+      "id": "m17",
+      "from": "redis",
+      "to": "shared",
+      "y": 638,
+      "label": "commitScript：owner + CommitWindow 原子发布"
+    },
+    {
+      "id": "m18",
+      "from": "shared",
+      "to": "admin",
+      "y": 666,
+      "label": "ResourceStatus / 冲突错误",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "shared",
+      "from": 150,
+      "to": 676,
+      "type": "backend"
+    },
+    {
+      "participant": "core",
+      "from": 395,
+      "to": 616,
+      "type": "backend"
+    },
+    {
+      "participant": "pg",
+      "from": 185,
+      "to": 492,
+      "type": "database"
+    },
+    {
+      "participant": "redis",
+      "from": 243,
+      "to": 646,
+      "type": "database"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Inspect：只读、无锁、可能过期",
+      "items": [
+        "PG 用一条 MVCC 语句读资源头并以 SUM(weight)/COUNT(*) 聚合，不取 FOR UPDATE，不等待正在进行的 Resize 事务。",
+        "Redis 用只读 Lua 读已发布投影 meta，不抢更新锁、不重试、不维护。",
+        "读数描述最近一次已提交的 StateTime，可能包含尚未维护的过期占用；缺行返回 ErrResourceNotFound。"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Resize 的版本语义",
+      "items": [
+        "ExpectedVersion 必填且比对的是 CapacityVersion，不是 Revision；冲突返回 ErrCapacityVersionConflict，绝不自动跟随新版本。",
+        "只有实际容量变化才递增 CapacityVersion；同容量调用仍提交维护并推进 Revision。",
+        "缩容允许 Used 暂超 Capacity：不撤销已授予，不阻止续租/释放；超重等待者持久化为稳定 Rejected。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "两个后端共用的原子边界",
+      "items": [
+        "PG：Resize 与业务命令同一条 Read Committed 事务，FOR UPDATE 行锁串行化，提交时一并写 capacity 与 capacity_version。",
+        "Redis：复用业务更新路径——更新锁防并发，owner 校验防迟到持有者，CommitWindow 用后端时钟拒绝漂移提交。",
+        "调度与生命周期规则只在 Go Transition 中存在一份；conformance 套件让 memory / PG / Redis 跑同一组断言。"
+      ]
+    }
+  ]
+}

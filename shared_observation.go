@@ -12,6 +12,10 @@ import (
 type Observation struct {
 	Resource        string
 	Config          ResourceConfig
+	Capacity        int
+	CapacityVersion uint64
+	Used            int
+	Queued          int
 	Time            time.Time
 	Revision        uint64
 	NextMaintenance time.Time
@@ -25,13 +29,7 @@ func (s *SharedState) NextMaintenance() time.Time {
 	var next time.Time
 
 	for _, rec := range s.Records {
-		at := rec.Until
-		if rec.Status != Queued && rec.Status != Granted {
-			at = rec.Finished.Add(s.Config.Retention)
-			if rec.Request.SubmitUntil.After(at) {
-				at = rec.Request.SubmitUntil
-			}
-		}
+		at := maintenanceAt(rec, s.Config.Retention)
 
 		if next.IsZero() || at.Before(next) {
 			next = at
@@ -53,7 +51,7 @@ func (o Observation) Observe(now time.Time, request Request) (result Result, rea
 
 	request.SubmitUntil = request.SubmitUntil.UTC()
 	request.WaitUntil = request.WaitUntil.UTC()
-	if o.Resource != request.Resource || !reflect.DeepEqual(o.Config, request.Config) {
+	if o.Resource != request.Resource || !o.Config.EqualPolicy(request.Config) {
 		return Result{}, true, ErrConfigConflict
 	}
 	if o.Revision == 0 || o.Revision == ^uint64(0) || o.Time.IsZero() || now.Truncate(time.Millisecond).Before(o.Time) {
@@ -67,7 +65,7 @@ func (o Observation) Observe(now time.Time, request Request) (result Result, rea
 	}
 
 	rec := *o.Record
-	rec.Request.Config = o.Config
+	rec.Request.Config = request.Config
 	if !reflect.DeepEqual(rec.Request, request) {
 		return Result{}, true, ErrRequestConflict
 	}
@@ -88,4 +86,16 @@ func (o Observation) Observe(now time.Time, request Request) (result Result, rea
 		err = admissionError(rec.Failure)
 	}
 	return result, true, err
+}
+
+// maintenanceAt is the record's next expiry or terminal-retention boundary.
+func maintenanceAt(rec *DriverRecord, retention time.Duration) time.Time {
+	if rec.Status == Queued || rec.Status == Granted {
+		return rec.Until
+	}
+	at := rec.Finished.Add(retention)
+	if rec.Request.SubmitUntil.After(at) {
+		at = rec.Request.SubmitUntil
+	}
+	return at
 }

@@ -631,9 +631,18 @@ func TestIndexEncodingErrors(t *testing.T) {
 		t.Fatal("invalid header time encoded")
 	}
 
-	s := &airlock.SharedState{Records: map[string]*airlock.DriverRecord{"bad": {Until: invalid, Status: airlock.Granted}}}
+	s := &airlock.SharedState{Records: map[string]*airlock.DriverRecord{"bad": {Request: airlock.Request{Weight: 1}, Until: invalid, Status: airlock.Granted}}}
 	if _, err := index(s); err == nil {
 		t.Fatal("invalid record time encoded")
+	}
+
+	// No index may be published when a malformed charged sum overflows.
+	s = &airlock.SharedState{Records: map[string]*airlock.DriverRecord{
+		"a": {Status: airlock.Granted, Request: airlock.Request{Weight: int(^uint(0) >> 1)}},
+		"b": {Status: airlock.Granted, Request: airlock.Request{Weight: 1}},
+	}}
+	if data, err := index(s); data != nil || !errors.Is(err, airlock.ErrCorruptState) {
+		t.Fatal(data, err)
 	}
 }
 

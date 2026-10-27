@@ -85,8 +85,10 @@ func newBenchDriver(tb testing.TB, seed []byte) *benchDriver {
 	}
 	d := &benchDriver{gate: make(chan struct{}, 1), snapshot: seed, state: state, nowFunc: time.Now}
 	if state != nil {
-		d.observation = Observation{Resource: state.Resource, Config: state.Config, Time: state.Time,
-			Revision: state.Revision, NextMaintenance: state.NextMaintenance()}
+		d.observation, err = state.Observation()
+		if err != nil {
+			tb.Fatal(err)
+		}
 	}
 	return d
 }
@@ -131,8 +133,10 @@ func (d *benchDriver) execute(ctx context.Context, cmd Command) (Result, error) 
 		}
 		d.snapshot = data
 		d.state = next
-		d.observation = Observation{Resource: next.Resource, Config: next.Config, Time: next.Time,
-			Revision: next.Revision, NextMaintenance: next.NextMaintenance()}
+		d.observation, codecErr = next.Observation()
+		if codecErr != nil {
+			return Result{}, codecErr
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
@@ -285,7 +289,7 @@ func benchSeedSnapshot(tb testing.TB, resource string, cfg ResourceConfig, termi
 		return nil
 	}
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	s := durableSnapshot{Version: 1, Resource: resource, Config: cfg,
+	s := durableSnapshot{Version: 1, Resource: resource, Config: cfg, Capacity: cfg.Admission.Capacity, CapacityVersion: 1,
 		Records: make(map[string]*durableRecord, terminals), Queues: make(map[string][]string),
 		Rotations: [][]string{{}}, Revision: 1, Time: now}
 	var probe Request
@@ -348,7 +352,7 @@ type sharedBenchEnv struct {
 // ErrConfigConflict (requirement: fixture Config must match exactly).
 func newSharedBenchEnv(tb testing.TB, p sharedBenchParams) *sharedBenchEnv {
 	tb.Helper()
-	if p.workers < 1 || p.cycles < 1 || p.capacity < 1 || p.capacity > 10000 || p.maxQueued < 0 || p.maxQueued > 10000 {
+	if p.workers < 1 || p.cycles < 1 || p.capacity < 1 || p.maxQueued < 0 || p.maxQueued > 10000 {
 		tb.Fatal("invalid shared bench parameters")
 	}
 	cfg := ResourceConfig{

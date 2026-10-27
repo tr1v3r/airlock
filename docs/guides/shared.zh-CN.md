@@ -63,8 +63,7 @@ Redis 把每个资源存放在 `airlock:{SHA256(namespace + "\0" + resource)}:st
 不同资源仍共享后端物理资源和连接池；逻辑隔离不代表性能隔离。
 
 创建不同 Driver 对象本身不会隔离容量。使用同一 PostgreSQL 数据库/表/namespace/resource，
-或同一 Redis keyspace/namespace/resource 的客户端会共享容量，必须使用相同的、补齐默认值后的
-`ResourceConfig`。独立容量池使用不同 Resource 即可；需要不同命名空间、连接或 PostgreSQL
+或同一 Redis keyspace/namespace/resource 的客户端会共享容量，必须使用相同的、补齐默认值后的队列/租约策略（首次创建容量提示可不同）。独立容量池使用不同 Resource 即可；需要不同命名空间、连接或 PostgreSQL
 表时再创建不同 Driver。Memory 没有 namespace 参数，其共享范围是 driver 实例，实例内每个
 Resource 拥有独立状态。
 
@@ -120,7 +119,7 @@ if err != nil {
 ```
 
 上述两个容量池分别限制为 4 和 8 个 token，即使租户名字相同也互不占用容量。
-每个池可以使用不同的 `ResourceConfig`，同一个池的所有客户端则必须使用一致的配置。
+每个池可以使用不同的 `ResourceConfig`，同一个池的客户端必须使用一致的不可变策略，首次创建容量提示可不同。
 申请成功会创建租约：工作停止后释放，并按第 3 节管理过期和续租。
 
 可执行的[多资源示例](../../driver/memory/example_test.go)复用一个 memory driver，
@@ -201,7 +200,7 @@ SDK 不执行任务、不自动续租，也无法杀死忽略取消信号的工�
 | `Config.MaxWait` | 30s | 最大排队时间；调用者更早的 deadline 优先 |
 | `Config.SubmitWindow` | 5s | 初次请求允许提交的时间窗口 |
 | `Config.Retention` | 1m | 请求进入终态后的恢复记录保留时间 |
-| `Config.MaxRecords` | 10000 | 活跃、排队和保留终态记录的总上限 |
+| `Config.MaxRecords` | 1000000 | 活跃、排队和保留终态记录的总上限 |
 | `OperationTimeout` | 5s | 客户端每次后端调用的时间上限 |
 | `PollInterval` | 50ms | 排队期间两次查询之间的间隔 |
 | `ClockSkewAllowance` | 0 | 显式预留已知客户端/后端时钟偏差上界 |
@@ -217,7 +216,7 @@ SDK 不执行任务、不自动续租，也无法杀死忽略取消信号的工�
 快照计算成本越高。这些默认值是起步策略，不保证吞吐或延迟。driver 自身更短的操作上限，
 以及调用者更早的 deadline，仍可优先生效。
 
-同一资源的所有参与者必须使用相同的**补齐默认值后的 ResourceConfig**。默认值在发往后端前
+同一资源的所有参与者必须使用相同的**补齐默认值后的队列/租约策略**（不含首次创建容量提示）。默认值在发往后端前
 补齐。已有资源的配置不会被改写：升级时若省略了以前显式配置且与默认值不同的参数，会得到
 `ErrConfigConflict`，不会在线迁移策略。升级时保留现有显式策略，或规划切换到另一个资源。
 OperationTimeout、PollInterval 与 ClockSkewAllowance 是客户端自己的设置。
@@ -254,3 +253,49 @@ GC 规则均不变。租约 Remaining/RTT 计算不变：预算不会增加租�
 
 协议实现细节放在独立的[自定义 driver 指南](drivers.zh-CN.md)。默认值取舍见
 [ADR 008](../decisions/008-shared-usability.md)。
+
+## Shared 动态容量
+
+Memory、PostgreSQL、Redis 均实现可选的 `ResourceManager`，原有五个 Driver 业务方法不变。
+对已初始化的 Resource，通过 `Shared.Inspect` 查询，再携带容量版本执行 `Shared.Resize`：
+
+```go
+status, err := shared.Inspect(ctx)
+if err != nil {
+    return err
+}
+status, err = shared.Resize(ctx, 8, status.CapacityVersion)
+if err != nil {
+    return err
+}
+fmt.Println(status.Capacity, status.Used, status.CapacityVersion)
+```
+
+`Config.Admission.Capacity` 是正数的首次创建提示。首次成功创建者确定初始容量；
+此后队列/租约策略相同的客户端可携带不同初始容量提示，重连不会重置容量。构造时仍不访问后端。
+当前容量与 CapacityVersion 单独持久化；提示不参与请求身份或不可变策略比较。新请求由后端按
+当前容量校验，旧 Shared 实例无需重建就能使用扩容后的容量。
+
+容量和请求重量支持任意正 Go `int`：64 位进程最大 `2^63-1`，32 位进程最大 `2^31-1`。
+所有参与者须使用彼此都能表示的范围；超出本机整数范围的存储数据会在解码或扫描时失败，
+不会截断。容量不会按令牌数分配记录；`MaxRecords`、`MaxQueued` 仍最多 1000000，租户和
+优先级组的数量限制也不变。PostgreSQL 以 `BIGINT` 保存容量和重量，Redis 保留精确整数
+JSON 文本，Lua 不将这些字段转换为数字。恢复状态或构建观察计数时，已授予重量总和溢出
+返回 `ErrCorruptState`；缩容造成的合法超限仍受支持。
+
+缩容不撤销已有租约，也不阻止正常续租/释放；Used 可以暂时大于 Capacity，超限时不新增授予，
+等待释放或过期。超过新容量的排队请求持久化为 Rejected，Observe 恢复 ErrWeightExceedsCapacity；
+其他请求保留公平顺序和保护队首。扩容按新上限调度，客户端在下一次 Observe 得知授予，默认轮询 50ms。
+
+ExpectedVersion 必填，对比 CapacityVersion 而非 Revision。只有实际容量变化才增加容量版本；
+版本匹配的同容量调用仍执行维护并提交新 Revision。版本冲突返回 ErrCapacityVersionConflict，
+本次调用不提交维护；容量版本溢出时失败关闭。结果不确定时保留原绝对目标和期望版本，冲突后
+再查询，由管理者决定下一步，不自动跟随新版本覆盖。没有管理操作去重历史，也不会自动重放
+未知提交。Resize 成功只表示上限已提交，不表示运行任务已降到目标。
+
+Inspect 只读，Used/Queued 表示已提交快照中的记录，可能包括尚未清理的过期记录；
+StateTime 和 Revision 标明口径，不代表真实执行任务数。资源不存在时返回 ErrResourceNotFound，
+Inspect/Resize 不创建资源。驱动不支持可选管理能力时，Shared 返回 ErrResourceManagementUnsupported。
+鉴权由应用/后端 ACL 负责，Tenant 不代表管理权限。第一版不支持容量 0。
+
+可执行 memory 示例 ExampleDriver_Resize 展示合法超限、释放，以及使用原 Shared 实例扩容后申请更大权重。

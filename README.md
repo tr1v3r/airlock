@@ -447,6 +447,68 @@ review approval, and disallow bypasses/force pushes as appropriate. Workflow fil
 alone cannot prevent merging. This change does not alter remote repository rules.
 Weekly schedules run from the repository's default branch.
 
+## Shared dynamic capacity
+
+Memory, PostgreSQL and Redis implement the optional `ResourceManager` interface;
+the five Driver business methods remain unchanged. For an already initialized
+Resource, use `Shared.Inspect` and versioned `Shared.Resize`:
+
+```go
+status, err := shared.Inspect(ctx)
+if err != nil {
+    return err
+}
+status, err = shared.Resize(ctx, 8, status.CapacityVersion)
+if err != nil {
+    return err
+}
+fmt.Println(status.Capacity, status.Used, status.CapacityVersion)
+```
+
+`Config.Admission.Capacity` is the positive first-creation hint. The first
+successful resource creation wins; later clients with the same queue/lease policy
+may use different hints. Construction performs no backend I/O. Current capacity
+and `CapacityVersion` are persisted separately; reconnecting never resets them.
+Hints are excluded from request identity and policy comparisons. New weights are
+validated against the backend's current capacity, so existing Shared clients can
+use expanded capacity without reconstruction.
+
+Capacity and request weight accept any positive Go `int`: up to `2^63-1` on
+64-bit processes and `2^31-1` on 32-bit processes. Participants must stay within
+the range supported by every client; out-of-range stored integers fail to decode
+or scan rather than being truncated. Capacity does not allocate one record per
+token. `MaxRecords` and `MaxQueued` remain capped at 1000000; tenant/group limits
+also remain unchanged. PostgreSQL stores capacity and weight as `BIGINT`. Redis
+preserves their exact integer JSON text without Lua numeric conversion. Restoring
+state or building observation counters rejects an overflowing charged-weight sum
+with `ErrCorruptState`; legal shrink overcommit remains supported.
+
+Shrink never revokes grants or forbids their normal renewal/release. `Used` may
+exceed `Capacity` until holders release/expire; no new grants occur while over
+capacity. Queued requests heavier than the new capacity become stable Rejected
+results with `ErrWeightExceedsCapacity`; the remaining queue keeps its fairness
+and protected-head rules. Expansion dispatches under the new limit; waiting
+clients discover grants on their next Observe (default polling: 50ms).
+
+`ExpectedVersion` is mandatory and compares `CapacityVersion`, not `Revision`.
+Only an actual capacity change increments it. A matching same-capacity call still
+performs maintenance and publishes a new Revision. Version conflict returns
+`ErrCapacityVersionConflict` without this operation committing maintenance; version
+exhaustion fails closed. Retry an ambiguous operation with the same absolute target
+and expected version, then Inspect on conflict; do not silently adopt a new version.
+There is no management-operation deduplication history or implicit retry of an
+unknown commit. Successful Resize means the limit was published, not that work drained.
+
+Inspect is read-only and reports one committed snapshot. Used/Queued may include
+expired records not yet maintained; `StateTime` and `Revision` identify its scope.
+It does not count actual executing tasks. Missing resources return
+`ErrResourceNotFound`; Inspect/Resize do not create them. Drivers without the optional
+capability return `ErrResourceManagementUnsupported` through Shared. Authorization
+belongs to the application/backend ACL, not Tenant. Capacity zero is not supported.
+
+The executable memory example `ExampleDriver_Resize` covers shrink-overcommit,
+release and expansion using the original Shared client.
+
 ## Local dynamic capacity
 
 For a local instance created with `New(Config)`, use `Resize(capacity int) error`
@@ -461,7 +523,7 @@ fmt.Println(stats.Capacity, stats.InUse)
 ```
 
 - Capacity must be positive; invalid values return `ErrInvalidConfig` without
-  changing state. The local API has no Shared-specific 10000-token limit.
+  changing state. Capacity uses the positive Go `int` range.
 - Expansion immediately dispatches waiters using tenant FIFO, round-robin,
   priority groups and protected-head rules. An unchanged capacity is a no-op.
 - Shrinking preserves issued permits. For example, shrinking from 10 to 5 while
@@ -487,7 +549,7 @@ The local admission type is `Airlock`, constructed with `New(Config)`. Every
 `Acquire(ctx)` or `AcquireFor(ctx, tenantID)` still acquires **one token**.
 The new `AcquireN(ctx, n)` and `AcquireNFor(ctx, tenantID, n)` acquire `n` tokens,
 returned together by `Permit.Release()`. `Config.Priority` optionally enables local
-priority groups without changing these signatures. Unlimited mode is not implemented. Local capacity supports Resize; Shared capacity remains fixed. Distributed leases and the memory driver use a separate API;
+priority groups without changing these signatures. Unlimited mode is not implemented. Local and Shared capacity support Resize through their respective APIs. Distributed leases and the memory driver use a separate API;
 PostgreSQL and Redis have separate drivers. Existing keyed configurations with
 `Priority: nil` (or omitted) retain single-group behavior. The new `Config.Priority`
 field requires callers using unkeyed `Config` literals to migrate to keyed fields.

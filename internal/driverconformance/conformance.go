@@ -22,6 +22,7 @@ import (
 // use only public protocol operations, never backend-specific state inspection.
 func Run(t *testing.T, factory func(*testing.T) airlock.Driver) {
 	t.Helper()
+	t.Run("resource_management", func(t *testing.T) { RunResourceManagement(t, factory(t)) })
 	tests := []struct {
 		name string
 		run  func(*harness)
@@ -141,7 +142,7 @@ func idempotency(h *harness) {
 	}
 
 	conflict := r
-	conflict.Config.Admission.Capacity++
+	conflict.Config.Retention += time.Millisecond
 	h.wantError(airlock.Submit, conflict, "", airlock.ErrConfigConflict)
 	h.wantError(airlock.Renew, r, "incorrect-lease", airlock.ErrLeaseLost)
 	h.wantError(airlock.Release, r, "incorrect-lease", airlock.ErrLeaseLost)

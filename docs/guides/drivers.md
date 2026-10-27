@@ -27,7 +27,7 @@ Submit does not wait for capacity: it returns Queued or Granted (or an error).
 Calls may still wait for backend I/O/locks, bounded by their context. Shared owns
 polling and cancellation cleanup. It does not implicitly retry network failures.
 
-Request contains resource, immutable configuration, ID, Owner, tenant, weight and
+Request contains resource, immutable policy plus a creation-capacity hint, ID, Owner, tenant, weight and
 submission/waiting deadlines. Reuse it unchanged. LeaseRef contains that original
 Request plus the granted LeaseID in its ID field. Result reports lifecycle status,
 lease ID, weight, remaining lease duration and backend revision. An error never
@@ -98,3 +98,32 @@ Drivers may use `Observation.Observe` and `SharedState.NextMaintenance` for comp
 read-only results. Read metadata and the target request atomically using backend
 time. Due maintenance, missing results or incomplete indexes must fall back to
 full Observe so expiry-driven scheduling still progresses without Release.
+
+## Optional resource management
+
+Implement `ResourceManager` alongside Driver to expose InspectResource and Resize.
+Resize is a real resource command (`Command{Kind: Resize, Resize: ...}`), not a
+fabricated user request. `Command.Resource()` selects its target. Return the
+committed `Result.ResourceStatus`; on any publication error return zero status.
+Use the ordinary resource update boundary and preserve ExpectedVersion across
+owner/window retries. No state is returned for a capacity-version conflict.
+
+SharedState.Capacity / CapacityVersion are independent of the creation hint in
+Config.Admission.Capacity. Compare configurations with EqualPolicy and normalize
+that hint before checking request identity. Preserve the current capacity through
+all business operations and restarts. Resize sweeps expiry without first dispatching
+under the old limit, removes oversized waiters, then dispatches under the new limit.
+Legal overcommit must survive restoration. `state.Observation()` returns a checked header and an error; it builds one header
+with current capacity/version, charged counters and the next maintenance boundary;
+publish it atomically with all affected request results. Inspect never runs Transition.
+Redis still requires atomic owner + CommitWindow checks, not old-snapshot comparison.
+PG updates capacity/version on airlock_resources with request deltas in one transaction.
+
+ValidateCommand checks positive Go `int` weight, not live resource capacity.
+Capacity and weight may reach the native `int` maximum; record and queue bounds
+remain 1000000. Restore and projection building must check charged-sum overflow
+before addition and reject it with ErrCorruptState. Never publish a projection
+when Observation returns an error. Stored values must fit each participant's
+native integer width; reject out-of-range data instead of narrowing it.
+Every custom driver must enforce current capacity for a fresh Submit inside its atomic
+boundary (Transition does this), even if it does not implement ResourceManager.

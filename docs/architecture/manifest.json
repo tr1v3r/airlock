@@ -157,12 +157,12 @@
   {
     "slug": "pg-operations",
     "type": "workflow",
-    "title": "PG 操作流程：无锁观察与事务更新",
+    "title": "PG 操作流程｜事务更新与 Resize / Inspect 资源管理",
     "title_en": "PostgreSQL operations and transaction boundaries",
-    "question": "五类操作何时加锁？读写哪张表？",
+    "question": "Resize/Inspect 怎么走？和业务命令共享哪些边界？",
     "question_en": "Trace the five operations, lock acquisition, full-state loading and delta writes.",
-    "candidate": ".archify/workflow-pg-operations-20261027-140038/candidate.json",
-    "html": ".archify/workflow-pg-operations-20261027-140038/pg-operations.html",
+    "candidate": ".archify/workflow-pg-operations-20261028-0245/candidate.json",
+    "html": ".archify/workflow-pg-operations-20261028-0245/pg-operations.html",
     "sources": [
       "driver/postgres/postgres.go",
       "driver/postgres/observe.go",
@@ -199,12 +199,12 @@
   {
     "slug": "redis-operations",
     "type": "workflow",
-    "title": "Redis 操作流程：更新锁与 owner/CommitWindow 校验",
+    "title": "Redis 操作流程｜更新锁、owner/CommitWindow 与 Resize / Inspect",
     "title_en": "Redis resource update lock and guarded commit workflow",
-    "question": "Hash 和更新锁如何协作？Observe 何时抢锁？",
+    "question": "更新锁与提交窗口如何保护 Resize？Inspect 读什么？",
     "question_en": "Follow read-only Observe, per-resource locking, owner/time guards and cleanup.",
-    "candidate": ".archify/workflow-redis-operations-20261027-224623/candidate.json",
-    "html": ".archify/workflow-redis-operations-20261027-224623/redis-operations.html",
+    "candidate": ".archify/workflow-redis-operations-20261028-0245/candidate.json",
+    "html": ".archify/workflow-redis-operations-20261028-0245/redis-operations.html",
     "sources": [
       "driver/redis/redis.go",
       "driver/redis/observe.go",
@@ -220,5 +220,26 @@
       "shared_commit_window_test.go"
     ],
     "preview": "previews/redis-operations.png"
+  },
+  {
+    "slug": "resource-management",
+    "type": "sequence",
+    "title": "Shared 资源管理：Inspect 与 Resize 的执行路径",
+    "candidate": ".archify/sequence-resource-management-20261028-0245/candidate.json",
+    "html": ".archify/sequence-resource-management-20261028-0245/resource-management.html",
+    "title_en": "Resource management: Inspect and Resize",
+    "question": "Inspect 读到哪里？Resize 的版本语义在两个后端如何落地？",
+    "question_en": "What Inspect reads; how Resize versioning lands on both backends.",
+    "sources": [
+      "shared_resource.go",
+      "shared_state.go",
+      "driver/postgres/resource.go",
+      "driver/redis/resource.go"
+    ],
+    "tests": [
+      "shared_resource_test.go",
+      "internal/driverconformance/resource.go"
+    ],
+    "preview": "previews/resource-management.png"
   }
 ]

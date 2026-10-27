@@ -135,13 +135,13 @@ PG 视图 09–10 保留 [`cbdfca7`](https://github.com/tr1v3r/airlock/tree/cbdf
 
 ### 09 · PG 操作流程：无锁观察与事务更新
 
-五类操作何时加锁？读写哪张表？
+五类业务操作何时加锁？读写哪张表？Resize/Inspect 复用同一事务边界（见图 12）。
 
-[HTML](.archify/workflow-pg-operations-20261027-140038/pg-operations.html) · [JSON](.archify/workflow-pg-operations-20261027-140038/candidate.json)
+[HTML](.archify/workflow-pg-operations-20261028-0245/pg-operations.html) · [JSON](.archify/workflow-pg-operations-20261028-0245/candidate.json)
 
 ![PG 操作流程：无锁观察与事务更新](previews/pg-operations.png)
 
-实现：[driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/postgres/observe.go](../../driver/postgres/observe.go), [driver/postgres/storage.go](../../driver/postgres/storage.go), [shared_state.go](../../shared_state.go)
+实现：[driver/postgres/postgres.go](../../driver/postgres/postgres.go), [driver/postgres/observe.go](../../driver/postgres/observe.go), [driver/postgres/storage.go](../../driver/postgres/storage.go), [driver/postgres/resource.go](../../driver/postgres/resource.go), [shared_state.go](../../shared_state.go)
 
 测试：[driver/postgres/postgres_test.go](../../driver/postgres/postgres_test.go), [driver/postgres/storage_test.go](../../driver/postgres/storage_test.go), [driver/postgres/postgres_integration_test.go](../../driver/postgres/postgres_integration_test.go)
 
@@ -161,15 +161,29 @@ PG 视图 09–10 保留 [`cbdfca7`](https://github.com/tr1v3r/airlock/tree/cbdf
 
 Hash 和更新锁如何协作？Observe 何时抢锁？
 
-[HTML](.archify/workflow-redis-operations-20261027-224623/redis-operations.html) · [JSON](.archify/workflow-redis-operations-20261027-224623/candidate.json)
+[HTML](.archify/workflow-redis-operations-20261028-0245/redis-operations.html) · [JSON](.archify/workflow-redis-operations-20261028-0245/candidate.json)
 
 ![Redis 操作流程：更新锁与 owner/CommitWindow 校验](previews/redis-operations.png)
 
-实现：[driver/redis/redis.go](../../driver/redis/redis.go), [driver/redis/observe.go](../../driver/redis/observe.go), [driver/redis/scripts.go](../../driver/redis/scripts.go), [driver/redis/update_lock.go](../../driver/redis/update_lock.go), [driver_transition.go](../../driver_transition.go), [shared_state.go](../../shared_state.go)
+实现：[driver/redis/redis.go](../../driver/redis/redis.go), [driver/redis/observe.go](../../driver/redis/observe.go), [driver/redis/resource.go](../../driver/redis/resource.go), [driver/redis/scripts.go](../../driver/redis/scripts.go), [driver/redis/update_lock.go](../../driver/redis/update_lock.go), [driver_transition.go](../../driver_transition.go), [shared_state.go](../../shared_state.go)
 
 测试：[driver/redis/redis_test.go](../../driver/redis/redis_test.go), [driver/redis/commit_test.go](../../driver/redis/commit_test.go), [driver/redis/integration_test.go](../../driver/redis/integration_test.go), [shared_commit_window_test.go](../../shared_commit_window_test.go)
 
+### 12 · Shared 资源管理：Inspect 与 Resize
+
+Inspect 读到哪里？Resize 的版本语义如何在 PG 行锁事务与 Redis 更新锁/Lua 提交中落地？
+
+[HTML](.archify/sequence-resource-management-20261028-0245/resource-management.html) · [JSON](.archify/sequence-resource-management-20261028-0245/candidate.json)
+
+![Shared 资源管理：Inspect 与 Resize](previews/resource-management.png)
+
+实现：[shared_resource.go](../../shared_resource.go), [shared_state.go](../../shared_state.go), [driver/postgres/resource.go](../../driver/postgres/resource.go), [driver/redis/resource.go](../../driver/redis/resource.go)
+
+测试：[shared_resource_test.go](../../shared_resource_test.go), [internal/driverconformance/resource.go](../../internal/driverconformance/resource.go)
+
 ## 阅读边界
+
+- Shared 版本化 Resize/Inspect 由图 12（时序）与更新后的 PG/Redis 操作图卡片覆盖；其余图仍为各自 pinned 版本的源码快照。
 
 - 图展示代码行为，不代表测得的吞吐或 SLA；时序图的纵轴只表示顺序。
 - 后端状态图保留完整状态转换，交叉线较多；可在 HTML 中聚焦状态逐条阅读。常见的重复观察、自循环等无状态变化操作省略。

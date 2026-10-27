@@ -8,6 +8,10 @@ driver 契约不限定持久化布局，结构化状态入口与快照入口都�
 [决策 007](007-redis-driver.md)；PostgreSQL 的存储布局演进见[决策 009](009-postgres-relational.md)。
 不代表已有标签版本。
 
+更新：Shared 支持可选 ResourceManager 的版本化 Resize 与只读 Inspect。Config 中容量是首次创建提示，
+当前容量/容量版本独立持久化；不改变请求身份。扩缩容、合法超限、查询时间口径见
+[Shared 指南](../guides/shared.zh-CN.md#shared-动态容量)。以下背景中的固定容量不变量应按该契约理解。
+
 ## API 与原子边界
 
 公开 Driver 使用五个有明确含义的方法：
@@ -48,7 +52,9 @@ Driver 必须串行化整个资源的读、转换、写，并且在新 snapshot 
 快照包含有效授权、终态记录、组游标、租户轮转/FIFO、protected head。它复用本地
 `enqueue/remove/dispatch`，没有另写一份公平算法；已有本地 Permit API 与取消竞态规则保持不变。
 整资源 JSON 是第一版有意选择：易于同契约复用和原子审查，但每次操作 O(保留记录数 + 队列数)，
-不是高吞吐承诺。每资源 Capacity/MaxQueued/MaxRecords 最多 10000，不能在终态恢复窗口内为新请求腾空旧记录。
+不是高吞吐承诺。每资源 MaxQueued/MaxRecords 最多 1000000，不能在终态恢复窗口内为新请求腾空旧记录。
+Capacity 和 Weight 使用正 Go int 范围，不随记录数限制；恢复状态和生成投影时检查占用累加溢出。
+PG 的容量和重量列为 BIGINT；32 位参与者拒绝读取超出本机整数范围的数据。
 配置只在快照里保存一份。后续按实测拆表/索引，不能改写调度契约来绕开成本。
 
 ## 时间、幂等与 GC
@@ -85,7 +91,8 @@ Cancel 可以先于 Submit 到达：创建 Cancelled tombstone，迟到 Submit �
 晚到成功不能复活 Lease。Release 在网络调用之前本地失效，失败允许同对象重试清理。
 定时器负责关闭 Done，Valid 还直接检查 deadline，不能用“定时器尚未运行”当成仍然有效。
 
-`sum(valid lease weights)<=Capacity` 是授权账本保证，不是任意暂停/分区下的物理运行并发上限。
+新增授予必须在当前容量内；平滑缩容允许已有授权总重量暂时超过新 Capacity，此时不新增授予。
+这属于授权账本规则，不是任意暂停/分区下的物理运行并发上限。
 调用者须在失效时停止工作，且工作真正结束后再释放。库不执行任务、不自动重试业务，也不提供通用 fencing。
 多个合法 holder 并存时，单个最大 fencing token 会错误废掉其他合法 holder。
 

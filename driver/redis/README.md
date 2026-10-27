@@ -51,7 +51,7 @@ holds observation metadata, and `r:<request-id>` holds each indexed request.
 Missing keys and hashes missing their snapshot are distinguished; empty, corrupt,
 and wrong-type state fails closed. State keys never expire and retain config/cursor
 even when idle; the separate update-lock keys described below have a TTL. All
-participants must use the same immutable resource configuration.
+participants must use the same immutable queue/lease policy; creation-capacity hints may differ.
 
 Mutations and due maintenance first contend for
 `airlock:{same-resource-hash}:update-lock`, a separate string key in the same
@@ -142,8 +142,15 @@ the limiter. An acquisition context only bounds waiting, not the delivered lease
 Unknown renewals invalidate the local lease. Retry cleanup with the same lease;
 never replace an ambiguous request with a new identity to assume capacity.
 
-State keys are permanent; update-lock keys expire. Administrative removal or
-capacity changes require quiescing all clients and active work. Retention/MaxRecords bound per-resource
+Capacity and request weight use positive Go `int` values, up to `2^63-1` on
+64-bit clients or `2^31-1` on 32-bit clients. The snapshot and embedded projection
+JSON retain exact integer text; Lua does not convert capacity or weight to a
+floating-point number. All participants must support the chosen integer range.
+Decoding unrepresentable values or summing overflowing charged weights fails
+closed. MaxRecords and queue-count limits remain unchanged. The Lua exact-time
+bound applies to backend timestamps, independently of capacity.
+
+State keys are permanent; update-lock keys expire. Administrative removal requires quiescing all clients and active work. Online capacity changes use ResourceManager.Resize. Retention/MaxRecords bound per-resource
 recovery history, not the total number of resource keys. Grant/queue weights,
 priority selection, protected heads, and terminal idempotency use the core driver
 contract. Priority turns count requests, not resource time, and provide no latency
@@ -169,3 +176,5 @@ Default tests use miniredis; real standalone and Cluster tests are opt-in.
 The public operations are `Submit`, `Observe`, `Cancel`, `Renew`, and `Release`.
 The first three accept an immutable `airlock.Request`; renewal and release use
 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`. All return `(airlock.Result, error)`.
+
+Resource management, capacity-version conflicts and read-only Inspect semantics are documented in the [Shared guide](../../docs/guides/shared.md#shared-dynamic-capacity).

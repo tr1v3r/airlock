@@ -26,7 +26,7 @@ type Driver interface {
 Submit 不等待容量，而是返回 Queued、Granted 或错误；调用仍可能等待后端 I/O 或锁，
 受 ctx 约束。轮询与取消清理由 Shared 负责，不隐式重试网络错误。
 
-Request 包含资源、不可变配置、ID、Owner、租户、重量、提交和等待截止时间，后续需原样复用。
+Request 包含资源、不可变策略与首次创建容量提示、ID、Owner、租户、重量、提交和等待截止时间，后续需原样复用。
 LeaseRef 包含原 Request，ID 字段是授予时的 LeaseID。Result 表达生命周期状态、租约 ID、
 重量、剩余有效期和后端 revision。即使写入可能已提交，带有错误的结果也不能授权工作。
 
@@ -82,3 +82,23 @@ Redis 的状态操作和锁竞争受 `WithOperationTimeout`（默认五秒）或
 只读优化可使用核心 `Observation.Observe` 与 `SharedState.NextMaintenance` 辅助方法。
 元数据和目标请求必须来自同一个原子快照，并使用后端时间。到期、结果缺失或索引不完整
 时须回到完整 Observe，不能因分离查询而丢失无人 Release 时的过期调度能力。
+
+## 可选资源管理
+
+Driver 可同时实现 ResourceManager，提供 InspectResource 和 Resize。Resize 使用真正的资源级
+命令 `Command{Kind: Resize, Resize: ...}`，不伪造用户请求；Command.Resource() 返回目标资源。
+发布成功后才返回 Result.ResourceStatus，发布出错则返回零状态。复用正常资源更新边界，
+owner/时间窗口重试保持原 ExpectedVersion；容量版本冲突不产生候选状态。
+
+SharedState.Capacity / CapacityVersion 独立于 Config.Admission.Capacity 的首次创建提示。
+用 EqualPolicy 比较不可变规则，请求身份比较前归一化提示；普通操作和重启都不能重置容量。
+Resize 清理过期时不先按旧容量调度，移除超重等待者后才按新容量调度；恢复必须允许合法超限。
+state.Observation() 返回观察头和错误，生成当前容量/版本、占用与排队计数、下一维护时间，
+并与请求变化一致发布。已授予重量总和在加法前检查溢出，失败返回 ErrCorruptState，不得发布。
+Inspect 不运行 Transition。Redis 仍在 Lua 中检查 owner + CommitWindow，不比较旧快照；
+PG 在资源行事务中同时写容量、容量版本和请求差异。
+
+ValidateCommand 只校验重量为正 Go `int`，不校验资源当前容量。容量和重量可达本机 int 上限，
+记录和队列数仍最多 1000000。存储整数必须能被每个参与者表示，超范围时拒绝读取，不得截断。
+自定义 driver 即使
+不实现 ResourceManager，也必须在原子边界内按当前容量检查新 Submit；Transition 已包含此规则。

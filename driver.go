@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +19,8 @@ import (
 // atomically persist lifecycle/scheduling changes even on business rejection,
 // and honor ctx. Storage layout and use of the reference helpers are optional. Transport errors are ambiguous and never authorize work.
 // Drivers do not own injected connections, execute work, or fall back locally.
-// All callers of a resource must use the same immutable ResourceConfig.
+// Callers must use the same resource policy. Admission.Capacity is a creation
+// hint; existing resources use their persisted capacity.
 // Implementations must be safe for concurrent use. Contexts must be non-nil.
 // Request identities and owner secrets must be retained for recovery; never
 // replace an ambiguous Submit with a fresh ID and assume no capacity was acquired.
@@ -39,10 +41,13 @@ type Driver interface {
 // ResourceConfig fixes admission, expiry and recovery bounds for a resource.
 // Durations are positive whole milliseconds. LeaseTTL, MaxWait and SubmitWindow
 // are at most one hour; Retention is at most 24 hours. MaxRecords bounds all
-// queued, granted and terminal records together (1..10000). No records are
-// evicted to admit new requests. Capacity and MaxQueued are at most 10000.
+// queued, granted and terminal records together (1..1000000). No records are
+// evicted to admit new requests. MaxQueued is at most 1000000. Capacity and
+// weights use the positive range of Go int, not a record-count-based ceiling.
 type ResourceConfig struct {
-	// Admission fixes weighted capacity and request queue limits; Capacity and MaxQueued are at most 10000.
+	// Admission fixes queue/priority policy. Capacity is a first-creation hint
+	// (positive Go int), ignored when matching existing policies; use Resize to change
+	// an existing resource. MaxQueued is at most 1000000.
 	Admission Config
 	// LeaseTTL is validity after grant or renewal, in whole milliseconds within (0, 1h].
 	LeaseTTL time.Duration
@@ -52,7 +57,7 @@ type ResourceConfig struct {
 	SubmitWindow time.Duration
 	// Retention keeps terminal outcomes after completion; GC also waits for SubmitUntil. Range: (0, 24h].
 	Retention time.Duration
-	// MaxRecords caps queued, granted and terminal history together, from 1 through 10000.
+	// MaxRecords caps queued, granted and terminal history together, from 1 through 1000000.
 	MaxRecords int
 }
 
@@ -73,9 +78,11 @@ type Request struct {
 	WaitUntil time.Time
 	// Tenant is UTF-8 without NUL, at most 256 bytes; empty selects the shared default tenant.
 	Tenant string
-	// Weight is the atomic token count, from 1 through Config.Admission.Capacity.
+	// Weight is a positive Go int token count. New Submit is
+	// checked against the persisted current capacity, not the creation hint.
 	Weight int
-	// Config must exactly match the immutable resolved policy used by all callers of Resource.
+	// Config must match the resolved policy; its creation-capacity hint is not
+	// part of request identity or existing-resource policy equality.
 	Config ResourceConfig
 }
 
@@ -93,6 +100,8 @@ type LeaseRef struct {
 type Operation string
 
 const (
+	// Resize adjusts a resource capacity under an expected capacity version.
+	Resize Operation = "resize"
 	// Submit admits a request or returns its existing outcome without refreshing TTL.
 	Submit Operation = "submit"
 	// Observe reads outcomes and advances due maintenance; polling order is not grant order.
@@ -108,6 +117,8 @@ const (
 // Command is the input to the shared Transition implementation. Driver callers
 // use the named methods with Request or LeaseRef instead of constructing commands.
 type Command struct {
+	// Resize carries a resource-level management command; Request is unused.
+	Resize ResizeRequest
 	// Kind selects Submit, Observe, Cancel, Renew or Release.
 	Kind Operation
 	// Request identifies the original immutable submission for every operation.
@@ -138,6 +149,8 @@ const (
 // backend evaluation time; clients subtract the entire round trip. Revision is
 // monotonic per resource, including maintenance-only transitions.
 type Result struct {
+	// ResourceStatus is populated by a committed Resize command.
+	ResourceStatus ResourceStatus
 	// Status is the backend request lifecycle; only Granted with nil error may authorize work.
 	Status Status
 	// LeaseID identifies a grant and may remain on terminal records; it is not a fencing token.
@@ -192,9 +205,12 @@ func validSecret(s string) bool {
 	return e == nil && len(b) == 16 && strings.ToLower(s) == s
 }
 
+// maxCountLimit is the protocol ceiling for per-resource record and queue counts.
+const maxCountLimit = 1000000
+
 // validConfig checks protocol bounds and the local scheduler policy without backend I/O.
 func validConfig(c ResourceConfig) error {
-	if c.Admission.Capacity > 10000 || c.Admission.MaxQueued > 10000 || c.MaxRecords < 1 || c.MaxRecords > 10000 {
+	if c.Admission.MaxQueued > maxCountLimit || c.MaxRecords < 1 || c.MaxRecords > maxCountLimit {
 		return ErrInvalidConfig
 	}
 
@@ -253,9 +269,6 @@ func validRequestFields(r Request) error {
 	if r.Weight <= 0 {
 		return ErrInvalidWeight
 	}
-	if r.Weight > r.Config.Admission.Capacity {
-		return ErrWeightExceedsCapacity
-	}
 	return nil
 }
 
@@ -263,6 +276,9 @@ func validRequestFields(r Request) error {
 // Drivers should call it before allocating a resource or opening a transaction.
 // LeaseID matching and backend-relative deadline checks occur in Transition, not here.
 func ValidateCommand(cmd Command) error {
+	if cmd.Kind == Resize {
+		return ValidateResize(cmd.Resize)
+	}
 	if err := validRequest(cmd.Request); err != nil {
 		return err
 	}
@@ -277,3 +293,17 @@ func ValidateCommand(cmd Command) error {
 
 // validText accepts shared-protocol strings that can be stored in PostgreSQL text and JSON.
 func validText(s string) bool { return utf8.ValidString(s) && !strings.ContainsRune(s, 0) }
+
+// EqualPolicy compares immutable rules, excluding first-creation capacity hints.
+func (c ResourceConfig) EqualPolicy(other ResourceConfig) bool {
+	c.Admission.Capacity, other.Admission.Capacity = 0, 0
+	return reflect.DeepEqual(c, other)
+}
+
+// Resource returns the resource addressed by this business or management command.
+func (c Command) Resource() string {
+	if c.Kind == Resize {
+		return c.Resize.Resource
+	}
+	return c.Request.Resource
+}

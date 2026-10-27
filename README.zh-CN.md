@@ -373,6 +373,52 @@ bash scripts/stress.sh quick
 要求 **CI Gate** 成功、通过 PR 和审查批准，并按需禁止绕过与强推。
 仅提交工作流不能阻止合并；本次变更不修改远端仓库规则。每周定时任务运行默认分支的工作流。
 
+## Shared 动态容量
+
+Memory、PostgreSQL、Redis 均实现可选的 `ResourceManager`，原有五个 Driver 业务方法不变。
+对已初始化的 Resource，通过 `Shared.Inspect` 查询，再携带容量版本执行 `Shared.Resize`：
+
+```go
+status, err := shared.Inspect(ctx)
+if err != nil {
+    return err
+}
+status, err = shared.Resize(ctx, 8, status.CapacityVersion)
+if err != nil {
+    return err
+}
+fmt.Println(status.Capacity, status.Used, status.CapacityVersion)
+```
+
+`Config.Admission.Capacity` 是正数的首次创建提示。首次成功创建者确定初始容量；
+此后队列/租约策略相同的客户端可携带不同初始容量提示，重连不会重置容量。构造时仍不访问后端。
+当前容量与 CapacityVersion 单独持久化；提示不参与请求身份或不可变策略比较。新请求由后端按
+当前容量校验，旧 Shared 实例无需重建就能使用扩容后的容量。
+
+容量和请求重量支持任意正 Go `int`：64 位进程最大 `2^63-1`，32 位进程最大 `2^31-1`。
+所有参与者须使用彼此都能表示的范围；超出本机整数范围的存储数据会在解码或扫描时失败，
+不会截断。容量不会按令牌数分配记录；`MaxRecords`、`MaxQueued` 仍最多 1000000，租户和
+优先级组的数量限制也不变。PostgreSQL 以 `BIGINT` 保存容量和重量，Redis 保留精确整数
+JSON 文本，Lua 不将这些字段转换为数字。恢复状态或构建观察计数时，已授予重量总和溢出
+返回 `ErrCorruptState`；缩容造成的合法超限仍受支持。
+
+缩容不撤销已有租约，也不阻止正常续租/释放；Used 可以暂时大于 Capacity，超限时不新增授予，
+等待释放或过期。超过新容量的排队请求持久化为 Rejected，Observe 恢复 ErrWeightExceedsCapacity；
+其他请求保留公平顺序和保护队首。扩容按新上限调度，客户端在下一次 Observe 得知授予，默认轮询 50ms。
+
+ExpectedVersion 必填，对比 CapacityVersion 而非 Revision。只有实际容量变化才增加容量版本；
+版本匹配的同容量调用仍执行维护并提交新 Revision。版本冲突返回 ErrCapacityVersionConflict，
+本次调用不提交维护；容量版本溢出时失败关闭。结果不确定时保留原绝对目标和期望版本，冲突后
+再查询，由管理者决定下一步，不自动跟随新版本覆盖。没有管理操作去重历史，也不会自动重放
+未知提交。Resize 成功只表示上限已提交，不表示运行任务已降到目标。
+
+Inspect 只读，Used/Queued 表示已提交快照中的记录，可能包括尚未清理的过期记录；
+StateTime 和 Revision 标明口径，不代表真实执行任务数。资源不存在时返回 ErrResourceNotFound，
+Inspect/Resize 不创建资源。驱动不支持可选管理能力时，Shared 返回 ErrResourceManagementUnsupported。
+鉴权由应用/后端 ACL 负责，Tenant 不代表管理权限。第一版不支持容量 0。
+
+可执行 memory 示例 ExampleDriver_Resize 展示合法超限、释放，以及使用原 Shared 实例扩容后申请更大权重。
+
 ## 本地动态容量
 
 对于通过 `New(Config)` 创建的本地实例，可用 `Resize(capacity int) error`
@@ -387,7 +433,7 @@ fmt.Println(stats.Capacity, stats.InUse)
 ```
 
 - 容量必须为正数；无效值返回 `ErrInvalidConfig`，状态不变。
-  本地接口不受 Shared 的 10000 令牌上限限制。
+  容量范围为正 Go `int`。
 - 扩容立即按租户 FIFO、轮转、优先级组和保护队首规则调度等待者。
   调整为相同容量不执行任何变更。
 - 缩容保留已发出的 Permit。例如持有 8 个令牌时从 10 缩到 5，
@@ -411,7 +457,7 @@ fmt.Println(stats.Capacity, stats.InUse)
 每次 `Acquire(ctx)` 或 `AcquireFor(ctx, tenantID)` 仍然**仅获取一个令牌**。
 新增 `AcquireN(ctx, n)` 和 `AcquireNFor(ctx, tenantID, n)` 获取 `n` 个令牌，
 通过 `Permit.Release()` 一次归还。`Config.Priority` 可选启用本地优先级组，无需修改申请签名。
-无限模式尚未实现。本地容量支持 Resize，Shared 容量仍然固定。分布式租约和 memory driver 使用独立 API，PostgreSQL 和 Redis 均提供独立 driver。使用字段名且省略 `Priority` 或设为 nil 的配置
+无限模式尚未实现。本地与 Shared 均可通过各自的 Resize 接口调整容量。分布式租约和 memory driver 使用独立 API，PostgreSQL 和 Redis 均提供独立 driver。使用字段名且省略 `Priority` 或设为 nil 的配置
 保持原有单组行为；新增 `Config.Priority` 字段会影响无字段名的 `Config` 字面量，请改用字段名。
 
 这是开发阶段的破坏性变更：移除 `Pool`/`NewPool` 和先前的 `Gate`/`NewGate` 名称。

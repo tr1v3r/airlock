@@ -29,15 +29,13 @@ type observationIndex struct {
 func index(state *airlock.SharedState) ([]byte, error) {
 	token := airlock.NewRequest(state.Time).Owner
 
+	observation, err := state.Observation()
+	if err != nil {
+		return nil, err
+	}
 	meta, err := json.Marshal(observationHeader{
-		Observation: airlock.Observation{
-			Resource:        state.Resource,
-			Config:          state.Config,
-			Time:            state.Time,
-			Revision:        state.Revision,
-			NextMaintenance: state.NextMaintenance(),
-		},
-		Token: token,
+		Observation: observation,
+		Token:       token,
 	})
 	if err != nil {
 		return nil, err

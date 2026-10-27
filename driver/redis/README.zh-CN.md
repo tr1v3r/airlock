@@ -38,12 +38,17 @@ AIRLOCK_REDIS_ADDR=127.0.0.1:6379 go run ./examples/basic
 
 ## 原子性、时间和重试
 
+容量与请求重量使用正 Go `int`：64 位最大 `2^63-1`，32 位最大 `2^31-1`。
+快照及投影的嵌套 JSON 保留精确整数文本，Lua 不把容量或重量转成浮点数。所有参与者
+须支持所选数值范围；解码超范围整数或已授予重量总和溢出时拒绝操作。记录和队列数限制
+不变。Lua 的精确时间边界针对后端时间戳，与容量无关。
+
 每个资源使用一个永久 key：`airlock:{sha256(namespace + NUL + resource)}:state`。
 namespace 必须为合法 UTF-8、无 NUL、最多 256 字节；hash tag 保证每个操作只访问
 一个 Cluster slot。key 为 hash：`state` 保存权威 JSON 快照，`meta` 保存观察元数据，
 `r:<request-id>` 保存单个请求索引。区分 key 缺失与 hash 缺少快照字段；
 空、损坏或错误类型的状态均拒绝操作。状态 key 不过期，空闲时也保留配置和调度游标；
-下文的更新锁 key 带 TTL。共享资源的所有参与者须使用相同且不可变的资源配置。
+下文的更新锁 key 带 TTL。共享资源的所有参与者须使用相同的不可变队列/租约策略，首次创建容量提示可以不同。
 
 修改状态或到期维护时，先竞争 `airlock:{同一资源哈希}:update-lock`。这是同一
 Cluster slot 内独立的 string key；用新的随机 owner token 执行 `SET NX PX` 抢占。
@@ -109,7 +114,7 @@ FIFO，调用先后和轮询频率都不构成授予顺序保证。
 会使本地租约失效；清理可使用同一 lease 重试，不能以新身份替换不确定请求来
 假定已有容量。
 
-状态 key 永久保留，更新锁 key 会过期。管理删除或容量变更前须停止所有客户端及活跃工作。
+状态 key 永久保留，更新锁 key 会过期。管理删除前须停止所有客户端及活跃工作；在线容量变更通过 ResourceManager.Resize。
 Retention/MaxRecords 限制单资源历史，不限制资源 key 总数。权重、优先级选择、
 受保护队首和终态幂等均遵循核心 driver 契约。优先级轮次按请求数计算，不按资源
 时间计算，也不保证延迟 SLA。高优先级资源可使用独立 key 和固定容量预算隔离。
@@ -133,3 +138,5 @@ AIRLOCK_REDIS_CLUSTER_ADDRS=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002 GOWORK=
 公开操作为 `Submit`、`Observe`、`Cancel`、`Renew` 和 `Release`。前三者接收不可变
 `airlock.Request`；续租与释放接收 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`，
 均返回 `(airlock.Result, error)`。
+
+在线扩缩容通过可选 ResourceManager.Resize，当前容量/容量版本与状态投影一起发布。只读 Inspect 的时间口径及版本冲突恢复见 [Shared 指南](../../docs/guides/shared.zh-CN.md#shared-动态容量)。

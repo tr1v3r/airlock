@@ -32,8 +32,13 @@ type SharedState struct {
 	Version int
 	// Resource binds the state to one logical capacity pool.
 	Resource string
-	// Config is the immutable resource policy shared by all retained records.
+	// Config holds immutable rules and the original creation-capacity hint.
+	// Current Capacity is independent; EqualPolicy excludes the hint.
 	Config ResourceConfig
+	// Capacity is the current admission limit, independent of Config's creation hint.
+	Capacity int
+	// CapacityVersion changes only when capacity changes; starts at one.
+	CapacityVersion uint64
 	// Records maps request IDs to queued, granted and terminal outcomes within MaxRecords.
 	Records map[string]*DriverRecord
 	// Rotations preserves each distinct group's tenant selection order.
@@ -67,17 +72,37 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 	now = observedNow.Truncate(time.Millisecond)
 	var s SharedState
 	if state == nil {
-		s = SharedState{Version: 1, Resource: r.Resource, Config: r.Config, Records: make(map[string]*durableRecord), Queues: make(map[string][]string)}
+		if cmd.Kind == Resize {
+			return nil, Result{}, ErrResourceNotFound
+		}
+		s = SharedState{Version: 1, Resource: r.Resource, Config: r.Config, Capacity: r.Config.Admission.Capacity, CapacityVersion: 1, Records: make(map[string]*durableRecord), Queues: make(map[string][]string)}
 	} else {
 		s = *state
 	}
 
 	if state != nil && (s.Version != 1 || s.Records == nil || s.Revision == 0 || s.Revision == ^uint64(0) ||
-		s.Time.IsZero() || now.Before(s.Time)) {
+		s.Time.IsZero() || now.Before(s.Time) || s.Capacity < 1 || s.CapacityVersion == 0) {
 		return nil, Result{}, ErrCorruptState
 	}
-	if s.Resource != r.Resource || !reflect.DeepEqual(s.Config, r.Config) {
-		return nil, Result{}, ErrConfigConflict
+	if cmd.Kind == Resize {
+		if s.Resource != cmd.Resize.Resource {
+			return nil, Result{}, ErrConfigConflict
+		}
+		if err := validConfig(s.Config); err != nil {
+			return nil, Result{}, ErrCorruptState
+		}
+		if s.CapacityVersion != cmd.Resize.ExpectedVersion {
+			return nil, Result{}, ErrCapacityVersionConflict
+		}
+		if s.Capacity != cmd.Resize.Capacity && s.CapacityVersion == ^uint64(0) {
+			return nil, Result{}, ErrCapacityVersionExhausted
+		}
+	} else {
+		if s.Resource != r.Resource || !s.Config.EqualPolicy(r.Config) {
+			return nil, Result{}, ErrConfigConflict
+		}
+		r.Config = s.Config
+		cmd.Request = r
 	}
 
 	for _, rec := range s.Records {
@@ -89,9 +114,11 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 	}
 
 	// Keep boundary order: original records, original command, final records.
-	window.request(cmd.Request)
+	if cmd.Kind != Resize {
+		window.request(cmd.Request)
+	}
 
-	if old := s.Records[r.ID]; old != nil && !reflect.DeepEqual(old.Request, r) {
+	if old := s.Records[r.ID]; cmd.Kind != Resize && old != nil && !reflect.DeepEqual(old.Request, r) {
 		return nil, Result{}, ErrRequestConflict
 	}
 
@@ -121,84 +148,106 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 		}
 	}
 
-	s.dispatch(g, waiters, now)
-	rec := s.Records[r.ID]
+	var rec *durableRecord
 	var opErr error
-	if rec == nil {
-		switch {
-		case !now.Before(r.SubmitUntil):
-			opErr = ErrSubmitExpired
-		case cmd.Kind != Submit && cmd.Kind != Cancel:
-			opErr = ErrNotFound
-		case r.SubmitUntil.After(now.Add(r.Config.SubmitWindow)) || r.WaitUntil.After(now.Add(r.Config.MaxWait)):
-			opErr = ErrInvalidRequest
-		case len(s.Records) >= s.Config.MaxRecords:
-			opErr = ErrHistoryFull
-		default:
-			rec = &durableRecord{Request: r}
-			s.Records[r.ID] = rec
-
-			switch {
-			case cmd.Kind == Cancel:
-				rec.Status = Cancelled
-				rec.Finished = now
-			case !now.Before(r.WaitUntil):
-				rec.Status = Expired
-				rec.Finished = now
-			case g.queued == 0 && r.Weight <= g.cfg.Capacity-g.used:
-				g.used += r.Weight
-				g.active++
-				grant(rec, now)
-			default:
-				w, e := g.enqueue(r.Tenant, r.Weight)
-				if e != nil {
-					rec.Status = Rejected
-					rec.Finished = now
-					rec.Failure = e.Error()
-				} else {
-					rec.Status = Queued
-					rec.Until = r.WaitUntil
-					waiters[r.ID] = w
-				}
+	if cmd.Kind == Resize {
+		if s.Capacity != cmd.Resize.Capacity {
+			s.CapacityVersion++
+		}
+		s.Capacity = cmd.Resize.Capacity
+		g.cfg.Capacity = s.Capacity
+		for id, w := range waiters {
+			if w.weight > s.Capacity {
+				g.remove(w)
+				delete(waiters, id)
+				record := s.Records[id]
+				record.Status, record.Finished, record.Failure = Rejected, now, ErrWeightExceedsCapacity.Error()
 			}
 		}
 	} else {
-		switch cmd.Kind {
-		case Cancel:
-			if rec.Status == Queued {
-				g.remove(waiters[r.ID])
-				delete(waiters, r.ID)
-			}
+		s.dispatch(g, waiters, now)
+		rec = s.Records[r.ID]
+		if rec == nil {
+			switch {
+			case !now.Before(r.SubmitUntil):
+				opErr = ErrSubmitExpired
+			case cmd.Kind != Submit && cmd.Kind != Cancel:
+				opErr = ErrNotFound
+			case r.SubmitUntil.After(now.Add(r.Config.SubmitWindow)) || r.WaitUntil.After(now.Add(r.Config.MaxWait)):
+				opErr = ErrInvalidRequest
+			case len(s.Records) >= s.Config.MaxRecords:
+				opErr = ErrHistoryFull
+			default:
+				rec = &durableRecord{Request: r}
+				s.Records[r.ID] = rec
 
-			if rec.Status == Granted {
-				g.used -= r.Weight
-				g.active--
+				switch {
+				case cmd.Kind == Cancel:
+					rec.Status = Cancelled
+					rec.Finished = now
+				case cmd.Kind == Submit && r.Weight > s.Capacity:
+					rec.Status = Rejected
+					rec.Finished = now
+					rec.Failure = ErrWeightExceedsCapacity.Error()
+				case !now.Before(r.WaitUntil):
+					rec.Status = Expired
+					rec.Finished = now
+				case g.queued == 0 && r.Weight <= g.cfg.Capacity-g.used:
+					g.used += r.Weight
+					g.active++
+					grant(rec, now)
+				default:
+					w, e := g.enqueue(r.Tenant, r.Weight)
+					if e != nil {
+						rec.Status = Rejected
+						rec.Finished = now
+						rec.Failure = e.Error()
+					} else {
+						rec.Status = Queued
+						rec.Until = r.WaitUntil
+						waiters[r.ID] = w
+					}
+				}
 			}
+		} else {
+			switch cmd.Kind {
+			case Cancel:
+				if rec.Status == Queued {
+					g.remove(waiters[r.ID])
+					delete(waiters, r.ID)
+				}
 
-			if rec.Status == Queued || rec.Status == Granted {
-				rec.Status = Cancelled
-				rec.Finished = now
-			}
-
-		case Renew, Release:
-			if rec.LeaseID == "" || rec.LeaseID != cmd.LeaseID {
-				opErr = ErrLeaseLost
-				break
-			}
-
-			if rec.Status == Granted {
-				if cmd.Kind == Renew {
-					rec.Until = now.Add(r.Config.LeaseTTL)
-				} else {
+				if rec.Status == Granted {
 					g.used -= r.Weight
 					g.active--
-					rec.Status = Released
+				}
+
+				if rec.Status == Queued || rec.Status == Granted {
+					rec.Status = Cancelled
 					rec.Finished = now
 				}
-			} else if cmd.Kind == Renew {
-				opErr = ErrLeaseLost
+
+			case Renew, Release:
+				if rec.LeaseID == "" || rec.LeaseID != cmd.LeaseID {
+					opErr = ErrLeaseLost
+					break
+				}
+
+				if rec.Status == Granted {
+					if cmd.Kind == Renew {
+						rec.Until = now.Add(r.Config.LeaseTTL)
+					} else {
+						g.used -= r.Weight
+						g.active--
+						rec.Status = Released
+						rec.Finished = now
+					}
+				} else if cmd.Kind == Renew {
+					opErr = ErrLeaseLost
+				}
 			}
 		}
+
 	}
 
 	s.dispatch(g, waiters, now)
@@ -206,6 +255,13 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 	s.Time = now
 	s.Revision++
 	out := Result{Revision: s.Revision}
+	if cmd.Kind == Resize {
+		observation, err := s.Observation()
+		if err != nil {
+			return nil, Result{}, err
+		}
+		out.ResourceStatus = observation.ResourceStatus()
+	}
 	if rec != nil {
 		out.Status = rec.Status
 		out.LeaseID = rec.LeaseID
@@ -231,7 +287,7 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 
 // admissionError restores a known queue-rejection sentinel, rejecting unknown persisted strings.
 func admissionError(s string) error {
-	for _, e := range []error{ErrQueueFull, ErrGroupQueueFull, ErrTenantQueueFull} {
+	for _, e := range []error{ErrQueueFull, ErrGroupQueueFull, ErrTenantQueueFull, ErrWeightExceedsCapacity} {
 		if e.Error() == s {
 			return e
 		}
@@ -332,7 +388,9 @@ func (s *durableSnapshot) capture(g *Airlock, ws map[string]*waiter) {
 // the snapshot by Transition. Each record is assigned that same Config before
 // restoration; only its identity, deadlines, weight and lifecycle need checking.
 func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
-	g, err := New(s.Config.Admission)
+	admission := s.Config.Admission
+	admission.Capacity = s.Capacity
+	g, err := New(admission)
 	if err != nil {
 		return nil, nil, ErrCorruptState
 	}
@@ -352,14 +410,15 @@ func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 
 		switch r.Status {
 		case Granted:
-			g.used += r.Request.Weight
+			used, err := checkedWeight(g.used, r.Request.Weight)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			g.used = used
 			g.active++
 		case Queued, Cancelled, Released, Expired, Rejected:
 		}
-	}
-
-	if g.used > g.cfg.Capacity {
-		return nil, nil, ErrCorruptState
 	}
 
 	for i, rotation := range s.Rotations {
@@ -370,7 +429,7 @@ func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 
 			for _, id := range s.Queues[tenant] {
 				r := s.Records[id]
-				if r == nil || r.Status != Queued || r.Request.Tenant != tenant || ws[id] != nil {
+				if r == nil || r.Status != Queued || r.Request.Weight > s.Capacity || r.Request.Tenant != tenant || ws[id] != nil {
 					return nil, nil, ErrCorruptState
 				}
 

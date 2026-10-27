@@ -52,10 +52,14 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 		d.resources = make(map[string]*resource)
 	}
 
-	r := d.resources[cmd.Request.Resource]
+	r := d.resources[cmd.Resource()]
 	if r == nil {
+		if cmd.Kind == airlock.Resize {
+			d.mu.Unlock()
+			return airlock.Result{}, airlock.ErrResourceNotFound
+		}
 		r = &resource{gate: make(chan struct{}, 1)}
-		d.resources[cmd.Request.Resource] = r
+		d.resources[cmd.Resource()] = r
 	}
 
 	d.mu.Unlock()
@@ -94,10 +98,14 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 			return airlock.Result{}, codecErr
 		}
 
+		observation, err := next.Observation()
+		if err != nil {
+			return airlock.Result{}, err
+		}
+
 		r.snapshot = data
 		r.state = next
-		r.observation = airlock.Observation{Resource: next.Resource, Config: next.Config, Revision: next.Revision,
-			Time: next.Time, NextMaintenance: next.NextMaintenance()}
+		r.observation = observation
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -133,3 +141,47 @@ func (d *Driver) Renew(ctx context.Context, lease airlock.LeaseRef) (airlock.Res
 func (d *Driver) Release(ctx context.Context, lease airlock.LeaseRef) (airlock.Result, error) {
 	return d.execute(ctx, airlock.Command{Kind: airlock.Release, Request: lease.Request, LeaseID: lease.ID})
 }
+
+// Resize changes a committed resource under its ordinary serialization gate.
+func (d *Driver) Resize(ctx context.Context, request airlock.ResizeRequest) (airlock.ResourceStatus, error) {
+	r, err := d.execute(ctx, airlock.Command{Kind: airlock.Resize, Resize: request})
+	if err != nil {
+		return airlock.ResourceStatus{}, err
+	}
+	return r.ResourceStatus, nil
+}
+
+// InspectResource reads one committed snapshot without performing maintenance.
+func (d *Driver) InspectResource(ctx context.Context, name string) (airlock.ResourceStatus, error) {
+	if err := ctx.Err(); err != nil {
+		return airlock.ResourceStatus{}, err
+	}
+	if err := airlock.ValidateResource(name); err != nil {
+		return airlock.ResourceStatus{}, err
+	}
+	d.mu.Lock()
+	r := d.resources[name]
+	d.mu.Unlock()
+	if r == nil {
+		return airlock.ResourceStatus{}, airlock.ErrResourceNotFound
+	}
+	select {
+	case r.gate <- struct{}{}:
+		defer func() { <-r.gate }()
+	case <-ctx.Done():
+		return airlock.ResourceStatus{}, ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return airlock.ResourceStatus{}, err
+	}
+	if r.state == nil {
+		return airlock.ResourceStatus{}, airlock.ErrResourceNotFound
+	}
+	status, err := r.observation.Inspect(time.Now(), name)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return airlock.ResourceStatus{}, ctxErr
+	}
+	return status, err
+}
+
+var _ airlock.ResourceManager = (*Driver)(nil)
