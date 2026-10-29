@@ -6,8 +6,9 @@ import (
 )
 
 // EnsureSchema explicitly creates the two relational tables in one transaction.
-// It checks required columns without changing existing layouts or creating a
-// schema. Serialize deployment DDL.
+// It checks required columns and migrates the legacy capacity > 0 constraint to
+// capacity >= 0, allowing persisted pauses. It does not create a schema.
+// Serialize deployment DDL; upgrade all clients before using Resize(0).
 func (d *Driver) EnsureSchema(ctx context.Context) error {
 	if err := d.validate(ctx); err != nil {
 		return err
@@ -54,7 +55,7 @@ func (d *Driver) schema() []string {
 			resource               text COLLATE pg_catalog."C" NOT NULL,
 			state_version          integer NOT NULL DEFAULT 1 CHECK (state_version=1),
 			config                 jsonb NOT NULL,
-			capacity               bigint NOT NULL CHECK (capacity>0),
+			capacity               bigint NOT NULL CHECK (capacity>=0),
 			capacity_version       numeric(20,0) NOT NULL DEFAULT 1 CHECK (capacity_version>=1 AND capacity_version<=18446744073709551615),
 			rotations              jsonb NOT NULL DEFAULT '[]',
 			protected              text COLLATE pg_catalog."C" NOT NULL DEFAULT '',
@@ -90,5 +91,20 @@ func (d *Driver) schema() []string {
 			CHECK ((status='queued')=(queue_position IS NOT NULL))
 		)
 		`, d.requestTable, d.resourceTable),
+
+		// Match only the legacy capacity check, not unrelated operator constraints.
+		// Reuse its actual name (PostgreSQL may truncate generated identifiers).
+		fmt.Sprintf(`DO $airlock$
+		DECLARE legacy record;
+		BEGIN
+			FOR legacy IN SELECT conname FROM pg_catalog.pg_constraint
+			WHERE conrelid = '%s'::regclass AND contype = 'c'
+			AND regexp_replace(pg_catalog.pg_get_expr(conbin, conrelid), '[[:space:]()]', '', 'g')
+			    IN ('capacity>0', 'capacity>0::bigint')
+			LOOP
+				EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %%I', legacy.conname);
+				EXECUTE format('ALTER TABLE %s ADD CONSTRAINT %%I CHECK (capacity>=0)', legacy.conname);
+			END LOOP;
+		END $airlock$`, d.resourceTable, d.resourceTable, d.resourceTable),
 	}
 }

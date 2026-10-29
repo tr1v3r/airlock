@@ -111,9 +111,18 @@ owner/window retries. No state is returned for a capacity-version conflict.
 SharedState.Capacity / CapacityVersion are independent of the creation hint in
 Config.Admission.Capacity. Compare configurations with EqualPolicy and normalize
 that hint before checking request identity. Preserve the current capacity through
-all business operations and restarts. Resize sweeps expiry without first dispatching
-under the old limit, removes oversized waiters, then dispatches under the new limit.
-Legal overcommit must survive restoration. `state.Observation()` returns a checked header and an error; it builds one header
+all business operations and restarts. Creation hints remain positive; Resize targets
+and persisted current capacity are nonnegative Go `int` values. Negative targets
+return ErrInvalidConfig. Zero pauses grants; it is not unlimited mode.
+Resize sweeps expiry without first dispatching under the old limit. At zero, retain
+waiting requests, rotations, priority cursor and protected head; do not reject
+weights or select/grant work merely because capacity is zero. Cancellation,
+waiting deadlines, history cleanup and existing lease renewal/release/expiry still
+apply. Positive-weight fresh Submit can queue subject to normal budgets/deadlines.
+For every positive target, reject oversized waiters before dispatch, including
+resuming from zero even though the numeric capacity increases. Remaining waiters
+retain fair scheduling state; rejection does not refund consumed turns.
+Legal overcommit and paused state must survive restoration. `state.Observation()` returns a checked header and an error; it builds one header
 with current capacity/version, charged counters and the next maintenance boundary;
 publish it atomically with all affected request results. Inspect never runs Transition.
 Redis still requires atomic owner + CommitWindow checks, not old-snapshot comparison.
@@ -126,4 +135,8 @@ before addition and reject it with ErrCorruptState. Never publish a projection
 when Observation returns an error. Stored values must fit each participant's
 native integer width; reject out-of-range data instead of narrowing it.
 Every custom driver must enforce current capacity for a fresh Submit inside its atomic
-boundary (Transition does this), even if it does not implement ResourceManager.
+boundary (Transition does this), even if it does not implement ResourceManager:
+reject weight above a positive capacity, but allow bounded queuing at zero.
+Capacity-version CAS rules are unchanged: conflicts publish no maintenance;
+matching same-capacity calls (including zero) maintain and advance Revision, not
+CapacityVersion. Only an actual capacity change increments CapacityVersion.

@@ -281,7 +281,8 @@ fmt.Println(status.Capacity, status.Used, status.CapacityVersion)
 当前容量与 CapacityVersion 单独持久化；提示不参与请求身份或不可变策略比较。新请求由后端按
 当前容量校验，旧 Shared 实例无需重建就能使用扩容后的容量。
 
-容量和请求重量支持任意正 Go `int`：64 位进程最大 `2^63-1`，32 位进程最大 `2^31-1`。
+创建容量和请求重量支持任意正 Go `int`；Resize 接受非负 Go `int`，负数返回 `ErrInvalidConfig`。
+64 位进程最大 `2^63-1`，32 位进程最大 `2^31-1`。
 所有参与者须使用彼此都能表示的范围；超出本机整数范围的存储数据会在解码或扫描时失败，
 不会截断。容量不会按令牌数分配记录；`MaxRecords`、`MaxQueued` 仍最多 1000000，租户和
 优先级组的数量限制也不变。PostgreSQL 以 `BIGINT` 保存容量和重量，Redis 保留精确整数
@@ -289,8 +290,14 @@ JSON 文本，Lua 不将这些字段转换为数字。恢复状态或构建观�
 返回 `ErrCorruptState`；缩容造成的合法超限仍受支持。
 
 缩容不撤销已有租约，也不阻止正常续租/释放；Used 可以暂时大于 Capacity，超限时不新增授予，
-等待释放或过期。超过新容量的排队请求持久化为 Rejected，Observe 恢复 ErrWeightExceedsCapacity；
-其他请求保留公平顺序和保护队首。扩容按新上限调度，客户端在下一次 Observe 得知授予，默认轮询 50ms。
+等待释放或过期。`Resize(ctx, 0, version)` 暂停新增授予，不停止运行中的任务，也不是无限模式。
+等待请求、公平顺序和保护队首保留；取消、等待截止时间以及租约续期、释放、过期仍正常生效。
+暂停时，新提交的正权重阻塞申请可按正常队列/历史预算和截止时间入队，不会仅因权重大于零而被拒绝。
+
+调整到正容量时，超过目标容量的排队请求持久化为 Rejected，Observe 返回
+`ErrWeightExceedsCapacity`；即使从零恢复、数值上属于扩容，也执行此检查。
+其余请求保留公平顺序和保护队首，按新上限调度。正容量下的新超重请求仍按原规则拒绝。
+客户端在下一次 Observe 得知授予，默认轮询 50ms。
 
 ExpectedVersion 必填，对比 CapacityVersion 而非 Revision。只有实际容量变化才增加容量版本；
 版本匹配的同容量调用仍执行维护并提交新 Revision。版本冲突返回 ErrCapacityVersionConflict，
@@ -301,6 +308,8 @@ ExpectedVersion 必填，对比 CapacityVersion 而非 Revision。只有实际�
 Inspect 只读，Used/Queued 表示已提交快照中的记录，可能包括尚未清理的过期记录；
 StateTime 和 Revision 标明口径，不代表真实执行任务数。资源不存在时返回 ErrResourceNotFound，
 Inspect/Resize 不创建资源。驱动不支持可选管理能力时，Shared 返回 ErrResourceManagementUnsupported。
-鉴权由应用/后端 ACL 负责，Tenant 不代表管理权限。第一版不支持容量 0。
+鉴权由应用/后端 ACL 负责，Tenant 不代表管理权限。创建容量仍须为正数；
+只有 Resize 可将已初始化的资源暂停在零容量。已有 PostgreSQL 部署使用零容量前，
+先检查[容量约束迁移要求](../../driver/postgres/README.md)，显式运行新版 `EnsureSchema` 迁移旧的正容量约束。
 
 可执行 memory 示例 ExampleDriver_Resize 展示合法超限、释放，以及使用原 Shared 实例扩容后申请更大权重。

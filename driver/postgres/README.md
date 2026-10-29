@@ -46,8 +46,23 @@ or hold a connection for the duration of an acquired lease.
 `EnsureSchema` creates two **logged** tables atomically. Provision schemas yourself.
 Custom names use quoted ASCII identifiers: schema up to 63 bytes, resource table
 up to 54 bytes to leave room for the `_requests` suffix. Run deployment DDL
-serially. Existing layouts are not altered; required columns are checked, but
-this is not a comprehensive schema/constraint audit.
+serially. Required columns are checked; this is not a comprehensive
+schema/constraint audit. The only automatic migration relaxes the legacy
+`CHECK (capacity > 0)` to `CHECK (capacity >= 0)`, preserving its actual constraint
+name. Other layouts and constraints are unchanged.
+
+**Upgrade before using Resize(0):** upgrade all clients to understand paused state,
+then explicitly run the new `EnsureSchema` during deployment before publishing zero
+capacity. Its transaction migrates the legacy capacity check on the configured
+table, including custom schemas/tables. This DDL takes table locks; serialize it
+with other deployment DDL. Operator-defined constraints beyond the recognized
+legacy check require manual review. Request weight checks remain positive.
+
+**使用 Resize(0) 前升级：** 先升级所有客户端，使其支持恢复暂停状态，再于部署时显式
+运行新版 `EnsureSchema`，最后才发布零容量。它会在事务内将配置表上的旧
+`CHECK (capacity > 0)` 迁为 `CHECK (capacity >= 0)`，保留实际约束名，支持自定义
+schema/表。此 DDL 获取表锁，应与其他部署 DDL 串行执行。其他表结构/约束不变；
+超出已识别旧约束的自定义约束需要人工检查。请求重量仍须为正数。
 
 | Table | Key | Stored fields |
 | --- | --- | --- |
@@ -70,14 +85,15 @@ a deferred unique constraint protects each tenant's FIFO position. Stable bigint
 positions allow dequeue without renumbering all remaining waiters. Millisecond
 instants are bigint epoch values; absent instants are SQL NULL. Revision uses
 `numeric(20,0)` to preserve the full uint64 protocol range.
-Capacity and weight use positive `BIGINT` columns. The Go API accepts positive
-`int` values (maximum `2^63-1` on 64-bit, `2^31-1` on 32-bit); scans reject values
+Current capacity uses a nonnegative `BIGINT` column; weight remains positive.
+Creation capacity is positive; Resize accepts nonnegative Go `int` targets
+(maximum `2^63-1` on 64-bit, `2^31-1` on 32-bit); scans reject values
 outside the client's range. Charged sums are checked before restoring state or
 publishing a projection. MaxRecords and queue limits still cap record counts,
 not token weights.
 
-容量与重量列为正 `BIGINT`；Go API 接受正 `int`，64 位最大 `2^63-1`、32 位最大
-`2^31-1`。所有参与者应使用彼此能表示的范围，扫描拒绝超范围整数；恢复状态和构建观察
+当前容量列为非负 `BIGINT`，重量列仍为正数；创建容量须为正数，Resize 接受非负 Go `int`，
+64 位最大 `2^63-1`、32 位最大 `2^31-1`。所有参与者应使用彼此能表示的范围，扫描拒绝超范围整数；恢复状态和构建观察
 投影前检查占用总和溢出。记录数、队列数上限不随容量增大而放宽。
 
 Read-only operational queries can use these columns (the result is not permission
@@ -153,8 +169,17 @@ Relational tests also verify request-row write isolation, queue-order preservati
 ResourceManager.Resize reuses the resource row lock and transaction; capacity and
 capacity_version live on airlock_resources and persist with request deltas.
 InspectResource uses a single read-only MVCC statement, with no maintenance or
-update lock. See [Shared dynamic capacity](../../docs/guides/shared.md#shared-dynamic-capacity).
+update lock. Resize accepts nonnegative targets; negative targets are invalid.
+Zero pauses new grants while retaining waiters, fair order and the protected head;
+new positive-weight acquires queue under normal budgets/deadlines, and existing
+leases renew/release/expire normally. Resuming positive capacity rejects queued
+weights above the target before fair dispatch, even for zero-to-positive expansion.
+Creation stays positive; zero is not unlimited mode, and version CAS/no-op rules
+are unchanged. See [Shared dynamic capacity](../../docs/guides/shared.md#shared-dynamic-capacity).
 
 Resize 复用资源行锁事务，airlock_resources 的 capacity 与 capacity_version 随请求差异
 一起提交。InspectResource 通过单条只读 MVCC 查询返回快照，不执行维护、不抢更新锁。
-完整语义见 [Shared 动态容量](../../docs/guides/shared.zh-CN.md#shared-动态容量)。
+Resize 接受非负目标，负数无效。零暂停新增授予，保留等待者、公平顺序和保护队首；
+新正权重申请按正常预算/截止时间排队，已有租约正常续期、释放、过期。
+恢复正容量时，即使从零扩容，也先拒绝超重等待者再公平调度。创建容量仍为正数，
+零不是无限模式，版本 CAS/同容量调用规则不变。完整语义见 [Shared 动态容量](../../docs/guides/shared.zh-CN.md#shared-动态容量)。

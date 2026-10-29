@@ -17,7 +17,7 @@ type ResourceManager interface {
 // ResizeRequest changes capacity without changing request identities or policy.
 // Retry the same absolute Capacity and ExpectedVersion after ambiguous outcomes;
 // never automatically adopt a newer version after a conflict.
-// Capacity accepts any positive Go int, whose width is process-dependent.
+// Capacity accepts any nonnegative Go int, whose width is process-dependent.
 type ResizeRequest struct {
 	Resource        string
 	Capacity        int
@@ -56,12 +56,12 @@ func ValidateResource(resource string) error {
 	return nil
 }
 
-// ValidateResize checks positive int capacity and a mandatory expected version.
+// ValidateResize checks nonnegative int capacity and a mandatory expected version.
 func ValidateResize(r ResizeRequest) error {
 	if err := ValidateResource(r.Resource); err != nil {
 		return err
 	}
-	if r.Capacity < 1 {
+	if r.Capacity < 0 {
 		return ErrInvalidConfig
 	}
 	if r.ExpectedVersion == 0 {
@@ -114,7 +114,7 @@ func (o Observation) Inspect(now time.Time, resource string) (ResourceStatus, er
 	if err := ValidateResource(resource); err != nil {
 		return ResourceStatus{}, err
 	}
-	if o.Resource != resource || o.Capacity < 1 || o.CapacityVersion == 0 ||
+	if o.Resource != resource || o.Capacity < 0 || o.CapacityVersion == 0 ||
 		o.Revision == 0 || o.Revision == ^uint64(0) || o.Time.IsZero() || now.Truncate(time.Millisecond).Before(o.Time) ||
 		o.Used < 0 || o.Queued < 0 || o.Queued > maxCountLimit {
 		return ResourceStatus{}, ErrCorruptState
@@ -144,6 +144,8 @@ func (d *Shared) Inspect(ctx context.Context) (ResourceStatus, error) {
 }
 
 // Resize changes capacity with optimistic management-version protection.
+// Zero pauses admissions without rejecting queues; a positive resize resumes
+// admissions and rejects queued weights exceeding the new capacity.
 // It never revokes grants, waits for drain, or changes queue/lease policy.
 // A matching same-capacity call maintains state but does not change CapacityVersion.
 func (d *Shared) Resize(ctx context.Context, capacity int, expectedVersion uint64) (ResourceStatus, error) {

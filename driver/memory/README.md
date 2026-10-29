@@ -34,6 +34,16 @@ The public operations are `Submit`, `Observe`, `Cancel`, `Renew`, and `Release`.
 The first three accept an immutable `airlock.Request`; renewal and release use
 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`. All return `(airlock.Result, error)`.
 
+The optional `ResourceManager` supports read-only Inspect and versioned Resize.
+
+Resize accepts nonnegative targets; negative targets return `ErrInvalidConfig`.
+Zero pauses new grants, retaining waiters, fair order and the protected head.
+New positive-weight blocking acquires queue under normal budgets/deadlines;
+existing leases may renew, release and expire normally. Resuming positive capacity
+rejects queued weights above the target before fair scheduling, including expansion
+from zero. Creation still requires positive capacity; zero is not unlimited mode.
+Capacity-version CAS and same-capacity maintenance rules are unchanged.
+
 ## 中文
 
 memory 主要用于 Shared 租约协议的测试和演示。**普通单进程并发控制直接用
@@ -47,6 +57,14 @@ memory 主要用于 Shared 租约协议的测试和演示。**普通单进程并
 参见上面的可运行示例。它不持久化、不启动业务 worker，重启或新实例会创建独立容量池，
 不能作为远端故障时的自动降级。终态记录在后续操作中回收，资源配置保留到 driver 丢弃为止。
 租约过期仅回收账本额度，业务必须自行停止工作。
+
+可选 `ResourceManager` 提供只读 Inspect 和带版本的 Resize。
+
+Resize 接受非负目标，负数返回 `ErrInvalidConfig`。零暂停新增授予，保留等待者、公平顺序和保护队首。
+新正权重阻塞申请按正常预算/截止时间排队；已有租约正常续期、释放和过期。
+恢复正容量时，即使从零扩容，也先拒绝超过目标的排队权重，再恢复公平调度。
+创建容量仍须为正数，零不是无限模式；容量版本 CAS 和同容量维护规则不变。
+
 
 公开操作为 `Submit`、`Observe`、`Cancel`、`Renew` 和 `Release`。前三者接收不可变
 `airlock.Request`；续租与释放接收 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`，

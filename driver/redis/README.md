@@ -154,7 +154,8 @@ the limiter. An acquisition context only bounds waiting, not the delivered lease
 Unknown renewals invalidate the local lease. Retry cleanup with the same lease;
 never replace an ambiguous request with a new identity to assume capacity.
 
-Capacity and request weight use positive Go `int` values, up to `2^63-1` on
+Creation capacity and request weight use positive Go `int` values; Resize targets
+and current capacity may be zero, up to `2^63-1` on
 64-bit clients or `2^31-1` on 32-bit clients. The snapshot and embedded projection
 JSON retain exact integer text; Lua does not convert capacity or weight to a
 floating-point number. All participants must support the chosen integer range.
@@ -188,5 +189,13 @@ Default tests use miniredis; real standalone and Cluster tests are opt-in.
 The public operations are `Submit`, `Observe`, `Cancel`, `Renew`, and `Release`.
 The first three accept an immutable `airlock.Request`; renewal and release use
 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`. All return `(airlock.Result, error)`.
+
+Resize accepts nonnegative targets; negative targets return `ErrInvalidConfig`.
+Zero pauses new grants, retaining waiters, fair order and the protected head.
+New positive-weight blocking acquires queue under normal budgets/deadlines;
+existing leases may renew, release and expire normally. Resuming positive capacity
+rejects queued weights above the target before fair scheduling, including expansion
+from zero. Creation still requires positive capacity; zero is not unlimited mode.
+Capacity-version CAS and same-capacity maintenance rules are unchanged.
 
 Resource management, capacity-version conflicts and read-only Inspect semantics are documented in the [Shared guide](../../docs/guides/shared.md#shared-dynamic-capacity).
