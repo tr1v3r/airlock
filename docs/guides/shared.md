@@ -232,15 +232,20 @@ implementation and uses the same defaults.
 | `Config.Retention` | 1m | Recovery retention after reaching a terminal state |
 | `Config.MaxRecords` | 1000000 | Bound on active, queued and retained terminal records together |
 | `OperationTimeout` | 5s | Maximum duration of each backend call; Renew/Release include local serialization wait |
-| `PollInterval` | 50ms | Delay between queries while queued |
+| `PollInterval` | 50ms | Mean delay after a queued response; each delay has uniform ±20% jitter |
 | `ClockSkewAllowance` | 0 | Opt-in budget for a known client/backend clock-offset bound |
 
 Built-in memory, PostgreSQL and Redis drivers use a read-only Observe fast path
 until lease/queue expiry or history collection is due. Fast observations keep the
 committed Revision; due observations run the ordinary atomic transition. Waiters'
 own polling can advance maintenance without a holder calling Release.
-Every queued acquisition still polls at PollInterval; there is no notification
-transport or background maintenance worker.
+Every queued response is followed by a fresh, independently randomized delay
+uniformly distributed from `PollInterval - floor(PollInterval/5)` to
+`PollInterval + floor(PollInterval/5)`, inclusive, with durations in nanoseconds.
+The expected delay remains `PollInterval`; backend call time is additional.
+Jitter spreads polling peaks without reducing the average number of observations
+for a fixed waiting population. There is no notification transport or background
+maintenance worker.
 
 
 Terminal records remain until both the submission window and retention requirement
@@ -349,7 +354,7 @@ including when resuming from zero (technically an expansion). These become stabl
 Rejected results with `ErrWeightExceedsCapacity`. The remaining queue retains its
 fairness and protected-head rules and dispatches under the new limit. New weights
 above a positive capacity are rejected as usual. Waiting clients discover grants
-on their next Observe (default polling: 50ms).
+on their next Observe (default polling delay: 40–60ms, mean 50ms).
 
 `ExpectedVersion` is mandatory and compares `CapacityVersion`, not `Revision`.
 Only an actual capacity change increments it. A matching same-capacity call still

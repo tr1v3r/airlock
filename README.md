@@ -500,7 +500,7 @@ including when resuming from zero (technically an expansion). These become stabl
 Rejected results with `ErrWeightExceedsCapacity`. The remaining queue retains its
 fairness and protected-head rules and dispatches under the new limit. New weights
 above a positive capacity are rejected as usual. Waiting clients discover grants
-on their next Observe (default polling: 50ms).
+on their next Observe (default polling delay: 40–60ms, mean 50ms).
 
 `ExpectedVersion` is mandatory and compares `CapacityVersion`, not `Revision`.
 Only an actual capacity change increments it. A matching same-capacity call still
