@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math/rand/v2"
 	"sync"
 	"time"
 )
@@ -25,7 +26,9 @@ type SharedOptions struct {
 	// including waiting for another lease operation; zero defaults to 5s.
 	// Nonzero values must be positive and at most one minute.
 	OperationTimeout time.Duration
-	// PollInterval spaces observations while queued; zero defaults to 50ms.
+	// PollInterval is the mean delay after each queued response; zero defaults to 50ms.
+	// Each delay is sampled uniformly within +/-20% (rounded down to nanoseconds),
+	// independently on every poll. Backend call time is additional.
 	// Nonzero values must be positive and at most one minute.
 	PollInterval time.Duration
 	// ClockSkewAllowance reserves time for a known bound on client/backend clock
@@ -128,6 +131,14 @@ func (d *Shared) execute(ctx context.Context, operation func(context.Context) (R
 	return result, start, err
 }
 
+// pollDelay spreads observations without changing the expected waiting delay.
+// SharedOptions bounds interval to (0, 1 minute], so the range cannot overflow.
+func pollDelay(interval time.Duration) time.Duration {
+	jitter := interval / 5
+	// Include both endpoints so the discrete distribution is symmetric about interval.
+	return interval - jitter + time.Duration(rand.Int64N(int64(2*jitter)+1))
+}
+
 // acquire submits once, polls queued outcomes, and attempts bounded cancellation on failure.
 func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, error) {
 	if ctx == nil {
@@ -194,7 +205,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 				}
 
 			case Queued:
-				timer := time.NewTimer(d.options.PollInterval)
+				timer := time.NewTimer(pollDelay(d.options.PollInterval))
 
 				select {
 				case <-ctx.Done():

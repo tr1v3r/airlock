@@ -207,13 +207,17 @@ SDK 不执行任务、不自动续租，也无法杀死忽略取消信号的工�
 | `Config.Retention` | 1m | 请求进入终态后的恢复记录保留时间 |
 | `Config.MaxRecords` | 1000000 | 活跃、排队和保留终态记录的总上限 |
 | `OperationTimeout` | 5s | 每次后端调用上限；Renew/Release 包含本地串行等待时间 |
-| `PollInterval` | 50ms | 排队期间两次查询之间的间隔 |
+| `PollInterval` | 50ms | 收到排队结果后的平均等待时间；每轮等待加入均匀分布的 ±20% 抖动 |
 | `ClockSkewAllowance` | 0 | 显式预留已知客户端/后端时钟偏差上界 |
 
 内置 memory、PostgreSQL 和 Redis driver 为 Observe 提供只读快路径：未到维护时间时，
 读取当前请求的已提交结果而不推进 Revision；租约/排队到期或历史回收时才调用完整
 状态转换。等待者自己的轮询可以触发维护，无需依赖持有者主动 Release。
-每个等待申请仍按 PollInterval 查询，未引入通知或后台维护 worker。
+每次收到排队结果后，独立重新采样等待时间，在
+`PollInterval - floor(PollInterval/5)` 到 `PollInterval + floor(PollInterval/5)`
+之间均匀分布，包含两端，时长按纳秒计算。等待时间的期望值仍为 `PollInterval`，
+后端调用耗时另计。抖动分散轮询峰值；等待请求数固定时，平均查询次数不会因此减少。
+未引入通知或后台维护 worker。
 
 
 终态记录需要同时满足提交窗口和保留时间条件后才能删除。历史满时，即使容量空闲，也可能
@@ -297,7 +301,7 @@ JSON 文本，Lua 不将这些字段转换为数字。恢复状态或构建观�
 调整到正容量时，超过目标容量的排队请求持久化为 Rejected，Observe 返回
 `ErrWeightExceedsCapacity`；即使从零恢复、数值上属于扩容，也执行此检查。
 其余请求保留公平顺序和保护队首，按新上限调度。正容量下的新超重请求仍按原规则拒绝。
-客户端在下一次 Observe 得知授予，默认轮询 50ms。
+客户端在下一次 Observe 得知授予，默认轮询等待时间为 40～60ms，平均 50ms。
 
 ExpectedVersion 必填，对比 CapacityVersion 而非 Revision。只有实际容量变化才增加容量版本；
 版本匹配的同容量调用仍执行维护并提交新 Revision。版本冲突返回 ErrCapacityVersionConflict，

@@ -413,7 +413,7 @@ JSON 文本，Lua 不将这些字段转换为数字。恢复状态或构建观�
 调整到正容量时，超过目标容量的排队请求持久化为 Rejected，Observe 返回
 `ErrWeightExceedsCapacity`；即使从零恢复、数值上属于扩容，也执行此检查。
 其余请求保留公平顺序和保护队首，按新上限调度。正容量下的新超重请求仍按原规则拒绝。
-客户端在下一次 Observe 得知授予，默认轮询 50ms。
+客户端在下一次 Observe 得知授予，默认轮询等待时间为 40～60ms，平均 50ms。
 
 ExpectedVersion 必填，对比 CapacityVersion 而非 Revision。只有实际容量变化才增加容量版本；
 版本匹配的同容量调用仍执行维护并提交新 Revision。版本冲突返回 ErrCapacityVersionConflict，
