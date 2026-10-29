@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -139,6 +140,81 @@ func TestDeltaValidationBeforeAnyWrites(t *testing.T) {
 		if c.HGet(ctx, key, "r:delete").Val() != "old-record" || c.HGet(ctx, key, "state").Val() != "old" {
 			t.Fatal("validation changed state")
 		}
+	}
+}
+
+func TestDeltaChangesAndDeletionsSharePublicationBudget(t *testing.T) {
+	for _, tc := range []struct {
+		changed, deleted int
+		fallback         bool
+	}{
+		{0, 256, false},
+		{0, 257, true},
+		{128, 128, false},
+		{129, 128, true},
+	} {
+		t.Run(fmt.Sprintf("changed=%d/deleted=%d", tc.changed, tc.deleted), func(t *testing.T) {
+			state, before := deltaFixture(tc.changed + tc.deleted)
+			for i := 0; i < tc.deleted; i++ {
+				delete(state.Records, fmt.Sprint(i))
+			}
+			for _, rec := range state.Records {
+				rec.Finished = rec.Finished.Add(time.Millisecond)
+			}
+			data, err := deltaIndex(state, "generation", before)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.fallback {
+				if data != nil {
+					t.Fatal("oversized combined publication did not fall back to full rebuild")
+				}
+				return
+			}
+			var candidate struct {
+				Records map[string]string
+				Deletes []string
+			}
+			if err := json.Unmarshal(data, &candidate); err != nil {
+				t.Fatal(err)
+			}
+			if len(candidate.Records) != tc.changed || len(candidate.Deletes) != tc.deleted {
+				t.Fatalf("publication lost changes: records=%d deletes=%d", len(candidate.Records), len(candidate.Deletes))
+			}
+			for _, id := range candidate.Deletes {
+				if _, ok := before[id]; !ok || state.Records[id] != nil {
+					t.Fatalf("publication deletes a record that was not removed: %q", id)
+				}
+			}
+		})
+	}
+}
+
+func TestDeltaIndexRejectsUnpublishableState(t *testing.T) {
+	invalid := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name   string
+		mutate func(*airlock.SharedState)
+		cause  error
+	}{
+		{"header time", func(s *airlock.SharedState) { s.Time = invalid }, nil},
+		{"record time", func(s *airlock.SharedState) { s.Records["0"].Request.WaitUntil = invalid }, nil},
+		{"charged sum overflow", func(s *airlock.SharedState) {
+			s.Records["0"].Status = airlock.Granted
+			s.Records["0"].Request.Weight = int(^uint(0) >> 1)
+			s.Records["1"].Status = airlock.Granted
+			s.Records["1"].Request.Weight = 1
+		}, airlock.ErrCorruptState},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state, _ := deltaFixture(2)
+			tc.mutate(state)
+			// Treat records as new so their complete projection must be encoded.
+			data, err := deltaIndex(state, "generation", nil)
+			if data != nil || err == nil || (tc.cause != nil && !errors.Is(err, tc.cause)) {
+				t.Fatalf("invalid state produced a publishable delta: data=%q err=%v", data, err)
+			}
+		})
 	}
 }
 
