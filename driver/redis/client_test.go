@@ -27,7 +27,11 @@ func distributed(t *testing.T, d *Driver, resource string) *airlock.Shared {
 }
 
 func TestDistributedLeaseLifecycle(t *testing.T) {
-	d, _, _ := fixture(t)
+	d, _, server := fixture(t)
+	// This test uses wall-clock cancellation and lease expiry. A lock acquired
+	// just before cancellation may have an unknown outcome and must expire by
+	// TTL, as it does in Redis; miniredis otherwise freezes key TTLs indefinitely.
+	server.ClockTTL(true)
 	client := distributed(t, d, "lifecycle")
 	ctx, cancel := context.WithCancel(context.Background())
 	lease, err := client.Acquire(ctx)
@@ -91,6 +95,55 @@ func TestDistributedLeaseLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := replacement.Release(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDistributedRenewAfterAbandonedUpdateLockExpires(t *testing.T) {
+	d, redisClient, server := fixture(t)
+	server.ClockTTL(true)
+	const resource = "abandoned-update-lock"
+	client := distributed(t, d, resource)
+	lease, err := client.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lease.Release(context.Background()) }()
+
+	// Freeze backend time only after Shared has built its wall-clock request.
+	// The failed contender must not invalidate the original holder's handle.
+	now := time.Now()
+	server.SetTime(now)
+	lost := false
+	redisClient.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
+		err := next(ctx, cmd)
+		if !lost && err == nil && isScript(cmd, acquireUpdateLockScript) && cmd.(*noRetryCmd).Val() == int64(1) {
+			lost = true
+			return io.ErrUnexpectedEOF
+		}
+		return err
+	}})
+	pending := requestAt(now)
+	pending.Resource = resource
+	pending.Config.LeaseTTL = 2 * time.Second
+	result, err := d.Submit(context.Background(), pending)
+	if !lost || !errors.Is(err, io.ErrUnexpectedEOF) || result != (airlock.Result{}) {
+		t.Fatalf("lost update-lock response: result=%+v err=%v injected=%v", result, err, lost)
+	}
+	key := updateLockKey(d.key(resource))
+	if !server.Exists(key) {
+		t.Fatal("unknown acquisition did not leave a TTL-bounded update lock")
+	}
+	// Advancing TIME must also expire PX ownership, without using FastForward.
+	// The original two-second business grant is still live at this instant.
+	server.SetTime(now.Add(d.updateLockTTL + 100*time.Millisecond))
+	if server.Exists(key) {
+		t.Fatal("backend clock advanced but abandoned update-lock TTL stayed frozen")
+	}
+	if err := lease.Renew(context.Background()); err != nil {
+		t.Fatalf("expired contender lock blocked the original holder's renewal: %v", err)
+	}
+	if err := lease.Release(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
