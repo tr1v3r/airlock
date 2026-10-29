@@ -179,6 +179,11 @@ go test -race ./examples/lifecycle
 5. 使用独立于已取消工作 ctx 的短超时 ctx 释放。释放失败时结果可能未知；示例仅对
    **同一个 Lease** 重试一次清理，不重跑任务。两次都失败时，把清理错误与业务错误一起返回。
 
+并发 Renew/Release 的后端调用仍串行执行，ctx 和 OperationTimeout 同时限制本地等待与 I/O。
+Release 进入时立即关闭 Done，不等待在途续租；迟到的续租成功也不能恢复本地有效性。
+取消的释放清理可用新 ctx 在同一个 Lease 上重试。任何 Renew 错误（包括等待期间取消）
+都会永久失效。
+
 为快速看到续租，示例把 TTL 缩短到 1 秒，每 250ms 续租，操作 ctx 为 100ms。
 这些是 memory 演示参数，不是远端后端的调优建议。使用默认 30 秒 TTL 时，应用可以从
 每 10 秒续租、5 秒 I/O 上限开始，根据实际延迟调整；任何参数都无法保证承受任意长的
@@ -201,7 +206,7 @@ SDK 不执行任务、不自动续租，也无法杀死忽略取消信号的工�
 | `Config.SubmitWindow` | 5s | 初次请求允许提交的时间窗口 |
 | `Config.Retention` | 1m | 请求进入终态后的恢复记录保留时间 |
 | `Config.MaxRecords` | 1000000 | 活跃、排队和保留终态记录的总上限 |
-| `OperationTimeout` | 5s | 客户端每次后端调用的时间上限 |
+| `OperationTimeout` | 5s | 每次后端调用上限；Renew/Release 包含本地串行等待时间 |
 | `PollInterval` | 50ms | 排队期间两次查询之间的间隔 |
 | `ClockSkewAllowance` | 0 | 显式预留已知客户端/后端时钟偏差上界 |
 

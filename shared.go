@@ -21,7 +21,8 @@ type SharedOptions struct {
 	// default to LeaseTTL=30s, MaxWait=30s, SubmitWindow=5s, Retention=1m, and
 	// MaxRecords=1000000. All clients must use the same resolved queue/lease policy.
 	Config ResourceConfig
-	// OperationTimeout bounds each backend call; zero defaults to 5s.
+	// OperationTimeout bounds each backend call and each Renew/Release operation,
+	// including waiting for another lease operation; zero defaults to 5s.
 	// Nonzero values must be positive and at most one minute.
 	OperationTimeout time.Duration
 	// PollInterval spaces observations while queued; zero defaults to 50ms.
@@ -185,7 +186,7 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 					result.Remaining > r.Config.LeaseTTL || !time.Now().Before(deadline) {
 					err = ErrLeaseLost
 				} else {
-					lease := &Lease{client: d, request: r, id: result.LeaseID, deadline: deadline, done: make(chan struct{})}
+					lease := &Lease{client: d, request: r, id: result.LeaseID, deadline: deadline, done: make(chan struct{}), operations: make(chan struct{}, 1)}
 					lease.mu.Lock()
 					lease.timer = time.AfterFunc(time.Until(deadline), lease.expire)
 					lease.mu.Unlock()
@@ -240,8 +241,8 @@ func (d *Shared) acquire(ctx context.Context, tenant string, n int) (*Lease, err
 // acquiring-context cancellation is unrelated. Obtain handles from Shared;
 // the zero value is not usable, and operation contexts must be non-nil.
 type Lease struct {
-	// opMu serializes whole Renew/Release calls, including network I/O.
-	opMu sync.Mutex
+	// operations serializes backend Renew/Release calls with cancellable waiting.
+	operations chan struct{}
 	// mu protects local validity and timer state without blocking expiry on network I/O.
 	mu sync.Mutex
 	// client retains the backend and timeout policy used for this acquisition.
@@ -299,8 +300,15 @@ func (l *Lease) Weight() int { return l.request.Weight }
 // Each successful call resets backend validity by LeaseTTL; there is no automatic
 // renewal. An ambiguous response is not automatically retried.
 func (l *Lease) Renew(ctx context.Context) error {
-	l.opMu.Lock()
-	defer l.opMu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, l.client.options.OperationTimeout)
+	defer cancel()
+	if err := l.enterOperation(ctx); err != nil {
+		l.mu.Lock()
+		l.invalidateLocked()
+		l.mu.Unlock()
+		return err
+	}
+	defer func() { <-l.operations }()
 	if !l.Valid() {
 		return ErrLeaseLost
 	}
@@ -328,16 +336,22 @@ func (l *Lease) Renew(ctx context.Context) error {
 	return nil
 }
 
-// Release invalidates locally before I/O. On errors the result is unknown; retry
+// Release invalidates locally immediately, before waiting for any in-flight
+// renewal or backend I/O. Waiting obeys ctx and OperationTimeout.
+// On errors the result is unknown; retry
 // this same method for cleanup. Success means a matching terminal record exists.
 // Stop protected work before calling. After history is reclaimed, cleanup may
 // return a protocol error even if an earlier release succeeded.
 func (l *Lease) Release(ctx context.Context) error {
-	l.opMu.Lock()
-	defer l.opMu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, l.client.options.OperationTimeout)
+	defer cancel()
 	l.mu.Lock()
 	l.invalidateLocked()
 	l.mu.Unlock()
+	if err := l.enterOperation(ctx); err != nil {
+		return err
+	}
+	defer func() { <-l.operations }()
 	result, _, err := l.client.execute(ctx, func(ctx context.Context) (Result, error) {
 		return l.client.driver.Release(ctx, LeaseRef{Request: l.request, ID: l.id})
 	})
@@ -345,4 +359,22 @@ func (l *Lease) Release(ctx context.Context) error {
 		return ErrLeaseLost
 	}
 	return err
+}
+
+// enterOperation gives cancellation precedence before and after gate acquisition.
+// Local invalidation uses mu independently and never waits for backend I/O.
+func (l *Lease) enterOperation(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case l.operations <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-l.operations
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

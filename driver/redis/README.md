@@ -89,13 +89,23 @@ confirmed expiry discards the candidate, releases any remaining ownership and
 retries from a fresh read within the operation deadline. The lock covers driver
 state updates only and is never held while application work runs.
 
-The script prepares request indexes tagged with a unique candidate token, then
+The full-publication script prepares request indexes tagged with a unique candidate token, then
 publishes the snapshot and matching observation header together in its final
 `HSET`. Within the commit script, no command follows that publication. A
 preparation error cannot authorize work: missing or token-mismatched projections fall back to the
 authoritative snapshot. Tokens are independent of Revision so different failed
 candidates for the same revision cannot be mistaken for a committed result.
 Redis scripts do not roll back earlier writes.
+
+For mutations changing/deleting at most 256 records, an incremental publication
+reuses the committed generation token and writes only changed projections. Its
+single final HSET publishes those records, state and metadata atomically; it never
+stages changed records separately. Deletions precede publication and can only make
+Observe fall back to the unchanged snapshot if publication fails. The bound avoids
+Lua unpack limits. Larger changes and Observe maintenance use a full rebuild.
+An atomic HLEN check also forces a full rebuild for missing/orphaned fields during
+ordinary mutations. Old full writers and readers remain compatible: full writes
+replace the generation and all projections, while token mismatches still fail closed.
 
 Only known lock contention or explicit ownership/time-window misses
 trigger bounded, context-aware backoff (1–10ms). Each script command disables
@@ -116,7 +126,9 @@ state work. Contenders also recheck the projection between attempts, so they can
 return a new result without acquiring the lock themselves.
 
 Mutations still read/write the bounded snapshot and maintain the request index,
-with O(records) work and additional memory. No Pub/Sub or worker is introduced.
+with O(records) work and additional memory. Incremental projections reduce encoding
+and Redis write traffic; full snapshot transfer, validation and scheduling remain
+O(records), including retained terminal history. No Pub/Sub or worker is introduced.
 The core client's default polling interval remains 50ms per queued acquisition;
 this change reduces each poll's cost, not the number of polling callers.
 Independent resources use different state and update-lock keys but share backend

@@ -1,0 +1,25 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/tr1v3r/airlock/driver/redis
+cpu: Apple M3 Pro
+BenchmarkProjectionUpdate/1/full-12         	      30	      6371 ns/op	      1127 projection_bytes	    4443 B/op	      19 allocs/op
+BenchmarkProjectionUpdate/1/full-12         	      30	      6440 ns/op	      1127 projection_bytes	    4317 B/op	      19 allocs/op
+BenchmarkProjectionUpdate/1/full-12         	      30	      4986 ns/op	      1127 projection_bytes	    4316 B/op	      19 allocs/op
+BenchmarkProjectionUpdate/1/delta-12        	      30	      6653 ns/op	      1096 projection_bytes	    6185 B/op	      19 allocs/op
+BenchmarkProjectionUpdate/1/delta-12        	      30	      6771 ns/op	      1096 projection_bytes	    6185 B/op	      19 allocs/op
+BenchmarkProjectionUpdate/1/delta-12        	      30	      6510 ns/op	      1096 projection_bytes	    6185 B/op	      19 allocs/op
+BenchmarkProjectionUpdate/1000/full-12      	      30	   2536135 ns/op	    638273 projection_bytes	 5201042 B/op	    5057 allocs/op
+BenchmarkProjectionUpdate/1000/full-12      	      30	   2475543 ns/op	    638273 projection_bytes	 5197023 B/op	    5054 allocs/op
+BenchmarkProjectionUpdate/1000/full-12      	      30	   2343718 ns/op	    638273 projection_bytes	 5197116 B/op	    5056 allocs/op
+BenchmarkProjectionUpdate/1000/delta-12     	      30	    114872 ns/op	      1096 projection_bytes	  251546 B/op	      25 allocs/op
+BenchmarkProjectionUpdate/1000/delta-12     	      30	    107149 ns/op	      1096 projection_bytes	  251852 B/op	      25 allocs/op
+BenchmarkProjectionUpdate/1000/delta-12     	      30	    101104 ns/op	      1096 projection_bytes	  251852 B/op	      25 allocs/op
+BenchmarkProjectionUpdate/10000/full-12     	      30	  21521465 ns/op	   6398273 projection_bytes	52649214 B/op	   50086 allocs/op
+BenchmarkProjectionUpdate/10000/full-12     	      30	  23147243 ns/op	   6398273 projection_bytes	52649688 B/op	   50088 allocs/op
+BenchmarkProjectionUpdate/10000/full-12     	      30	  25316460 ns/op	   6398273 projection_bytes	52650129 B/op	   50089 allocs/op
+BenchmarkProjectionUpdate/10000/delta-12    	      30	   1767643 ns/op	      1096 projection_bytes	 1976141 B/op	      61 allocs/op
+BenchmarkProjectionUpdate/10000/delta-12    	      30	   1695297 ns/op	      1096 projection_bytes	 1976449 B/op	      62 allocs/op
+BenchmarkProjectionUpdate/10000/delta-12    	      30	   1730351 ns/op	      1096 projection_bytes	 1975832 B/op	      60 allocs/op
+PASS
+ok  	github.com/tr1v3r/airlock/driver/redis	2.962s
+?   	github.com/tr1v3r/airlock/driver/redis/examples/basic	[no test files]

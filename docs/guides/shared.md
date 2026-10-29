@@ -199,6 +199,12 @@ It demonstrates this sequence:
    cleanup once on the **same Lease**; it never reruns the task. If both attempts
    fail, return the cleanup error along with any work error.
 
+Concurrent Renew/Release backend calls remain serialized. Their context and
+OperationTimeout bound both local waiting and I/O. Release closes Done immediately,
+even while a renewal is in flight; a late renewal cannot reopen the lease. A
+cancelled cleanup attempt can be retried with a fresh context on the same Lease.
+Any Renew error, including cancellation while waiting, permanently invalidates it.
+
 The demo shortens TTL to 1s, renews every 250ms, and uses 100ms operation contexts
 so renewals are visible in a short memory-only run. These are demo timings, not
 remote-backend tuning recommendations. With the ordinary 30s TTL, an application
@@ -225,7 +231,7 @@ implementation and uses the same defaults.
 | `Config.SubmitWindow` | 5s | Window in which the initial request can be submitted |
 | `Config.Retention` | 1m | Recovery retention after reaching a terminal state |
 | `Config.MaxRecords` | 1000000 | Bound on active, queued and retained terminal records together |
-| `OperationTimeout` | 5s | Maximum duration of each client-side backend call |
+| `OperationTimeout` | 5s | Maximum duration of each backend call; Renew/Release include local serialization wait |
 | `PollInterval` | 50ms | Delay between queries while queued |
 | `ClockSkewAllowance` | 0 | Opt-in budget for a known client/backend clock-offset bound |
 

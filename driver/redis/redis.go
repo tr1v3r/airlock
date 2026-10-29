@@ -173,7 +173,7 @@ func micro(t time.Time) (int64, error) {
 // decodeRead validates the atomic snapshot/existence/time reply before computing a transition.
 func decodeRead(raw any) ([]byte, time.Time, error) {
 	values, ok := raw.([]any)
-	if !ok || len(values) != 4 {
+	if !ok || (len(values) != 4 && len(values) != 6) {
 		return nil, time.Time{}, errors.New("airlock/redis: malformed read response")
 	}
 
@@ -283,6 +283,11 @@ func (d *Driver) executeUpdate(ctx context.Context, command airlock.Command, key
 		return airlock.Result{}, false, decodeErr
 	}
 
+	var token string
+	var before map[string]recordVersion
+	if command.Kind != airlock.Observe {
+		token, before = projectionBaseline(state, raw)
+	}
 	nextState, result, window, transitionErr := airlock.Transition(state, now, command)
 	var next []byte
 	if nextState != nil {
@@ -307,13 +312,21 @@ func (d *Driver) executeUpdate(ctx context.Context, command airlock.Command, key
 		return airlock.Result{}, false, err
 	}
 
-	projection, err := index(nextState)
+	projection, err := deltaIndex(nextState, token, before)
 	if err != nil {
 		return airlock.Result{}, false, err
 	}
+	script := deltaCommitScript
+	if projection == nil {
+		projection, err = index(nextState)
+		if err != nil {
+			return airlock.Result{}, false, err
+		}
+		script = commitScript
+	}
 
 	raw, err = d.evalKeys(
-		ctx, commitScript, []string{key, updateLockKey(key)},
+		ctx, script, []string{key, updateLockKey(key)},
 		owner, string(next), lower, upper, string(projection),
 	)
 	if err != nil {
