@@ -93,7 +93,14 @@ GROUP BY tenant, status;
 Only configuration and group/tenant rotation lists remain JSONB on the resource
 row. There is no complete-resource snapshot column. Mutations read all retained
 requests for the resource (bounded by MaxRecords), run the shared scheduler, and
-write only inserted/changed/deleted requests.
+write only inserted/changed/deleted requests. Deletes and upserts use batches of
+at most 256 records, keeping bind parameters below PostgreSQL's limit and checking
+the exact affected count. A batch failure rolls back the entire transition.
+Queue positions keep the existing deferred uniqueness constraint. This reduces
+round trips during bulk expiry/GC; it does not remove O(records) reads or validation.
+
+删除与 upsert 每批最多 256 条，并严格校验影响行数；任何批次失败都回滚整个转换。
+队列位置仍由延迟唯一约束校验。批量到期/GC 减少网络往返，但全量读取和状态验证仍为 O(records)。
 
 Ordinary Observe reads one resource header and one request by primary key in a
 single MVCC statement, with no row lock, rotations load, full request scan or

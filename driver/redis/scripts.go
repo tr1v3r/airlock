@@ -7,16 +7,15 @@ const readScript = `
 
 	if state == false then
 		if redis.call('EXISTS', KEYS[1]) ~= 0 then return redis.error_reply('missing snapshot') end
-		return {0, '', now[1], now[2]}
+		return {0, '', now[1], now[2], '', 0}
 	end
 
-	return {1, state, now[1], now[2]}
+	return {1, state, now[1], now[2], redis.call('HGET', KEYS[1], 'meta') or '', redis.call('HLEN', KEYS[1])}
 `
 
-// commitScript checks lock ownership and backend time, prepares derived request
-// records, then publishes state and metadata together in its final HSET. Every
-// updater must hold the resource lock; no old snapshot is sent or compared.
-const commitScript = `
+// commitGuard checks ownership, backend time and common publication fields
+// before either full or incremental publication can mutate derived records.
+const commitGuard = `
 	if #KEYS ~= 2 or #ARGV ~= 5 then return redis.error_reply('invalid arguments') end
 	if #ARGV[1] == 0 then return redis.error_reply('empty lock owner') end
 	if #ARGV[2] == 0 then return redis.error_reply('empty snapshot') end
@@ -58,6 +57,11 @@ const commitScript = `
 		end
 	end
 
+`
+
+// commitScript prepares candidate-tagged records, then atomically publishes
+// state and metadata. Every updater holds the resource lock.
+const commitScript = commitGuard + `
 	-- Prepare candidate-tagged derived records before publishing state and the
 	-- matching header. Failed preparation cannot authorize work through Observe.
 	-- Also collect orphaned indexes from interrupted preparation.
@@ -94,4 +98,29 @@ const releaseUpdateLockScript = `
 		return redis.call('DEL', KEYS[1])
 	end
 	return 0
+`
+
+// deltaCommitScript publishes every changed projection together with state/meta
+// in ONE HSET. A stable generation token lets old and new readers reuse unchanged
+// projections. At most 256 changed/deleted records keeps unpack below Lua's stack
+// limit. Larger transitions use the full candidate-tagged publication protocol.
+const deltaCommitScript = commitGuard + `
+	if type(index.Deletes) ~= 'table' then return redis.error_reply('invalid deletions') end
+	local changes = 0
+	local args = {'state', ARGV[2], 'meta', index.Meta}
+	for id, value in pairs(index.Records) do
+		changes = changes + 1
+		args[#args + 1] = 'r:' .. id
+		args[#args + 1] = value
+	end
+	for _, id in pairs(index.Deletes) do
+		if type(id) ~= 'string' then return redis.error_reply('invalid deletion') end
+		changes = changes + 1
+	end
+	if changes > 256 then return redis.error_reply('oversized delta') end
+	-- Deleting a projection early only makes Observe fall back to the snapshot.
+	-- All potentially authorizing record changes are in the final atomic HSET.
+	for _, id in pairs(index.Deletes) do redis.call('HDEL', KEYS[1], 'r:' .. id) end
+	redis.call('HSET', KEYS[1], unpack(args))
+	return 1
 `

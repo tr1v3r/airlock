@@ -591,6 +591,9 @@ func TestConcurrentObserveMaintainsOnce(t *testing.T) {
 
 func TestCommitDoesNotResendOldSnapshot(t *testing.T) {
 	d, client, _ := fixture(t)
+	if err := client.ScriptLoad(context.Background(), deltaCommitScript).Err(); err != nil {
+		t.Fatal(err)
+	}
 	r := request()
 	grant := mustExecute(t, d, submit(r))
 	old, err := client.HGet(context.Background(), d.key(r.Resource), "state").Result()

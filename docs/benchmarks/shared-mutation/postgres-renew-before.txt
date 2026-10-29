@@ -1,0 +1,9 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/tr1v3r/airlock/driver/postgres
+cpu: Apple M3 Pro
+BenchmarkIntegrationRenewWithWaiters/1-12  	      20	   2347831 ns/op	   23193 B/op	     325 allocs/op
+BenchmarkIntegrationRenewWithWaiters/100-12         	      20	   2408569 ns/op	  237090 B/op	    2953 allocs/op
+BenchmarkIntegrationRenewWithWaiters/1000-12        	      20	   9577896 ns/op	 2400718 B/op	   27172 allocs/op
+PASS
+ok  	github.com/tr1v3r/airlock/driver/postgres	15.244s

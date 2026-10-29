@@ -211,7 +211,7 @@ func (h hook) ProcessHook(next goredis.ProcessHook) goredis.ProcessHook {
 }
 
 func isCommit(cmd goredis.Cmder) bool {
-	return isScript(cmd, commitScript)
+	return isScript(cmd, commitScript) || isScript(cmd, deltaCommitScript)
 }
 
 func isScript(cmd goredis.Cmder, script string) bool {
@@ -588,8 +588,8 @@ func TestObservationIndexCollectsDeletedRecords(t *testing.T) {
 
 	server.SetTime(r.SubmitUntil.Add(r.Config.Retention + time.Millisecond))
 	_, _ = d.Observe(ctx, r)
-	if client.HExists(ctx, d.key(r.Resource), "r:"+r.ID).Val() {
-		t.Fatal("history GC leaked indexed request")
+	if client.HExists(ctx, d.key(r.Resource), "r:"+r.ID).Val() || client.HExists(ctx, d.key(r.Resource), "r:orphan").Val() {
+		t.Fatal("history GC leaked indexed request or orphan")
 	}
 }
 

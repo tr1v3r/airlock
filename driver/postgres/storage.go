@@ -8,6 +8,7 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tr1v3r/airlock"
@@ -217,61 +218,107 @@ func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState
 		}
 	}
 
-	for id := range before {
-		if s.Records[id] != nil {
-			continue
+	var deletions []string
+	flushDeletes := func() error {
+		if len(deletions) == 0 {
+			return nil
 		}
-
-		result, err = tx.ExecContext(
-			ctx,
-			fmt.Sprintf(`
-			DELETE FROM %s
-			WHERE namespace=$1
-				AND resource=$2
-				AND id=$3
-		`, d.requestTable),
-			d.namespace, s.Resource, id,
-		)
-		if err = oneRow(result, err); err != nil {
-			return fmt.Errorf("airlock/postgres: prune request: %w", err)
+		args := []any{d.namespace, s.Resource}
+		var query strings.Builder
+		fmt.Fprintf(&query, "DELETE FROM %s WHERE namespace=$1 AND resource=$2 AND id IN (", d.requestTable)
+		for i, id := range deletions {
+			if i > 0 {
+				query.WriteByte(',')
+			}
+			fmt.Fprintf(&query, "$%d", i+3)
+			args = append(args, id)
+		}
+		query.WriteByte(')')
+		result, err := tx.ExecContext(ctx, query.String(), args...)
+		if err = affectedRows(result, err, len(deletions)); err != nil {
+			return fmt.Errorf("airlock/postgres: prune requests: %w", err)
+		}
+		deletions = deletions[:0]
+		return nil
+	}
+	for id := range before {
+		if s.Records[id] == nil {
+			deletions = append(deletions, id)
+			if len(deletions) == persistBatchSize {
+				if err := flushDeletes(); err != nil {
+					return err
+				}
+			}
 		}
 	}
+	if err := flushDeletes(); err != nil {
+		return err
+	}
 
+	args := make([]any, 0, 14)
+	var values strings.Builder
+	count := 0
+	flushUpserts := func() error {
+		if count == 0 {
+			return nil
+		}
+		query := fmt.Sprintf(`INSERT INTO %s (namespace, resource, %s) VALUES %s
+			ON CONFLICT (namespace,resource,id) DO UPDATE SET
+			status=EXCLUDED.status, lease_id=EXCLUDED.lease_id,
+			until_ms=EXCLUDED.until_ms, finished_ms=EXCLUDED.finished_ms,
+			failure=EXCLUDED.failure, queue_position=EXCLUDED.queue_position`,
+			d.requestTable, requestColumns, values.String())
+		result, err := tx.ExecContext(ctx, query, args...)
+		if err = affectedRows(result, err, count); err != nil {
+			return fmt.Errorf("airlock/postgres: persist requests: %w", err)
+		}
+		args = args[:0]
+		values.Reset()
+		count = 0
+		return nil
+	}
 	for id, rec := range s.Records {
 		position := positions[id]
 		if old, ok := before[id]; ok && old.position == position && reflect.DeepEqual(old.record, *rec) {
 			continue
 		}
-
-		result, err = tx.ExecContext(
-			ctx,
-			fmt.Sprintf(`
-			INSERT INTO %s (namespace, resource, %s)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-			ON CONFLICT (namespace,resource,id)
-			DO UPDATE SET
-				status=EXCLUDED.status,
-				lease_id=EXCLUDED.lease_id,
-				until_ms=EXCLUDED.until_ms,
-				finished_ms=EXCLUDED.finished_ms,
-				failure=EXCLUDED.failure,
-				queue_position=EXCLUDED.queue_position
-		`, d.requestTable, requestColumns),
-			d.namespace, s.Resource, id,
+		if count > 0 {
+			values.WriteByte(',')
+		}
+		values.WriteByte('(')
+		for i := 0; i < 14; i++ {
+			if i > 0 {
+				values.WriteByte(',')
+			}
+			fmt.Fprintf(&values, "$%d", len(args)+i+1)
+		}
+		values.WriteByte(')')
+		args = append(args, d.namespace, s.Resource, id,
 			rec.Request.Owner, rec.Request.Tenant, rec.Request.Weight,
 			rec.Request.SubmitUntil.UnixMilli(), rec.Request.WaitUntil.UnixMilli(),
-			string(rec.Status), rec.LeaseID, millis(rec.Until), millis(rec.Finished),
-			rec.Failure, position,
-		)
-		if err = oneRow(result, err); err != nil {
-			return fmt.Errorf("airlock/postgres: persist request: %w", err)
+			string(rec.Status), rec.LeaseID, millis(rec.Until), millis(rec.Finished), rec.Failure, position)
+		count++
+		if count == persistBatchSize {
+			if err := flushUpserts(); err != nil {
+				return err
+			}
 		}
+	}
+	if err := flushUpserts(); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func oneRow(result sql.Result, err error) error {
+// Keep batches comfortably below PostgreSQL's 65535 bind-parameter ceiling.
+// Queue positions remain stable; the existing deferred uniqueness constraint
+// permits arbitrary map iteration order within and across batches.
+const persistBatchSize = 256
+
+func oneRow(result sql.Result, err error) error { return affectedRows(result, err, 1) }
+
+func affectedRows(result sql.Result, err error, want int) error {
 	if err != nil {
 		return err
 	}
@@ -280,8 +327,8 @@ func oneRow(result sql.Result, err error) error {
 	if err != nil {
 		return err
 	}
-	if n != 1 {
-		return fmt.Errorf("airlock/postgres: expected one affected row, got %d", n)
+	if n != int64(want) {
+		return fmt.Errorf("airlock/postgres: expected %d affected rows, got %d", want, n)
 	}
 	return nil
 }

@@ -1,0 +1,9 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/tr1v3r/airlock/driver/redis
+cpu: Apple M3 Pro
+BenchmarkIntegrationRenewWithWaiters/1-12  	      50	    938068 ns/op	   27140 B/op	     192 allocs/op
+BenchmarkIntegrationRenewWithWaiters/1000-12         	      50	  19342668 ns/op	12190599 B/op	   16343 allocs/op
+PASS
+ok  	github.com/tr1v3r/airlock/driver/redis	24.783s
+?   	github.com/tr1v3r/airlock/driver/redis/examples/basic	[no test files]
