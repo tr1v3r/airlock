@@ -38,7 +38,8 @@ AIRLOCK_REDIS_ADDR=127.0.0.1:6379 go run ./examples/basic
 
 ## 原子性、时间和重试
 
-容量与请求重量使用正 Go `int`：64 位最大 `2^63-1`，32 位最大 `2^31-1`。
+创建容量与请求重量使用正 Go `int`；Resize 目标和当前容量允许为零。
+64 位最大 `2^63-1`，32 位最大 `2^31-1`。
 快照及投影的嵌套 JSON 保留精确整数文本，Lua 不把容量或重量转成浮点数。所有参与者
 须支持所选数值范围；解码超范围整数或已授予重量总和溢出时拒绝操作。记录和队列数限制
 不变。Lua 的精确时间边界针对后端时间戳，与容量无关。
@@ -138,5 +139,10 @@ AIRLOCK_REDIS_CLUSTER_ADDRS=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:7002 GOWORK=
 公开操作为 `Submit`、`Observe`、`Cancel`、`Renew` 和 `Release`。前三者接收不可变
 `airlock.Request`；续租与释放接收 `airlock.LeaseRef{Request: original, ID: result.LeaseID}`，
 均返回 `(airlock.Result, error)`。
+
+Resize 接受非负目标，负数返回 `ErrInvalidConfig`。零暂停新增授予，保留等待者、公平顺序和保护队首。
+新正权重阻塞申请按正常预算/截止时间排队；已有租约正常续期、释放和过期。
+恢复正容量时，即使从零扩容，也先拒绝超过目标的排队权重，再恢复公平调度。
+创建容量仍须为正数，零不是无限模式；容量版本 CAS 和同容量维护规则不变。
 
 在线扩缩容通过可选 ResourceManager.Resize，当前容量/容量版本与状态投影一起发布。只读 Inspect 的时间口径及版本冲突恢复见 [Shared 指南](../../docs/guides/shared.zh-CN.md#shared-动态容量)。

@@ -19,6 +19,7 @@ func RunResourceManagement(t *testing.T, driver airlock.Driver) {
 		t.Fatal("driver lacks resource management")
 	}
 	t.Run("native_int_capacity", func(t *testing.T) { nativeCapacity(t, driver) })
+	t.Run("pause_resume", func(t *testing.T) { pauseResume(t, driver) })
 	ctx := context.Background()
 	name := "resize-" + airlock.NewRequest(time.Now()).Owner
 	if _, err := manager.InspectResource(ctx, name); !errors.Is(err, airlock.ErrResourceNotFound) {

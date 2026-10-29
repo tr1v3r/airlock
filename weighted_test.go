@@ -448,7 +448,7 @@ func TestResizeValidationAndDrain(t *testing.T) {
 	held := acquireN(t, a, "holder", 8)
 	before := a.Stats()
 
-	for _, capacity := range []int{0, -1} {
+	for _, capacity := range []int{-1} {
 		if err := a.Resize(capacity); !errors.Is(err, airlock.ErrInvalidConfig) || a.Stats() != before {
 			t.Fatalf("invalid resize: %v, %+v", err, a.Stats())
 		}

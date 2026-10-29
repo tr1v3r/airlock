@@ -61,7 +61,7 @@ func TestResizeValidationAndWindow(t *testing.T) {
 	if next, _, _, err := Transition(nil, time.Now(), Command{Kind: Resize, Resize: ResizeRequest{Resource: "missing", Capacity: 1, ExpectedVersion: 1}}); next != nil || !errors.Is(err, ErrResourceNotFound) {
 		t.Fatal(next, err)
 	}
-	for _, r := range []ResizeRequest{{}, {Resource: "x", Capacity: 0, ExpectedVersion: 1}, {Resource: "x", Capacity: -1, ExpectedVersion: 1}, {Resource: "x", Capacity: 1}} {
+	for _, r := range []ResizeRequest{{}, {Resource: "x", Capacity: -1, ExpectedVersion: 1}, {Resource: "x", Capacity: 1}} {
 		if ValidateResize(r) == nil {
 			t.Fatal(r)
 		}
@@ -126,7 +126,7 @@ func TestSharedResourceManagement(t *testing.T) {
 	if _, err := plain.Resize(context.Background(), 1, 1); !errors.Is(err, ErrResourceManagementUnsupported) {
 		t.Fatal(err)
 	}
-	if _, err := plain.Resize(context.Background(), 0, 1); !errors.Is(err, ErrInvalidConfig) {
+	if _, err := plain.Resize(context.Background(), -1, 1); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())

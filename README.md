@@ -156,7 +156,8 @@ See the runnable [immediate acquisition example](examples/tryacquire/example.go)
   `ErrTenantQueueFull` instead describe rejected attempts to join an `Acquire` queue.
 - Explicit tenant IDs are validated before weights. Empty IDs return
   `ErrInvalidTenant`; nonpositive weights return `ErrInvalidWeight`, and weights
-  above capacity return `ErrWeightExceedsCapacity`. Use `errors.Is` to distinguish
+  above a positive capacity return `ErrWeightExceedsCapacity`. While paused at zero,
+  valid positive weights return `ErrWouldBlock`. Use `errors.Is` to distinguish
   these invalid requests from temporary unavailability.
 - These local calls take no context. They still acquire the internal mutex;
   “immediate” means no capacity wait, not a wait-free or bounded-latency guarantee.
@@ -286,7 +287,7 @@ acquisition with `lock.AcquireNFor(ctx, tenantID, 3)` to reserve three tokens;
 the same `permit.Release()` returns all three. Without a tenant ID, use
 `lock.AcquireN(ctx, 3)`. See the [weighted example](examples/weighted/example.go).
 
-- Capacity must be positive. Queue limits must be nonnegative, and the per-tenant
+- Creation capacity must be positive. Queue limits must be nonnegative, and the per-tenant
   limit cannot exceed the global limit; otherwise `New` returns
   `ErrInvalidConfig`. Zero queue limits disable waiting. Queue limits are fixed; local capacity can change via Resize.
 - `Acquire(ctx)` and `AcquireFor(ctx, tenantID)` acquire one token. Use
@@ -296,7 +297,9 @@ the same `permit.Release()` returns all three. Without a tenant ID, use
   Use trusted, bounded IDs: Airlock does not authenticate callers or bound lengths.
 - For `Acquire` methods, a nil context panics. Explicit tenant ID validation comes next
   (`ErrInvalidTenant`), then weight validation: `n <= 0` returns
-  `ErrInvalidWeight`; `n > Capacity` returns `ErrWeightExceedsCapacity`.
+  `ErrInvalidWeight`; `n > Capacity` returns `ErrWeightExceedsCapacity` only when
+  capacity is positive. While paused at zero, positive weights may queue under the
+  normal budgets, cancellation and deadlines.
   Invalid weights fail immediately without queuing, even with a cancelled context.
 - If immediate acquisition is not possible, full queues return `ErrQueueFull`,
   `ErrGroupQueueFull` (with priority enabled), or `ErrTenantQueueFull`, checked in that order.
@@ -473,7 +476,8 @@ Hints are excluded from request identity and policy comparisons. New weights are
 validated against the backend's current capacity, so existing Shared clients can
 use expanded capacity without reconstruction.
 
-Capacity and request weight accept any positive Go `int`: up to `2^63-1` on
+Creation capacity and request weight accept any positive Go `int`; Resize accepts
+any nonnegative Go `int` (negative targets return `ErrInvalidConfig`): up to `2^63-1` on
 64-bit processes and `2^31-1` on 32-bit processes. Participants must stay within
 the range supported by every client; out-of-range stored integers fail to decode
 or scan rather than being truncated. Capacity does not allocate one record per
@@ -485,10 +489,18 @@ with `ErrCorruptState`; legal shrink overcommit remains supported.
 
 Shrink never revokes grants or forbids their normal renewal/release. `Used` may
 exceed `Capacity` until holders release/expire; no new grants occur while over
-capacity. Queued requests heavier than the new capacity become stable Rejected
-results with `ErrWeightExceedsCapacity`; the remaining queue keeps its fairness
-and protected-head rules. Expansion dispatches under the new limit; waiting
-clients discover grants on their next Observe (default polling: 50ms).
+capacity. `Resize(ctx, 0, version)` pauses new grants, not running work, and is
+not unlimited mode. Waiting requests, fair order and the protected head survive;
+normal cancellation, waiting deadlines and lease renewal/release/expiry still apply.
+New positive-weight blocking acquires can queue while paused, subject to the usual
+queue/history budgets and deadlines; they do not fail merely for exceeding zero.
+
+Resizing to a positive capacity rejects queued requests heavier than that target,
+including when resuming from zero (technically an expansion). These become stable
+Rejected results with `ErrWeightExceedsCapacity`. The remaining queue retains its
+fairness and protected-head rules and dispatches under the new limit. New weights
+above a positive capacity are rejected as usual. Waiting clients discover grants
+on their next Observe (default polling: 50ms).
 
 `ExpectedVersion` is mandatory and compares `CapacityVersion`, not `Revision`.
 Only an actual capacity change increments it. A matching same-capacity call still
@@ -504,7 +516,8 @@ expired records not yet maintained; `StateTime` and `Revision` identify its scop
 It does not count actual executing tasks. Missing resources return
 `ErrResourceNotFound`; Inspect/Resize do not create them. Drivers without the optional
 capability return `ErrResourceManagementUnsupported` through Shared. Authorization
-belongs to the application/backend ACL, not Tenant. Capacity zero is not supported.
+belongs to the application/backend ACL, not Tenant. Creation still requires positive
+capacity; only Resize can pause an initialized resource at zero.
 
 The executable memory example `ExampleDriver_Resize` covers shrink-overcommit,
 release and expansion using the original Shared client.
@@ -522,17 +535,24 @@ stats := lock.Stats()
 fmt.Println(stats.Capacity, stats.InUse)
 ```
 
-- Capacity must be positive; invalid values return `ErrInvalidConfig` without
-  changing state. Capacity uses the positive Go `int` range.
+- Resize accepts any nonnegative Go `int`; negative targets return
+  `ErrInvalidConfig` without changing state. Creation capacity must remain positive.
+- `Resize(0)` pauses new grants, not running work; it is not unlimited mode.
+  Waiting requests, fairness state and the protected head are preserved. New
+  positive-weight `Acquire` calls may queue subject to normal queue budgets and
+  context cancellation/deadlines; `TryAcquire` variants return `ErrWouldBlock`.
+  Existing permits can release normally, but release cannot grant work while paused.
 - Expansion immediately dispatches waiters using tenant FIFO, round-robin,
   priority groups and protected-head rules. An unchanged capacity is a no-op.
 - Shrinking preserves issued permits. For example, shrinking from 10 to 5 while
   8 tokens are held yields `Capacity=5, InUse=8`. New grants wait until sufficient
   capacity is released; existing permits release their full original weights.
-- Queued requests heavier than the new capacity wake with
-  `ErrWeightExceedsCapacity` and no permit, including an oversized protected head.
-  Surviving waiters retain their order; rejection does not refund a consumed turn.
-  New oversized requests fail with the same error.
+- Resizing to a positive capacity wakes queued requests heavier than that target
+  with `ErrWeightExceedsCapacity` and no permit, including an oversized protected
+  head. This also applies when resuming from zero, even though it is an expansion.
+  Surviving waiters retain their order and resume fair scheduling; rejection does
+  not refund a consumed turn. New requests above a positive capacity fail with the
+  same error. Pausing at zero does not reject waiters for their weight.
 - Resize, cancellation and grant arbitrate under the same mutex. For a queued
   request, whichever operation removes it first determines its result.
   Concurrent Resize calls take effect in mutex acquisition order.
@@ -541,7 +561,7 @@ fmt.Println(stats.Capacity, stats.InUse)
   expire: holders must release them. Queue limits and priority policy stay fixed.
 
 See the executable `ExampleAirlock_Resize` in [weighted_test.go](weighted_test.go).
-This API is local only; `Shared` and its drivers do not yet support resizing.
+For Shared resources, use the versioned API described above instead.
 
 ## Migration
 
