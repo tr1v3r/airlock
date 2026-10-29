@@ -177,7 +177,7 @@ func (a *Airlock) AcquireFor(ctx context.Context, tenantID string) (*Permit, err
 }
 
 // AcquireN atomically acquires n tokens for the default tenant. A nil context
-// panics. Nonpositive n returns ErrInvalidWeight; n greater than Capacity returns
+// panics. Nonpositive n returns ErrInvalidWeight; n greater than a positive Capacity returns
 // ErrWeightExceedsCapacity. Weight validation precedes cancellation checks.
 // It never holds a partial allocation. The queue and cancellation rules of
 // Acquire apply, and the returned Permit releases all n tokens at once.
@@ -209,7 +209,7 @@ func (a *Airlock) acquire(ctx context.Context, tenant string, n int) (*Permit, e
 	}
 
 	a.mu.Lock()
-	if n > a.cfg.Capacity {
+	if a.cfg.Capacity > 0 && n > a.cfg.Capacity {
 		a.mu.Unlock()
 		return nil, ErrWeightExceedsCapacity
 	}
@@ -358,11 +358,13 @@ func (p *Permit) Release() {
 }
 
 // Resize atomically changes the local token limit and dispatches waiting requests
-// using the existing fairness policy. Nonpositive capacity returns ErrInvalidConfig
+// using the existing fairness policy. Negative capacity returns ErrInvalidConfig
 // without changing state. Setting the current capacity is a no-op.
 //
 // Shrinking never revokes permits: InUse may exceed Capacity until holders release.
-// Queued requests heavier than the new capacity fail with ErrWeightExceedsCapacity;
+// Zero pauses admissions, preserving queued requests and existing permits.
+// New positive-weight requests may queue while paused, subject to queue budgets.
+// On positive resize, queued requests heavier than capacity fail with ErrWeightExceedsCapacity;
 // remaining requests retain their order and any surviving protected head.
 // Cancellation, rejection and grant are arbitrated under the same mutex: whichever
 // removes a waiter first determines its result.
@@ -370,7 +372,7 @@ func (p *Permit) Release() {
 // Resize waits for the internal mutex, not for existing permits to drain. Concurrent
 // calls take effect in mutex acquisition order. Queue limits and priority are unchanged.
 func (a *Airlock) Resize(capacity int) error {
-	if capacity <= 0 {
+	if capacity < 0 {
 		return ErrInvalidConfig
 	}
 
@@ -382,7 +384,7 @@ func (a *Airlock) Resize(capacity int) error {
 
 	previous := a.cfg.Capacity
 	a.cfg.Capacity = capacity
-	if capacity < previous {
+	if capacity > 0 && (previous == 0 || capacity < previous) {
 		for _, tenant := range a.tenants {
 			for node := tenant.requests.Front(); node != nil; {
 				next := node.Next()

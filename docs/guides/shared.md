@@ -319,7 +319,8 @@ Hints are excluded from request identity and policy comparisons. New weights are
 validated against the backend's current capacity, so existing Shared clients can
 use expanded capacity without reconstruction.
 
-Capacity and request weight accept any positive Go `int`: up to `2^63-1` on
+Creation capacity and request weight accept any positive Go `int`; Resize accepts
+any nonnegative Go `int` (negative targets return `ErrInvalidConfig`): up to `2^63-1` on
 64-bit processes and `2^31-1` on 32-bit processes. Participants must stay within
 the range supported by every client; out-of-range stored integers fail to decode
 or scan rather than being truncated. Capacity does not allocate one record per
@@ -331,10 +332,18 @@ with `ErrCorruptState`; legal shrink overcommit remains supported.
 
 Shrink never revokes grants or forbids their normal renewal/release. `Used` may
 exceed `Capacity` until holders release/expire; no new grants occur while over
-capacity. Queued requests heavier than the new capacity become stable Rejected
-results with `ErrWeightExceedsCapacity`; the remaining queue keeps its fairness
-and protected-head rules. Expansion dispatches under the new limit; waiting
-clients discover grants on their next Observe (default polling: 50ms).
+capacity. `Resize(ctx, 0, version)` pauses new grants, not running work, and is
+not unlimited mode. Waiting requests, fair order and the protected head survive;
+normal cancellation, waiting deadlines and lease renewal/release/expiry still apply.
+New positive-weight blocking acquires can queue while paused, subject to the usual
+queue/history budgets and deadlines; they do not fail merely for exceeding zero.
+
+Resizing to a positive capacity rejects queued requests heavier than that target,
+including when resuming from zero (technically an expansion). These become stable
+Rejected results with `ErrWeightExceedsCapacity`. The remaining queue retains its
+fairness and protected-head rules and dispatches under the new limit. New weights
+above a positive capacity are rejected as usual. Waiting clients discover grants
+on their next Observe (default polling: 50ms).
 
 `ExpectedVersion` is mandatory and compares `CapacityVersion`, not `Revision`.
 Only an actual capacity change increments it. A matching same-capacity call still
@@ -350,7 +359,10 @@ expired records not yet maintained; `StateTime` and `Revision` identify its scop
 It does not count actual executing tasks. Missing resources return
 `ErrResourceNotFound`; Inspect/Resize do not create them. Drivers without the optional
 capability return `ErrResourceManagementUnsupported` through Shared. Authorization
-belongs to the application/backend ACL, not Tenant. Capacity zero is not supported.
+belongs to the application/backend ACL, not Tenant. Creation still requires positive
+capacity; only Resize can pause an initialized resource at zero. Before using zero
+with an existing PostgreSQL deployment, check the [capacity constraint migration](../../driver/postgres/README.md)
+requirements; explicitly run the new `EnsureSchema` to migrate legacy positive-only checks.
 
 The executable memory example `ExampleDriver_Resize` covers shrink-overcommit,
 release and expansion using the original Shared client.

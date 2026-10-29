@@ -141,7 +141,8 @@ defer permit.Release()
   队列是否还有额度不影响此判断。`ErrWouldBlock` 表示当前无法立即准入；
   `ErrQueueFull`、`ErrGroupQueueFull` 和 `ErrTenantQueueFull` 则表示 `Acquire` 尝试入队时被拒绝。
 - 先检查显式租户 ID，再检查权重。空 ID 返回 `ErrInvalidTenant`，非正权重返回
-  `ErrInvalidWeight`，超过容量返回 `ErrWeightExceedsCapacity`。用 `errors.Is`
+  `ErrInvalidWeight`，超过正容量返回 `ErrWeightExceedsCapacity`。零容量暂停期间，
+  合法的正权重返回 `ErrWouldBlock`。用 `errors.Is`
   区分非法请求和暂时无法准入。
 - 本地接口无需 context，但仍需获取内部互斥锁；“立即”表示不等待容量，
   不代表 wait-free 或返回延迟有上界。不要通过循环 `TryAcquire` 实现等待，
@@ -246,14 +247,15 @@ defer permit.Release()
 仍通过 `permit.Release()` 一次归还全部三个。无需租户 ID 时使用 `lock.AcquireN(ctx, 3)`。
 完整代码见[多令牌示例](examples/weighted/example.go)。
 
-- 容量必须为正数，队列上限非负，单租户上限不能超过全局上限；否则 `New` 返回
+- 创建容量必须为正数，队列上限非负，单租户上限不能超过全局上限；否则 `New` 返回
   `ErrInvalidConfig`。队列上限为零表示不允许等待。队列上限创建后固定，本地容量可通过 Resize 调整。
 - `Acquire(ctx)` 和 `AcquireFor(ctx, tenantID)` 申请一个令牌。
   默认租户通过 `AcquireN(ctx, n)`、指定租户通过 `AcquireNFor(ctx, tenantID, n)`
   原子申请全部 `n` 个令牌，等待时不会占有部分容量。显式租户 ID 必须为非空字符串。
   调用方应提供可信且长度受限的 ID，Airlock 不负责身份验证或字符串长度限制。
 - 对于 `Acquire` 系列方法，nil context 会 panic，然后检查显式租户 ID（`ErrInvalidTenant`），再检查权重：
-  `n <= 0` 返回 `ErrInvalidWeight`，`n > Capacity` 返回 `ErrWeightExceedsCapacity`。
+  `n <= 0` 返回 `ErrInvalidWeight`；容量为正时，`n > Capacity` 返回 `ErrWeightExceedsCapacity`。
+  零容量暂停期间，正权重可按正常预算、取消和截止时间规则排队。
   非法权重立即失败、不入队，即使 context 已取消也优先返回权重错误。
 - 无法立即获取时，按全局 `ErrQueueFull`、组 `ErrGroupQueueFull`（启用优先级时）、租户
   `ErrTenantQueueFull` 的顺序检查排队上限。已取消的 context 在检查可用容量和队列之前返回其错误。支持 `errors.Is`，失败时不返回 Permit。
@@ -395,7 +397,8 @@ fmt.Println(status.Capacity, status.Used, status.CapacityVersion)
 当前容量与 CapacityVersion 单独持久化；提示不参与请求身份或不可变策略比较。新请求由后端按
 当前容量校验，旧 Shared 实例无需重建就能使用扩容后的容量。
 
-容量和请求重量支持任意正 Go `int`：64 位进程最大 `2^63-1`，32 位进程最大 `2^31-1`。
+创建容量和请求重量支持任意正 Go `int`；Resize 接受非负 Go `int`，负数返回 `ErrInvalidConfig`。
+64 位进程最大 `2^63-1`，32 位进程最大 `2^31-1`。
 所有参与者须使用彼此都能表示的范围；超出本机整数范围的存储数据会在解码或扫描时失败，
 不会截断。容量不会按令牌数分配记录；`MaxRecords`、`MaxQueued` 仍最多 1000000，租户和
 优先级组的数量限制也不变。PostgreSQL 以 `BIGINT` 保存容量和重量，Redis 保留精确整数
@@ -403,8 +406,14 @@ JSON 文本，Lua 不将这些字段转换为数字。恢复状态或构建观�
 返回 `ErrCorruptState`；缩容造成的合法超限仍受支持。
 
 缩容不撤销已有租约，也不阻止正常续租/释放；Used 可以暂时大于 Capacity，超限时不新增授予，
-等待释放或过期。超过新容量的排队请求持久化为 Rejected，Observe 恢复 ErrWeightExceedsCapacity；
-其他请求保留公平顺序和保护队首。扩容按新上限调度，客户端在下一次 Observe 得知授予，默认轮询 50ms。
+等待释放或过期。`Resize(ctx, 0, version)` 暂停新增授予，不停止运行中的任务，也不是无限模式。
+等待请求、公平顺序和保护队首保留；取消、等待截止时间以及租约续期、释放、过期仍正常生效。
+暂停时，新提交的正权重阻塞申请可按正常队列/历史预算和截止时间入队，不会仅因权重大于零而被拒绝。
+
+调整到正容量时，超过目标容量的排队请求持久化为 Rejected，Observe 返回
+`ErrWeightExceedsCapacity`；即使从零恢复、数值上属于扩容，也执行此检查。
+其余请求保留公平顺序和保护队首，按新上限调度。正容量下的新超重请求仍按原规则拒绝。
+客户端在下一次 Observe 得知授予，默认轮询 50ms。
 
 ExpectedVersion 必填，对比 CapacityVersion 而非 Revision。只有实际容量变化才增加容量版本；
 版本匹配的同容量调用仍执行维护并提交新 Revision。版本冲突返回 ErrCapacityVersionConflict，
@@ -415,7 +424,8 @@ ExpectedVersion 必填，对比 CapacityVersion 而非 Revision。只有实际�
 Inspect 只读，Used/Queued 表示已提交快照中的记录，可能包括尚未清理的过期记录；
 StateTime 和 Revision 标明口径，不代表真实执行任务数。资源不存在时返回 ErrResourceNotFound，
 Inspect/Resize 不创建资源。驱动不支持可选管理能力时，Shared 返回 ErrResourceManagementUnsupported。
-鉴权由应用/后端 ACL 负责，Tenant 不代表管理权限。第一版不支持容量 0。
+鉴权由应用/后端 ACL 负责，Tenant 不代表管理权限。创建容量仍须为正数；
+只有 Resize 可将已初始化的资源暂停在零容量。
 
 可执行 memory 示例 ExampleDriver_Resize 展示合法超限、释放，以及使用原 Shared 实例扩容后申请更大权重。
 
@@ -432,16 +442,20 @@ stats := lock.Stats()
 fmt.Println(stats.Capacity, stats.InUse)
 ```
 
-- 容量必须为正数；无效值返回 `ErrInvalidConfig`，状态不变。
-  容量范围为正 Go `int`。
+- Resize 接受非负 Go `int`；负数返回 `ErrInvalidConfig`，状态不变。创建容量仍须为正数。
+- `Resize(0)` 暂停新增授予，不停止运行中的任务，也不是无限模式。
+  等待请求、公平调度状态和保护队首保留。新提交的正权重 `Acquire` 按正常队列预算及
+  context 取消/截止时间规则排队；`TryAcquire` 系列返回 `ErrWouldBlock`。
+  已有 Permit 可正常释放，但暂停期间释放不会触发新授予。
 - 扩容立即按租户 FIFO、轮转、优先级组和保护队首规则调度等待者。
   调整为相同容量不执行任何变更。
 - 缩容保留已发出的 Permit。例如持有 8 个令牌时从 10 缩到 5，
   得到 `Capacity=5, InUse=8`。新授予等待足够容量释放；
   已有 Permit 仍按原始权重完整释放。
-- 超过新容量的排队请求被唤醒，返回 `ErrWeightExceedsCapacity`，不返回 Permit，
-  包括超过新容量的保护队首。剩余请求保持原有顺序；拒绝不会返还已消耗的轮转机会。
-  新提交的超大请求返回同一错误。
+- 调整到正容量时，超过目标容量的排队请求被唤醒，返回 `ErrWeightExceedsCapacity`，
+  不返回 Permit，包括超重的保护队首。从零恢复虽然数值上属于扩容，也执行此检查。
+  剩余请求保持原有顺序并恢复公平调度；拒绝不会返还已消耗的轮转机会。
+  正容量下的新超重请求返回同一错误。暂停到零不会因权重拒绝等待者。
 - Resize、取消和授予在同一互斥锁下裁决。对于已排队请求，先将其移出队列的操作
   决定结果；并发 Resize 按获得锁的顺序生效。
 - Resize 等待内部互斥锁，不等待持有者释放。成功表示新上限已经生效，
@@ -449,7 +463,7 @@ fmt.Println(stats.Capacity, stats.InUse)
   队列上限和优先级策略保持不变。
 
 可运行示例见 [weighted_test.go](weighted_test.go) 中的 `ExampleAirlock_Resize`。
-此接口仅用于本地版；`Shared` 及其 driver 尚不支持动态容量。
+Shared 资源应使用上文的带版本接口。
 
 ## 迁移
 

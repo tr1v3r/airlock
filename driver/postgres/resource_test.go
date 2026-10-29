@@ -32,7 +32,7 @@ func TestInspectResource(t *testing.T) {
 				values[2] = "0"
 			}
 			if mode == "corrupt" {
-				values[0] = 0
+				values[0] = -1
 			}
 			rows := sqlmock.NewRows([]string{"capacity", "version", "revision", "time", "used", "queued", "now"})
 			if mode != "missing" {

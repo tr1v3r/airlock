@@ -81,7 +81,7 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 	}
 
 	if state != nil && (s.Version != 1 || s.Records == nil || s.Revision == 0 || s.Revision == ^uint64(0) ||
-		s.Time.IsZero() || now.Before(s.Time) || s.Capacity < 1 || s.CapacityVersion == 0) {
+		s.Time.IsZero() || now.Before(s.Time) || s.Capacity < 0 || s.CapacityVersion == 0) {
 		return nil, Result{}, ErrCorruptState
 	}
 	if cmd.Kind == Resize {
@@ -157,7 +157,7 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 		s.Capacity = cmd.Resize.Capacity
 		g.cfg.Capacity = s.Capacity
 		for id, w := range waiters {
-			if w.weight > s.Capacity {
+			if s.Capacity > 0 && w.weight > s.Capacity {
 				g.remove(w)
 				delete(waiters, id)
 				record := s.Records[id]
@@ -185,7 +185,7 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 				case cmd.Kind == Cancel:
 					rec.Status = Cancelled
 					rec.Finished = now
-				case cmd.Kind == Submit && r.Weight > s.Capacity:
+				case cmd.Kind == Submit && s.Capacity > 0 && r.Weight > s.Capacity:
 					rec.Status = Rejected
 					rec.Finished = now
 					rec.Failure = ErrWeightExceedsCapacity.Error()
@@ -389,12 +389,12 @@ func (s *durableSnapshot) capture(g *Airlock, ws map[string]*waiter) {
 // restoration; only its identity, deadlines, weight and lifecycle need checking.
 func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 	admission := s.Config.Admission
-	admission.Capacity = s.Capacity
 	g, err := New(admission)
 	if err != nil {
 		return nil, nil, ErrCorruptState
 	}
 
+	g.cfg.Capacity = s.Capacity // Creation stays positive; restored resources may be paused.
 	ws := make(map[string]*waiter)
 	qs := groups(g)
 	if s.Cursor < 0 || s.Cursor >= len(g.priority.schedule) || (len(s.Rotations) != 0 &&
@@ -429,7 +429,7 @@ func (s *durableSnapshot) restore() (*Airlock, map[string]*waiter, error) {
 
 			for _, id := range s.Queues[tenant] {
 				r := s.Records[id]
-				if r == nil || r.Status != Queued || r.Request.Weight > s.Capacity || r.Request.Tenant != tenant || ws[id] != nil {
+				if r == nil || r.Status != Queued || (s.Capacity > 0 && r.Request.Weight > s.Capacity) || r.Request.Tenant != tenant || ws[id] != nil {
 					return nil, nil, ErrCorruptState
 				}
 

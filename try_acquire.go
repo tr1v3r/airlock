@@ -21,7 +21,7 @@ func (a *Airlock) TryAcquireFor(tenantID string) (*Permit, error) {
 
 // TryAcquireN attempts to acquire all n tokens for the default tenant, with the
 // same rules as TryAcquire. Nonpositive n returns ErrInvalidWeight; n greater
-// than Capacity returns ErrWeightExceedsCapacity. Validation precedes checking
+// than a positive Capacity returns ErrWeightExceedsCapacity. Validation precedes checking
 // availability. Failure never holds a partial allocation. The returned permit
 // releases all n tokens together.
 func (a *Airlock) TryAcquireN(n int) (*Permit, error) {
@@ -31,7 +31,7 @@ func (a *Airlock) TryAcquireN(n int) (*Permit, error) {
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if n > a.cfg.Capacity {
+	if a.cfg.Capacity > 0 && n > a.cfg.Capacity {
 		return nil, ErrWeightExceedsCapacity
 	}
 	if a.queued != 0 || n > a.cfg.Capacity-a.used {

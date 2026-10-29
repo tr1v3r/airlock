@@ -169,6 +169,7 @@ func TestEnsureSchema(t *testing.T) {
 		m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
 	}
 
+	m.ExpectExec("DO ").WillReturnResult(sqlmock.NewResult(0, 0))
 	m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"unused"}))
 	m.ExpectQuery("SELECT id").WillReturnRows(sqlmock.NewRows([]string{"unused"}))
 	m.ExpectCommit()
@@ -194,6 +195,7 @@ func TestEnsureSchema(t *testing.T) {
 	m.ExpectBegin()
 	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
 	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	m.ExpectExec("DO ").WillReturnResult(sqlmock.NewResult(0, 0))
 	m.ExpectQuery("SELECT state_version").WillReturnError(sentinel)
 	m.ExpectRollback()
 	err := d.EnsureSchema(context.Background())
@@ -205,6 +207,7 @@ func TestEnsureSchema(t *testing.T) {
 	m.ExpectBegin()
 	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
 	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	m.ExpectExec("DO ").WillReturnResult(sqlmock.NewResult(0, 0))
 	m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"unused"}).CloseError(sentinel))
 	m.ExpectRollback()
 	if err = d.EnsureSchema(context.Background()); !errors.Is(err, sentinel) {
