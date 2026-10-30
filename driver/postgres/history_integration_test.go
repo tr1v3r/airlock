@@ -99,10 +99,10 @@ func TestIntegrationFreshHistoryAndGC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var stored storedHistory
-	partial, _, err := d.loadState(ctx, tx, r.Resource, nil, old.ID, &stored)
-	if err != nil || len(partial.Records) != 2 || stored.total != 1002 {
-		t.Fatalf("partial=%+v metadata=%+v error=%v", partial, stored, err)
+	var totalRecords int
+	partial, _, err := d.loadState(ctx, tx, r.Resource, nil, old.ID, &totalRecords)
+	if err != nil || len(partial.Records) != 2 || totalRecords != 1002 {
+		t.Fatalf("partial=%+v metadata=%+v error=%v", partial, totalRecords, err)
 	}
 	if err = tx.Rollback(); err != nil {
 		t.Fatal(err)

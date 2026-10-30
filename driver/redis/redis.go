@@ -173,7 +173,7 @@ func micro(t time.Time) (int64, error) {
 // decodeRead validates the atomic snapshot/existence/time reply before computing a transition.
 func decodeRead(raw any) ([]byte, time.Time, error) {
 	values, ok := raw.([]any)
-	if !ok || (len(values) != 4 && len(values) != 6) {
+	if !ok || len(values) != 4 {
 		return nil, time.Time{}, errors.New("airlock/redis: malformed read response")
 	}
 

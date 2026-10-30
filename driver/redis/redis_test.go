@@ -376,6 +376,10 @@ func TestCancelledAfterCommit(t *testing.T) {
 }
 
 func TestDecodeAndMicro(t *testing.T) {
+	// The removed full-snapshot reader returned six fields; current callers use four.
+	if _, _, err := decodeRead([]any{int64(0), "", "1", "0", "", int64(0)}); err == nil {
+		t.Fatal("accepted obsolete six-field response")
+	}
 	for _, raw := range []any{nil, []any{}, []any{int64(2), "", "1", "0"}, []any{int64(0), "x", "1", "0"}, []any{int64(0), "", "x", "0"}, []any{int64(0), "", "1", "1000000"}, []any{int64(0), "", "9007199254", "999999"}, []any{int64(1), "", "1", "0"}, []any{int64(1), "x", 1, "0"}} {
 		if _, _, err := decodeRead(raw); err == nil {
 			t.Fatal(raw)

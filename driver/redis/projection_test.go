@@ -33,7 +33,7 @@ func TestProjectionReusesUnchangedRecordsAndRepairsUnpublishedCandidate(t *testi
 	var after observationHeader
 	_ = json.Unmarshal([]byte(c.HGet(ctx, key, "meta").Val()), &after)
 	if after.Token != header.Token {
-		t.Fatal("delta changed generation token")
+		t.Fatal("projection update changed generation token")
 	}
 	// A corrupt projection with an unpublished generation cannot authorize work.
 	var staged observationRecord
@@ -50,7 +50,7 @@ func TestProjectionReusesUnchangedRecordsAndRepairsUnpublishedCandidate(t *testi
 	if result, ready, err := d.observe(ctx, pending); ready || err != nil {
 		t.Fatalf("staged candidate authorized: %+v ready=%v err=%v", result, ready, err)
 	}
-	// Observe falls back to a full publication, restoring the authoritative queue.
+	// Observe restores loaded projections from the authoritative active state.
 	result, err := d.Observe(ctx, pending)
 	if err != nil || result.Status != airlock.Queued {
 		t.Fatal(result, err)
@@ -63,6 +63,6 @@ func TestProjectionReusesUnchangedRecordsAndRepairsUnpublishedCandidate(t *testi
 	server.SetTime(now.Add(3 * time.Millisecond))
 	mustExecute(t, d, airlock.Command{Kind: airlock.Renew, Request: r, LeaseID: held.LeaseID})
 	if c.HGet(ctx, key, "r:"+pending.ID).Val() != before {
-		t.Fatal("delta could not follow partition publication")
+		t.Fatal("update rewrote the unchanged projection after repair")
 	}
 }

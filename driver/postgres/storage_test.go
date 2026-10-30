@@ -211,3 +211,13 @@ func TestQueuePositionExhaustionFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+// Fixture helpers deliberately discard omitted-history metadata; production uses
+// loadState/persistState with the exact count and retention boundary.
+func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) (*airlock.SharedState, map[string]row, error) {
+	return d.loadState(ctx, tx, request.Resource, &request.Config, request.ID, new(int))
+}
+
+func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState, before map[string]row) error {
+	return d.persistState(ctx, tx, s, before, airlock.RetainedHistory{})
+}

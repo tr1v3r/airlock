@@ -34,11 +34,7 @@ func instant(n sql.NullInt64) time.Time {
 const resourceColumns = `state_version, config, rotations, protected, cursor, revision, observed_ms, capacity, capacity_version, total_records`
 const requestColumns = `id, owner, tenant, weight, submit_until_ms, wait_until_ms, status, lease_id, until_ms, finished_ms, failure, queue_position`
 
-func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) (*airlock.SharedState, map[string]row, error) {
-	return d.loadState(ctx, tx, request.Resource, &request.Config, request.ID, new(storedHistory))
-}
-
-func (d *Driver) loadState(ctx context.Context, tx *sql.Tx, resource string, initial *airlock.ResourceConfig, target string, history *storedHistory) (*airlock.SharedState, map[string]row, error) {
+func (d *Driver) loadState(ctx context.Context, tx *sql.Tx, resource string, initial *airlock.ResourceConfig, target string, totalRecords *int) (*airlock.SharedState, map[string]row, error) {
 	var config []byte
 	var err error
 	if initial != nil {
@@ -99,7 +95,7 @@ func (d *Driver) loadState(ctx context.Context, tx *sql.Tx, resource string, ini
 	if s.Version != 1 || !total.Valid || total.Int64 < 0 || total.Int64 > int64(s.Config.MaxRecords) {
 		return nil, nil, airlock.ErrCorruptState
 	}
-	history.total = int(total.Int64)
+	*totalRecords = int(total.Int64)
 	columns := requestColumns + ", gc_after_ms"
 	// Separate arms preserve the active-index and exact target-primary-key access paths.
 	filter := " AND status IN ('queued','granted') UNION ALL SELECT " + columns + " FROM " + d.requestTable + " WHERE namespace=$1 AND resource=$2 AND id=$3 AND status NOT IN ('queued','granted')"
@@ -164,11 +160,11 @@ func (d *Driver) loadState(ctx context.Context, tx *sql.Tx, resource string, ini
 	if err := rows.Err(); err != nil {
 		return nil, nil, fmt.Errorf("airlock/postgres: read requests: %w", err)
 	}
-	if history.total < len(before) {
+	if *totalRecords < len(before) {
 		return nil, nil, airlock.ErrCorruptState
 	}
 	if s.Revision == 0 {
-		if history.total != 0 || len(before) != 0 || observed.Valid || s.Version != 1 || s.Protected != "" || s.Cursor != 0 || len(s.Rotations) != 0 {
+		if *totalRecords != 0 || len(before) != 0 || observed.Valid || s.Version != 1 || s.Protected != "" || s.Cursor != 0 || len(s.Rotations) != 0 {
 			return nil, nil, airlock.ErrCorruptState
 		}
 		if initial == nil {
@@ -182,9 +178,6 @@ func (d *Driver) loadState(ctx context.Context, tx *sql.Tx, resource string, ini
 	return s, before, nil
 }
 
-func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState, before map[string]row) error {
-	return d.persistState(ctx, tx, s, before, airlock.RetainedHistory{})
-}
 func (d *Driver) persistState(ctx context.Context, tx *sql.Tx, s *airlock.SharedState, before map[string]row, history airlock.RetainedHistory) error {
 	rotations, err := json.Marshal(s.Rotations)
 	if err != nil {

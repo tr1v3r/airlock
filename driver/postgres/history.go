@@ -9,11 +9,6 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
-// storedHistory is transaction-local metadata, never shared between commands.
-type storedHistory struct {
-	total int
-}
-
 func terminalDeadline(rec *airlock.DriverRecord, retention time.Duration) sql.NullInt64 {
 	if rec.Status == airlock.Queued || rec.Status == airlock.Granted {
 		return sql.NullInt64{}
@@ -28,8 +23,8 @@ func terminalDeadline(rec *airlock.DriverRecord, retention time.Duration) sql.Nu
 // reclaim removes indexed due history under the resource lock. The loaded target
 // remains for core's conflict-before-GC check. Nil transitions roll back deletions.
 // Work is O(due), not O(retained history); capped GC cannot falsely fill MaxRecords.
-func (d *Driver) reclaim(ctx context.Context, tx *sql.Tx, s *airlock.SharedState, target string, now time.Time, stored storedHistory) (airlock.RetainedHistory, error) {
-	if s == nil || stored.total == len(s.Records) {
+func (d *Driver) reclaim(ctx context.Context, tx *sql.Tx, s *airlock.SharedState, target string, now time.Time, totalRecords int) (airlock.RetainedHistory, error) {
+	if s == nil || totalRecords == len(s.Records) {
 		return airlock.RetainedHistory{}, nil
 	}
 	if s.Time.After(now) {
@@ -43,10 +38,10 @@ func (d *Driver) reclaim(ctx context.Context, tx *sql.Tx, s *airlock.SharedState
 	if err != nil {
 		return airlock.RetainedHistory{}, err
 	}
-	if removed < 0 || removed > int64(stored.total-len(s.Records)) {
+	if removed < 0 || removed > int64(totalRecords-len(s.Records)) {
 		return airlock.RetainedHistory{}, airlock.ErrCorruptState
 	}
-	count := stored.total - len(s.Records) - int(removed)
+	count := totalRecords - len(s.Records) - int(removed)
 	var before sql.NullInt64
 	err = tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT gc_after_ms FROM %s WHERE namespace=$1 AND resource=$2 AND gc_after_ms IS NOT NULL AND id <> $3 ORDER BY gc_after_ms,id LIMIT 1`, d.requestTable), d.namespace, s.Resource, target).Scan(&before)
 	if err == sql.ErrNoRows {

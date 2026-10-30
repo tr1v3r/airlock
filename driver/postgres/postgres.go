@@ -155,11 +155,11 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 
 	var state *airlock.SharedState
 	var before map[string]row
-	var stored storedHistory
+	var totalRecords int
 	if cmd.Kind == airlock.Resize {
-		state, before, err = d.loadState(ctx, tx, cmd.Resource(), nil, "", &stored)
+		state, before, err = d.loadState(ctx, tx, cmd.Resource(), nil, "", &totalRecords)
 	} else {
-		state, before, err = d.loadState(ctx, tx, cmd.Resource(), &cmd.Request.Config, cmd.Request.ID, &stored)
+		state, before, err = d.loadState(ctx, tx, cmd.Resource(), &cmd.Request.Config, cmd.Request.ID, &totalRecords)
 	}
 	if err != nil {
 		return airlock.Result{}, err
@@ -172,7 +172,7 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 		return airlock.Result{}, fmt.Errorf("airlock/postgres: clock: %w", err)
 	}
 
-	history, err := d.reclaim(ctx, tx, state, cmd.Request.ID, now, stored)
+	history, err := d.reclaim(ctx, tx, state, cmd.Request.ID, now, totalRecords)
 	if err != nil {
 		return airlock.Result{}, err
 	}

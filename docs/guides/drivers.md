@@ -37,7 +37,7 @@ authorizes work, even if the write may have committed.
 
 Storage layout is a driver choice: SQL tables, snapshots, or another representation
 are all allowed when the same atomic contract holds. The reference helpers are optional.
-All three drivers use one structured entry point:
+The complete-state helper, used by memory and available to custom drivers, is:
 
 ```go
 func Transition(state *SharedState, now time.Time, cmd Command) (
@@ -47,9 +47,11 @@ func Transition(state *SharedState, now time.Time, cmd Command) (
 
 A nil input initializes a resource. Transition takes exclusive ownership of the
 input maps/records, which must not be reused even on error. It performs no I/O.
-Persist every nonnil returned state, including on business errors. PostgreSQL maps
-SharedState and DriverRecord to relational rows; memory and Redis use DecodeState
-and EncodeState around Transition to persist snapshots.
+Persist every nonnil returned state, including on business errors. Redis and
+PostgreSQL use the optional `TransitionPartial` helper to avoid loading unrelated
+terminal history. Their storage and exact-count requirements are described in the
+[partitioned history guide](partitioned-history.md). These helpers do not constrain
+custom drivers to a particular storage layout or execution algorithm.
 
 Command/Operation/ValidateCommand are implementation helpers, not the public
 Driver call interface. Direct callers provide a complete ResourceConfig; only

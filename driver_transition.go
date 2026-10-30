@@ -39,7 +39,7 @@ func Transition(state *SharedState, now time.Time, cmd Command) (next *SharedSta
 // max(Finished+Retention, SubmitUntil) is at or before now truncated to milliseconds.
 // Before is the earliest such boundary among the counted records. It is zero if
 // and only if Count is zero. These values must be read atomically with the state.
-// Drivers must validate records on migration/write and maintain an authoritative
+// Drivers must validate records on write/target reads and maintain an authoritative
 // expiry index; this summary cannot validate omitted record contents itself.
 type RetainedHistory struct {
 	Count  int

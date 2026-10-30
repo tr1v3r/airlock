@@ -25,9 +25,9 @@ func TestReclaimHistoryBoundaries(t *testing.T) {
 			}
 			defer func() { _ = tx.Rollback() }()
 			s := &airlock.SharedState{Resource: "r", Records: map[string]*airlock.DriverRecord{}, Time: now}
-			stored := storedHistory{total: 3}
+			totalRecords := 3
 			if mode == "no-omitted" {
-				stored.total = 0
+				totalRecords = 0
 			}
 			wantErr := false
 			if mode != "no-omitted" {
@@ -66,7 +66,7 @@ func TestReclaimHistoryBoundaries(t *testing.T) {
 					}
 					wantErr = mode == "missing-index" || mode == "query-error" || mode == "due-index"
 					if mode == "unexpected-index" {
-						stored.total = 2
+						totalRecords = 2
 						wantErr = true
 					}
 				}
@@ -76,7 +76,7 @@ func TestReclaimHistoryBoundaries(t *testing.T) {
 			if mode == "rollback-clock" {
 				clock = now.Add(-time.Second)
 			}
-			got, err := d.reclaim(context.Background(), tx, s, "target", clock, stored)
+			got, err := d.reclaim(context.Background(), tx, s, "target", clock, totalRecords)
 			if (err != nil) != wantErr {
 				t.Fatalf("%+v %v", got, err)
 			}
@@ -115,16 +115,16 @@ func TestActiveHistoryLoad(t *testing.T) {
 				m.ExpectQuery("SELECT id.*UNION ALL SELECT").WithArgs(d.namespace, r.Resource, r.ID).WillReturnRows(rows)
 			}
 			m.ExpectRollback()
-			var h storedHistory
-			got, before, err := d.loadState(context.Background(), tx, r.Resource, nil, r.ID, &h)
+			var totalRecords int
+			got, before, err := d.loadState(context.Background(), tx, r.Resource, nil, r.ID, &totalRecords)
 			if !valid {
 				if !errors.Is(err, airlock.ErrCorruptState) {
 					t.Fatal(err)
 				}
 				return
 			}
-			if err != nil || got.Version != 1 || h.total != 2 || len(before) != 1 {
-				t.Fatalf("%+v %+v %v", got, h, err)
+			if err != nil || got.Version != 1 || totalRecords != 2 || len(before) != 1 {
+				t.Fatalf("%+v %+v %v", got, totalRecords, err)
 			}
 		})
 	}
