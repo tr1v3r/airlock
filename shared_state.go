@@ -60,6 +60,10 @@ type durableSnapshot = SharedState
 
 // transition advances exclusively owned structured state.
 func transition(state *SharedState, now time.Time, cmd Command, window *commitWindowCollector) (*SharedState, Result, error) {
+	return transitionWithHistory(state, now, cmd, window, 0)
+}
+
+func transitionWithHistory(state *SharedState, now time.Time, cmd Command, window *commitWindowCollector, omitted int) (*SharedState, Result, error) {
 	r := cmd.Request
 	r.SubmitUntil = r.SubmitUntil.UTC()
 	r.WaitUntil = r.WaitUntil.UTC()
@@ -122,6 +126,12 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 		return nil, Result{}, ErrRequestConflict
 	}
 
+	// Omitted terminal records still consume the exact retained-history budget.
+	// Subtraction avoids overflow even for hostile storage metadata.
+	if omitted < 0 || omitted > s.Config.MaxRecords-len(s.Records) {
+		return nil, Result{}, ErrCorruptState
+	}
+
 	g, waiters, err := s.restore()
 	if err != nil {
 		return nil, Result{}, err
@@ -175,7 +185,7 @@ func transition(state *SharedState, now time.Time, cmd Command, window *commitWi
 				opErr = ErrNotFound
 			case r.SubmitUntil.After(now.Add(r.Config.SubmitWindow)) || r.WaitUntil.After(now.Add(r.Config.MaxWait)):
 				opErr = ErrInvalidRequest
-			case len(s.Records) >= s.Config.MaxRecords:
+			case len(s.Records) >= s.Config.MaxRecords-omitted:
 				opErr = ErrHistoryFull
 			default:
 				rec = &durableRecord{Request: r}
