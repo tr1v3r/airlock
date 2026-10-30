@@ -42,7 +42,7 @@ for variant in ("baseline", "candidate"):
                    check=True, stdout=subprocess.DEVNULL)
     reports[variant] = {p.name.removesuffix(".summary.json"): json.loads(p.read_text()) for p in paths}
     with (root / "latency.csv").open() as f:
-        latencies[variant] = {r["trial"].removesuffix(".jsonl.gz"): r
+        latencies[variant] = {r["trial"].removesuffix(".gz").removesuffix(".jsonl"): r
                               for r in csv.DictReader(f) if r["operation/result"] == "renew/all"}
 rows = []
 for name in sorted(reports["baseline"]):

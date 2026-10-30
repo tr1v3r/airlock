@@ -1,5 +1,7 @@
 """Offline rejection tests: never bless incomplete or stale comparison inputs."""
 import json
+import csv
+import gzip
 from pathlib import Path
 import subprocess
 import sys
@@ -39,6 +41,28 @@ class ComparisonInputs(unittest.TestCase):
             raw = self.fixture(root)
             (raw / "redis-case0-run1.summary.json").write_text('{"Type":"stale"}')
             self.check_rejected(root, "raw/sidecar summary mismatch")
+
+    def test_uncompressed_trial_preserves_renew_metrics(self):
+        source = Path(__file__).resolve().parents[2] / "docs/validation/terminal-history/runs"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for variant in ("baseline", "candidate"):
+                raw = root / variant / "raw"
+                raw.mkdir(parents=True)
+                for path in (source / variant / "raw").iterdir():
+                    (raw / path.name).symlink_to(path)
+            compressed = root / "baseline/raw/redis-case0-run1.jsonl.gz"
+            contents = gzip.decompress(compressed.read_bytes())
+            compressed.unlink()
+            compressed.with_suffix("").write_bytes(contents)
+            result = subprocess.run([sys.executable, str(Path(__file__).with_name("compare_report.py")),
+                                     str(root)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with (root / "comparison.csv").open() as f:
+                row = next(r for r in csv.DictReader(f)
+                           if r["trial"] == "redis-case0-run1" and r["variant"] == "baseline")
+            self.assertGreater(int(row["renew_n"]), 0)
+            self.assertTrue(row["renew_p95_ms"])
 
 
 if __name__ == "__main__":
