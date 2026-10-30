@@ -6,28 +6,45 @@ repo=$(pwd)
 export GOWORK=off GOFLAGS=-mod=readonly
 case "${1:-quick}" in
   quick)
-    export AIRLOCK_STRESS=0
-    count=1 cpus=1,4 fuzztime=5s
-    concurrent_pattern='^Test(Local|SharedConcurrent|SharedClock)'
+    count=1 fuzztime=5s
     ;;
   extended)
-    export AIRLOCK_STRESS=1
-    count=3 cpus=1,2,4 fuzztime=30s
-    concurrent_pattern='^Test(Local|SharedClock)'
+    count=10 fuzztime=30s
     ;;
   *) echo 'Usage: bash scripts/stress.sh {quick|extended}' >&2; exit 2 ;;
 esac
-# Fixed seeds and the Go shuffle seed are printed with verbose output for replay.
-go test -race -v -shuffle=on -count="$count" -cpu="$cpus" -timeout=10m \
+# Keep this inventory focused on waiter scheduling, cancellation/grant/release
+# races and Shared lifecycle operations. Full race/coverage still runs every test
+# once, including serial Transition/partial/scale tests and benchmark smoke tests.
+# Local model runs coordinate real waiter goroutines; Transition models do not.
+concurrent_tests=(
+  'RoundRobinFIFOAndNoBarging|LimitsCancellationAndReuse|CancelGrantRaceAndDuplicateRelease|ConcurrentCapacityAndTenantReclamation|GrantedSlotCannotBeStolen'
+  'AirlockCancelledTenantRejoinsAtTail|AirlockCancelMiddleRequest|AirlockMultipleSlotsAndChurn|DefaultTenantQueueLimitAndCancellation|DefaultTenantParticipatesInRotation'
+  'WeightedAtomicAcquisitionAndProtectedHead|WeightedRoundRobinUsesRequestsRatherThanTokens|WeightedProtectedCancellationConsumesTenantTurn|WeightedGrantWinsLaterCancellation|WeightedCancelGrantRaceAndConcurrentRelease|WeightedConcurrentCapacityAndCleanup'
+  'ResizeValidationAndDrain|ResizePreservesProtectedHeadAndFIFO|ResizeRejectsAllOversizedWaiters|ResizeCancellationGrantRace|ResizeZeroPauseResume|ResizeZeroPriorityTurns|ResizeZeroPriorityProtectedHead|ResizeZeroReleaseCancelRace|ResizeZeroBudgetsAndCancellation'
+  'PrioritySaturatedSharesAndTenantFIFO|PriorityEmptyGroupsDoNotAccumulateCredit|PriorityProtectedCancellationConsumesBothTurns|PriorityUnselectedCancellationDoesNotConsumeTurn|PriorityProtectedLowCannotBeBypassed|PriorityCancelledTenantRejoinsGroupTail|PriorityGrantWinsLaterCancellation|PriorityGroupBudgetsRecoverAfterGrantAndCancel|PriorityCancelGrantRaceAndReclamation|PriorityMixedWeightConcurrentCapacity|PriorityResizeKeepsProtectedHeadAndQueueBudgets'
+  'TryAcquireCannotBypassOrReorderQueuedRequests|TryAcquireReleaseWakesQueuedAcquire|TryAcquireMixedWithWaitingAndConcurrentRelease'
+  'LocalDynamicModel|LocalProtectedArrivalAndCancellationModel|LocalQueueRecoveryModel|LocalConcurrentStorm|LocalMaxIntConcurrentRelease'
+  'SharedConcurrentWeightedLifecycle|SharedConcurrentQueuedCancellation|SharedConcurrentRenewReleaseUnknownOutcome|SharedConcurrentExpiryRejectsLateRenewal|SharedConcurrentLeaseOperations'
+  'SharedQueuePollAndGrant|SharedQueuedCancellationCleanupIndependentContext|SharedRenewCannotResurrectExpiredLease|SharedReleaseInvalidatesBeforeIOAndRetries|SharedReleaseCancelsGateWaitAndInvalidatesInFlightRenew|SharedLeaseGateWaitingIsBounded|SharedAcquireUnknownCleanupRemainsBounded'
+  'SharedClockAllowance.*|SharedExpiredResultPreservesCallerDeadline|SharedFoldedDeadlineExpiryReportsCallerDeadline'
+)
+concurrent_pattern="^Test($(IFS='|'; echo "${concurrent_tests[*]}"))$"
+# Always repeat normal workloads. Extended size expansion is a separate run so
+# large snapshot fixtures do not get multiplied by ten CPU schedules.
+export AIRLOCK_STRESS=0
+printf 'Concurrency: count=%s cpu=1,2,4 AIRLOCK_STRESS=0\n' "$count"
+go test -race -v -shuffle=on -count="$count" -cpu=1,2,4 -timeout=10m \
   -run "$concurrent_pattern" .
 if [[ "${1:-quick}" == extended ]]; then
-  # Shared already runs 128 clients across eight rounds. Do not multiply that
-  # snapshot-heavy workload by the Local/clock CPU and repetition matrix.
-  go test -race -v -shuffle=on -count=1 -cpu=1 -timeout=20m -run '^TestSharedConcurrent' .
+  export AIRLOCK_STRESS=1
+  echo 'Expanded Local/Shared workload: count=1 cpu=1 AIRLOCK_STRESS=1'
+  go test -race -v -shuffle=on -count=1 -cpu=1 -timeout=20m \
+    -run '^Test(LocalConcurrentStorm|SharedConcurrent(WeightedLifecycle|QueuedCancellation|RenewReleaseUnknownOutcome|ExpiryRejectsLateRenewal))$' .
+  # Serial model once, with all 64 seeds x 250 steps; normal coverage already
+  # executes the normal 8 seeds x 128 steps without a CPU/repetition multiplier.
+  go test -race -v -count=1 -timeout=3m -run '^TestTransitionModelTraces$' .
 fi
-# The deterministic Transition model is serial. Repeating it for each CPU/count
-# adds no interleaving coverage and multiplies snapshot work ninefold in extended.
-go test -race -v -count=1 -timeout=3m -run '^TestTransitionModelTraces$' .
 # Fuzzing has its own small worker budget; do not multiply it by the race CPU loop.
 for target in FuzzLocalDynamicModel FuzzTransitionSnapshot FuzzTransitionCommandSequence FuzzOptimisticWindow; do
   go test -run '^$' -fuzz "^${target}$" -fuzztime="$fuzztime" -fuzzminimizetime=1s -parallel=2 -timeout=3m .

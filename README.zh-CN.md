@@ -328,14 +328,17 @@ PR、推送到 `dev`/`main`、合并队列、手动触发和每周扫描均运�
   每个矩阵任务分别测试根模块与全部独立 driver，无任何模块跳过。
   本地示例在每个矩阵执行；Shared memory 示例在 Linux driver 任务运行，
   Redis 示例使用集成测试服务；PostgreSQL 的 `ExampleNew` 只检查编译（没有 Output 断言）。
-- Linux 运行 race 检测，并在 CPU 数 1/2/4 下各重复十轮乱序测试。
-  原子语句覆盖率要求每个生产文件及总计均达到 **95%**（当前核心基线为 **100%**）。
+- Linux 对全量测试执行一次 race 检测与原子语句覆盖率检查；选定并发测试另在 CPU 数
+  1/2/4 下各执行一次。串行 Transition 模型和部分状态差分测试保留全部场景，不乘重复次数。
+  原子语句覆盖率要求每个生产文件及总计均达到 **95%**。
   示例和仅用于比较的代码不计入覆盖率；新增生产包自动纳入。
   覆盖率报告保存 14 天，失败时也上传。
 - 固定版本的 `govulncheck -test` 分别扫描根模块与三个独立 driver 的依赖图和测试，
   Dependabot 覆盖全部四个模块；这不代表不存在其他漏洞。
-- 普通 PR 运行有界模型/并发测试及四个短时 fuzz target；每周和手动扩展任务设置
-  `AIRLOCK_STRESS=1`，增加 CPU 调度重复及 fuzz 时长。检查的是不变量，不是性能 SLA。
+- 普通 PR 运行有界模型/并发测试及四个短时 fuzz target；每周和手动扩展任务对选定的
+  普通规模并发测试按各 CPU 数重复十轮，再设置 `AIRLOCK_STRESS=1`，单次执行扩大的
+  Local/Shared 负载和串行模型，并延长 fuzz 时长。race/stress 详细日志输出测试进度、
+  用例耗时和乱序种子，便于复现。检查的是不变量，不是性能 SLA。
 - 仓库外 consumer 分别安装文档 `@dev` 与已推送候选提交，不使用 workspace/replace。
   fork PR 和 merge-group 临时合并提交明确跳过该任务，不算已验证发布安装。
 - fake Docker 故障测试确认 fixture 清理只触及自身资源，不连接真实 daemon；
@@ -354,7 +357,6 @@ actionlint
 python3 -m unittest discover -s scripts -p 'test_*.py'
 GOWORK=off go test -shuffle=on -count=1 -timeout=5m ./...
 bash scripts/check.sh coverage
-GOWORK=off go test -race -shuffle=on -count=10 -cpu=1,2,4 -timeout=5m ./...
 bash scripts/check.sh examples
 GOWORK=off govulncheck -test ./...
 bash scripts/driver-check.sh

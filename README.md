@@ -393,17 +393,21 @@ only explicitly inapplicable installation/extended jobs may be skipped (see the
   Local examples execute on every entry; Shared memory examples run in the Linux
   driver job, Redis's example uses the integration service, and PostgreSQL's
   `ExampleNew` is compile-checked (it has no Output assertion).
-- Race detection, ten shuffled repetitions at CPU counts 1/2/4, and atomic
-  statement coverage run on Linux. Every production file and the total must
-  reach **95%** (current core baseline: **100%**). Examples and comparison-only
+- The full suite runs once with race detection and atomic statement coverage on
+  Linux. Selected concurrency cases also run once at each CPU count 1/2/4; serial
+  Transition models and partial-state differential cases retain every scenario
+  without the repetition multiplier. Every production file and the total must
+  reach **95%**. Examples and comparison-only
   code are excluded from coverage; new production packages are included automatically.
   Coverage profiles are retained for 14 days, including on failure.
 - Pinned `govulncheck -test` scans root and each independent driver module, including
   their distinct dependency graphs and tests. Dependabot covers all four modules.
   This does not certify the absence of all vulnerabilities.
 - Normal PRs include bounded model/concurrency tests and four short fuzz targets.
-  Weekly/manual extended runs set `AIRLOCK_STRESS=1`, repeat CPU schedules, and fuzz
-  longer. These assert invariants, not performance SLAs.
+  Weekly/manual extended runs repeat the selected normal workloads ten times at
+  each CPU count, then run larger Local/Shared workloads and the expanded serial
+  model once with `AIRLOCK_STRESS=1`, and fuzz longer. Verbose race/stress output
+  records case progress, elapsed test times, and shuffle seeds for replay. These assert invariants, not performance SLAs.
 - External consumer smoke installs both documented `@dev` and a pushed candidate
   without workspace/replace overrides. Fork PRs and merge-group synthetic commits
   explicitly skip this lane; they are not published-installation evidence.
@@ -424,7 +428,6 @@ actionlint
 python3 -m unittest discover -s scripts -p 'test_*.py'
 GOWORK=off go test -shuffle=on -count=1 -timeout=5m ./...
 bash scripts/check.sh coverage
-GOWORK=off go test -race -shuffle=on -count=10 -cpu=1,2,4 -timeout=5m ./...
 bash scripts/check.sh examples
 GOWORK=off govulncheck -test ./...
 bash scripts/driver-check.sh
