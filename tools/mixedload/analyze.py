@@ -6,13 +6,14 @@ import json
 import pathlib
 import statistics
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 root = pathlib.Path(sys.argv[1])
 rows = []
 windows = []
 reports = []
 budgets = []
+seen_trials = set()
 
 def quantiles(v):
     v = sorted(v)
@@ -23,9 +24,24 @@ for path in sorted((root/'raw').glob('*.jsonl*')):
     opener = gzip.open if path.suffix == '.gz' else open
     with opener(path, 'rt') as stream:
         data = [json.loads(line) for line in stream]
+    if not data:
+        raise ValueError(f'empty trial: {path}')
     summary = data[-1]
     if summary.get('Type') != 'summary':
         raise ValueError(f'missing summary: {path}')
+    key = tuple(summary[k] for k in ('Backend','Scenario','History','Capacity','Workers','Repeat'))
+    if key in seen_trials:
+        raise ValueError(f'duplicate trial: {path}')
+    seen_trials.add(key)
+    samples = data[:-1]
+    if not samples or any(s.get('Type') == 'summary' for s in samples):
+        raise ValueError(f'missing or malformed samples: {path}')
+    measured = [s for s in samples if s.get('Phase') == 'measured']
+    if len(measured) != summary['Operations'] or sum(not s['Error'] for s in measured) != summary['Successes']:
+        raise ValueError(f'sample count mismatch: {path}')
+    statuses = Counter(s['Phase']+'/'+s['Op']+'/'+s['Status'] for s in samples)
+    if dict(statuses) != summary['AllStatuses']:
+        raise ValueError(f'phase/status sample mismatch: {path}')
     reports.append(dict(File=path.name,**summary))
     for op,result in summary['Latencies'].items():
         rows.append([path.name,summary['Backend'],summary['Scenario'],summary['History'],summary['Capacity'],summary['Workers'],summary['Repeat'],op,result['N'],result['P50'],result['P95'],result['P99'],result['Max']])
@@ -57,6 +73,8 @@ for path in sorted((root/'raw').glob('*.jsonl*')):
             bins[(bucket,s['Op'],'error' if s['Error'] else 'ok')].append(s['LatencyMS'])
         for (bucket,op,result),values in sorted(bins.items()):
             windows.append([path.name,summary['Backend'],summary['Repeat'],bucket*500,(bucket+1)*500,op,result,*quantiles(values)])
+if not reports:
+    raise ValueError('no raw trials found')
 (root/'summary.json').write_text(json.dumps(reports,indent=2)+'\n')
 for name,header,body in [('latency.csv',['trial','backend','scenario','history','capacity','workers','repeat','operation/result','n','p50_ms','p95_ms','p99_ms','max_ms'],rows),('renewal-budget.csv',['trial','backend','budget/result','min_ms','n','p50_ms','p95_ms','p99_ms','max_ms'],budgets),('expiry-windows.csv',['trial','backend','repeat','start_relative_ms','end_relative_ms','operation','result','n','p50_ms','p95_ms','p99_ms','max_ms'],windows)]:
     with (root/name).open('w',newline='') as f:

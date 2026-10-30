@@ -7,8 +7,19 @@ truncated. Build with `GOWORK=off go build -o /tmp/airlock-mixedload .`.
 
 `run.sh` requires REDIS_ADDR and POSTGRES_DSN, and runs six cases, three repetitions,
 15 seconds per trial sequentially. Case/backend order varies between repetitions.
-Reserve an otherwise quiet machine first. OUTPUT_DIR may redirect raw JSONL. Use
-`python3 analyze.py ../../docs/validation/mixed-capacity` to regenerate summaries.
+Reserve an otherwise quiet machine first. The runner rejects a nonempty output directory before starting any workload.
+Set `OUTPUT_DIR` to a fresh raw directory; analyze its parent, for example:
+
+```sh
+result_root=$(mktemp -d /tmp/airlock-mixed-results.XXXXXX)
+OUTPUT_DIR="$result_root/raw" ./run.sh
+python3 analyze.py "$result_root"
+```
+
+The analyzer rejects duplicate trial identities and missing/inconsistent samples.
+Run offline workflow regressions with `python3 test_workflow.py`.
+Use `python3 analyze.py ../../docs/validation/mixed-capacity` only to regenerate
+summaries from the already committed raw data.
 
 The lifecycle is Driver.Submit → Driver.Observe while queued → Driver.Renew during
 600ms of simulated holding → Driver.Release. All weights are 1. There is no real

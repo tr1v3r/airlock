@@ -94,10 +94,11 @@ Case5 预置 1000 终态 +32 grant +32 queued，全部边界在 seed 后2s。测
 # 在隔离、无竞争测量窗口；地址只能指向一次性服务
 cd tools/mixedload
 GOWORK=off go build -o /tmp/airlock-mixedload .
-REDIS_ADDR=127.0.0.1:PORT POSTGRES_DSN='postgres://USER:PASS@127.0.0.1:PORT/DB?sslmode=disable' ./run.sh
-python3 analyze.py ../../docs/validation/mixed-capacity
+result_root=$(mktemp -d /tmp/airlock-mixed-results.XXXXXX)
+OUTPUT_DIR="$result_root/raw" REDIS_ADDR=127.0.0.1:PORT POSTGRES_DSN='postgres://USER:PASS@127.0.0.1:PORT/DB?sslmode=disable' ./run.sh
+python3 analyze.py "$result_root"
 ```
 
-每次试验资源自动清理，原始结果不会依赖存活容器；重跑请用 OUTPUT_DIR 指向新的目录避免混入旧结果。镜像使用 environment.json 的 digest 可固定版本。分位数采用排序后 floor(q×N)，p95至少20样本、p99至少100样本，接近阈值时仅是接近最大值的不稳定估计；不合并三轮掩盖波动。三轮短窗口仍不足估计长期尾部与可靠性。
+每次试验资源自动清理，原始结果不会依赖存活容器；重跑请用 OUTPUT_DIR 指向新的目录；runner 在启动前拒绝非空目录，分析器拒绝重复试次和缺失/不一致样本，避免覆盖或混入旧结果。镜像使用 environment.json 的 digest 可固定版本。分位数采用排序后 floor(q×N)，p95至少20样本、p99至少100样本，接近阈值时仅是接近最大值的不稳定估计；不合并三轮掩盖波动。三轮短窗口仍不足估计长期尾部与可靠性。
 
 验证：新工具模块 gofmt、go test -race ./...、go vet ./...、go mod verify；Python/runner 语法检查通过。根模块 go test ./... 与 go vet ./... 通过。该工具是独立模块，现有 CI 不会自动覆盖，需显式手动运行或后续加入工具 checks。运行时未改动。独立 agent 复算36份 raw 的 phase、分位数、seed 与预算检查通过。

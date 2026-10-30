@@ -5,6 +5,11 @@ set -eu
 : "${POSTGRES_DSN:?disposable PostgreSQL required}"
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 out=${OUTPUT_DIR:-"$root/docs/validation/mixed-capacity/raw"}
+# Check before invoking the workload or redirecting any output.
+if [ -d "$out" ] && [ -n "$(ls -A "$out")" ]; then
+ echo "output directory must be empty: $out" >&2
+ exit 1
+fi
 mkdir -p "$out"
 binary=${MIXEDLOAD_BINARY:-/tmp/airlock-mixedload}
 duration=${TRIAL_DURATION:-15s}
