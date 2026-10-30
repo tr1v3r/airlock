@@ -34,6 +34,50 @@ func Transition(state *SharedState, now time.Time, cmd Command) (next *SharedSta
 	return next, result, collector.window, err
 }
 
+// RetainedHistory describes terminal records deliberately omitted from a partial
+// state. Count is exact, not an estimate: it excludes every omitted record whose
+// max(Finished+Retention, SubmitUntil) is at or before now truncated to milliseconds.
+// Before is the earliest such boundary among the counted records. It is zero if
+// and only if Count is zero. These values must be read atomically with the state.
+// Drivers must validate records on write/target reads and maintain an authoritative
+// expiry index; this summary cannot validate omitted record contents itself.
+type RetainedHistory struct {
+	Count  int
+	Before time.Time
+}
+
+// TransitionPartial advances the same scheduler and protocol as Transition while
+// avoiding reads of unrelated retained terminal records. In addition to all
+// scheduler metadata, state must contain EVERY queued/granted record and the
+// command's existing record looked up by request ID, including a terminal record
+// already due for GC. That last requirement preserves request-conflict detection
+// before GC. Any other loaded terminal records are validated and processed normally.
+// They must not also be included in history.Count. Records logically removed by
+// an earlier committed GC are no longer existing records, even if a driver keeps
+// physical garbage awaiting reclamation; do not resurrect them on target lookup.
+//
+// The returned state contains only the loaded records and new records; it is not
+// a complete snapshot. Persist its changes together with the untouched history
+// under the same atomic owner/version/window guard. Never pass this partial state
+// to a driver or helper expecting a complete snapshot. For inspection, merge the
+// terminal expiry index into NextMaintenance; omitted records do not affect usage.
+// All Transition ownership, error-persistence and publication rules also apply.
+// A nil state requires empty history. Existing Transition/EncodeState users need
+// no changes and continue to operate on complete snapshots.
+func TransitionPartial(state *SharedState, now time.Time, cmd Command, history RetainedHistory) (next *SharedState, result Result, window CommitWindow, err error) {
+	if history.Count < 0 || (history.Count == 0 && !history.Before.IsZero()) ||
+		(history.Count > 0 && (state == nil || !history.Before.After(now))) {
+		return nil, Result{}, CommitWindow{}, ErrCorruptState
+	}
+	collector := commitWindowCollector{now: now, window: CommitWindow{NotBefore: now.UTC()}}
+	collector.boundary(history.Before)
+	next, result, err = transitionWithHistory(state, now, cmd, &collector, history.Count)
+	if next == nil {
+		return nil, result, CommitWindow{}, err
+	}
+	return next, result, collector.window, err
+}
+
 // commitWindowCollector folds old/new record boundaries into existing state
 // passes. now retains the original precision independently of scheduler time.
 type commitWindowCollector struct {

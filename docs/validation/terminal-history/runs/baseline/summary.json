@@ -1,0 +1,6352 @@
+[
+  {
+    "File": "postgres-case0-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 8,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 750,
+    "Successes": 750,
+    "Admissions": 192,
+    "OperationsPerSecond": 50,
+    "SuccessesPerSecond": 50,
+    "AdmissionsPerSecond": 12.8,
+    "Latencies": {
+      "release/ok": {
+        "N": 184,
+        "Min": 5.450917,
+        "P50": 16.233292,
+        "Max": 65.511958,
+        "P95": 44.235375,
+        "P99": 58.228208
+      },
+      "renew/ok": {
+        "N": 374,
+        "Min": 5.275209,
+        "P50": 14.5985,
+        "Max": 45.605084,
+        "P95": 23.684958,
+        "P99": 40.454708
+      },
+      "submit/ok": {
+        "N": 192,
+        "Min": 4.549125,
+        "P50": 16.61,
+        "Max": 57.322959,
+        "P95": 34.96125,
+        "P99": 50.610459
+      }
+    },
+    "Budgets": {
+      "renew": {
+        "N": 374,
+        "Min": 1953.422916,
+        "P50": 1984.9525,
+        "Max": 1994.545791,
+        "P95": 1991.163458,
+        "P99": 1992.4985
+      },
+      "submit": {
+        "N": 192,
+        "Min": 1942.268041,
+        "P50": 1983.146,
+        "Max": 1994.594875,
+        "P95": 1991.784583,
+        "P99": 1994.430708
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 374,
+      "Min": 1742.186166,
+      "P50": 1783.97475,
+      "Max": 1794.288375,
+      "P95": 1791.288542,
+      "P99": 1793.178208
+    },
+    "Errors": {},
+    "Statuses": {
+      "release/released": 184,
+      "renew/granted": 374,
+      "submit/granted": 192
+    },
+    "AllStatuses": {
+      "boundary/renew/granted": 1,
+      "cleanup/release/released": 8,
+      "measured/release/released": 184,
+      "measured/renew/granted": 374,
+      "measured/submit/granted": 192
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 1,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 57344,
+      "RowBytes": 0,
+      "IndexBytes": 32768,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 192,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 192,
+      "Bytes": 245760,
+      "RowBytes": 50880,
+      "IndexBytes": 81920,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 711472,
+    "HeapAfter": 5202912,
+    "PeakSampledHeap": 4814328,
+    "Allocated": 168874720,
+    "GCs": 94,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.377417,
+    "ClockRTTMS": 1.459166,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.074765875,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 24,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 16,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case0-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 8,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 756,
+    "Successes": 756,
+    "Admissions": 192,
+    "OperationsPerSecond": 50.4,
+    "SuccessesPerSecond": 50.4,
+    "AdmissionsPerSecond": 12.8,
+    "Latencies": {
+      "release/ok": {
+        "N": 184,
+        "Min": 5.646,
+        "P50": 13.805292,
+        "Max": 60.635666,
+        "P95": 38.968917,
+        "P99": 50.073583
+      },
+      "renew/ok": {
+        "N": 380,
+        "Min": 5.6945,
+        "P50": 12.300708,
+        "Max": 50.727875,
+        "P95": 27.163,
+        "P99": 39.846375
+      },
+      "submit/ok": {
+        "N": 192,
+        "Min": 5.455333,
+        "P50": 14.065958,
+        "Max": 57.741666,
+        "P95": 32.308458,
+        "P99": 50.903292
+      }
+    },
+    "Budgets": {
+      "renew": {
+        "N": 380,
+        "Min": 1948.629125,
+        "P50": 1987.2105,
+        "Max": 1994.1075,
+        "P95": 1992.021042,
+        "P99": 1993.45625
+      },
+      "submit": {
+        "N": 192,
+        "Min": 1941.645334,
+        "P50": 1985.468,
+        "Max": 1994.269667,
+        "P95": 1991.991458,
+        "P99": 1994.001417
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 380,
+      "Min": 1741.457417,
+      "P50": 1785.664042,
+      "Max": 1793.875708,
+      "P95": 1791.559542,
+      "P99": 1793.271791
+    },
+    "Errors": {},
+    "Statuses": {
+      "release/released": 184,
+      "renew/granted": 380,
+      "submit/granted": 192
+    },
+    "AllStatuses": {
+      "cleanup/release/released": 8,
+      "measured/release/released": 184,
+      "measured/renew/granted": 380,
+      "measured/submit/granted": 192
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 0,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 57344,
+      "RowBytes": 0,
+      "IndexBytes": 32768,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 192,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 192,
+      "Bytes": 245760,
+      "RowBytes": 50880,
+      "IndexBytes": 73728,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 710864,
+    "HeapAfter": 4317624,
+    "PeakSampledHeap": 4362376,
+    "Allocated": 170291160,
+    "GCs": 98,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.151625,
+    "ClockRTTMS": 1.10275,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.049233792,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 24,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 16,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case0-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 8,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 750,
+    "Successes": 750,
+    "Admissions": 192,
+    "OperationsPerSecond": 50,
+    "SuccessesPerSecond": 50,
+    "AdmissionsPerSecond": 12.8,
+    "Latencies": {
+      "release/ok": {
+        "N": 184,
+        "Min": 4.737208,
+        "P50": 14.336625,
+        "Max": 73.311333,
+        "P95": 46.739708,
+        "P99": 65.435209
+      },
+      "renew/ok": {
+        "N": 374,
+        "Min": 4.118667,
+        "P50": 15.579209,
+        "Max": 67.0475,
+        "P95": 37.294917,
+        "P99": 49.7975
+      },
+      "submit/ok": {
+        "N": 192,
+        "Min": 4.090917,
+        "P50": 15.693916,
+        "Max": 105.849625,
+        "P95": 36.107792,
+        "P99": 97.258667
+      }
+    },
+    "Budgets": {
+      "renew": {
+        "N": 374,
+        "Min": 1932.5535,
+        "P50": 1983.878375,
+        "Max": 1995.521542,
+        "P95": 1992.032708,
+        "P99": 1993.667458
+      },
+      "submit": {
+        "N": 192,
+        "Min": 1893.867375,
+        "P50": 1983.830083,
+        "Max": 1995.571083,
+        "P95": 1993.417833,
+        "P99": 1994.1105
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 374,
+      "Min": 1693.827333,
+      "P50": 1783.447667,
+      "Max": 1795.034208,
+      "P95": 1792.573042,
+      "P99": 1793.418958
+    },
+    "Errors": {},
+    "Statuses": {
+      "release/released": 184,
+      "renew/granted": 374,
+      "submit/granted": 192
+    },
+    "AllStatuses": {
+      "cleanup/release/released": 8,
+      "measured/release/released": 184,
+      "measured/renew/granted": 374,
+      "measured/submit/granted": 192
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 0,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 57344,
+      "RowBytes": 0,
+      "IndexBytes": 32768,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 192,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 192,
+      "Bytes": 270336,
+      "RowBytes": 50880,
+      "IndexBytes": 81920,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 710992,
+    "HeapAfter": 4461088,
+    "PeakSampledHeap": 4312928,
+    "Allocated": 169359864,
+    "GCs": 97,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.122771,
+    "ClockRTTMS": 1.576458,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.064681875,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 24,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 16,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case1-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 7618,
+    "Successes": 7618,
+    "Admissions": 192,
+    "OperationsPerSecond": 507.8666666666667,
+    "SuccessesPerSecond": 507.8666666666667,
+    "AdmissionsPerSecond": 12.8,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6845,
+        "Min": 0.174125,
+        "P50": 0.603291,
+        "Max": 15.279541,
+        "P95": 8.73325,
+        "P99": 11.85825
+      },
+      "release/ok": {
+        "N": 184,
+        "Min": 2.2445,
+        "P50": 12.446459,
+        "Max": 69.566083,
+        "P95": 28.651375,
+        "P99": 49.976291
+      },
+      "renew/ok": {
+        "N": 373,
+        "Min": 4.298542,
+        "P50": 11.497042,
+        "Max": 106.064791,
+        "P95": 31.266542,
+        "P99": 95.254541
+      },
+      "submit/ok": {
+        "N": 216,
+        "Min": 2.6945,
+        "P50": 13.227709,
+        "Max": 337.363083,
+        "P95": 270.113542,
+        "P99": 325.835083
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 184,
+        "Min": 1920.825917,
+        "P50": 1968.866917,
+        "Max": 1993.238583,
+        "P95": 1988.878208,
+        "P99": 1993.069625
+      },
+      "renew": {
+        "N": 373,
+        "Min": 1893.551209,
+        "P50": 1987.9005,
+        "Max": 1995.670458,
+        "P95": 1993.461666,
+        "P99": 1994.7115
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1916.443875,
+        "P50": 1941.501708,
+        "Max": 1964.679,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 373,
+      "Min": 1693.403917,
+      "P50": 1778.745917,
+      "Max": 1794.574583,
+      "P95": 1792.53775,
+      "P99": 1793.974083
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 184,
+      "observe/queued": 6661,
+      "release/released": 184,
+      "renew/granted": 373,
+      "submit/granted": 8,
+      "submit/queued": 208
+    },
+    "AllStatuses": {
+      "cleanup/cancel/cancelled": 24,
+      "cleanup/release/released": 8,
+      "measured/observe/granted": 184,
+      "measured/observe/queued": 6661,
+      "measured/release/released": 184,
+      "measured/renew/granted": 373,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 208
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 0,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 57344,
+      "RowBytes": 0,
+      "IndexBytes": 32768,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 216,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 216,
+      "Bytes": 327680,
+      "RowBytes": 56920,
+      "IndexBytes": 106496,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 711008,
+    "HeapAfter": 5015640,
+    "PeakSampledHeap": 6216624,
+    "Allocated": 381391680,
+    "GCs": 278,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.427438,
+    "ClockRTTMS": 1.483125,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.072399208,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case1-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 7639,
+    "Successes": 7639,
+    "Admissions": 192,
+    "OperationsPerSecond": 509.26666666666665,
+    "SuccessesPerSecond": 509.26666666666665,
+    "AdmissionsPerSecond": 12.8,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6870,
+        "Min": 0.238166,
+        "P50": 0.709875,
+        "Max": 24.0225,
+        "P95": 9.344,
+        "P99": 13.59325
+      },
+      "release/ok": {
+        "N": 184,
+        "Min": 3.50425,
+        "P50": 15.426,
+        "Max": 61.486958,
+        "P95": 36.992458,
+        "P99": 57.932958
+      },
+      "renew/ok": {
+        "N": 369,
+        "Min": 3.58175,
+        "P50": 11.633917,
+        "Max": 35.736708,
+        "P95": 23.80225,
+        "P99": 29.630333
+      },
+      "submit/ok": {
+        "N": 216,
+        "Min": 3.602417,
+        "P50": 19.00825,
+        "Max": 185.646208,
+        "P95": 134.0875,
+        "P99": 173.336042
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 184,
+        "Min": 1932.978875,
+        "P50": 1968.006125,
+        "Max": 1996.596917,
+        "P95": 1990.775583,
+        "P99": 1994.641083
+      },
+      "renew": {
+        "N": 369,
+        "Min": 1963.525292,
+        "P50": 1987.985041,
+        "Max": 1996.38125,
+        "P95": 1994.559583,
+        "P99": 1995.77125
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1940.932417,
+        "P50": 1957.571083,
+        "Max": 1972.693584,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 369,
+      "Min": 1732.960125,
+      "P50": 1780.942292,
+      "Max": 1796.284666,
+      "P95": 1793.716917,
+      "P99": 1795.387834
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 184,
+      "observe/queued": 6686,
+      "release/released": 184,
+      "renew/granted": 369,
+      "submit/granted": 8,
+      "submit/queued": 208
+    },
+    "AllStatuses": {
+      "cleanup/cancel/cancelled": 24,
+      "cleanup/release/released": 8,
+      "measured/observe/granted": 184,
+      "measured/observe/queued": 6686,
+      "measured/release/released": 184,
+      "measured/renew/granted": 369,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 208
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 0,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 57344,
+      "RowBytes": 0,
+      "IndexBytes": 32768,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 216,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 216,
+      "Bytes": 327680,
+      "RowBytes": 56728,
+      "IndexBytes": 98304,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 710992,
+    "HeapAfter": 4397928,
+    "PeakSampledHeap": 5691496,
+    "Allocated": 382414224,
+    "GCs": 274,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.203355,
+    "ClockRTTMS": 1.219291,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.028490334,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case1-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 7646,
+    "Successes": 7646,
+    "Admissions": 192,
+    "OperationsPerSecond": 509.73333333333335,
+    "SuccessesPerSecond": 509.73333333333335,
+    "AdmissionsPerSecond": 12.8,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6875,
+        "Min": 0.227375,
+        "P50": 0.677083,
+        "Max": 33.114125,
+        "P95": 9.4045,
+        "P99": 12.082667
+      },
+      "release/ok": {
+        "N": 184,
+        "Min": 4.599083,
+        "P50": 14.179917,
+        "Max": 53.216041,
+        "P95": 33.136417,
+        "P99": 45.366584
+      },
+      "renew/ok": {
+        "N": 371,
+        "Min": 2.996292,
+        "P50": 11.228042,
+        "Max": 42.262333,
+        "P95": 24.74675,
+        "P99": 35.653833
+      },
+      "submit/ok": {
+        "N": 216,
+        "Min": 4.224834,
+        "P50": 15.361791,
+        "Max": 175.934708,
+        "P95": 130.629166,
+        "P99": 165.021
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 184,
+        "Min": 1928.974625,
+        "P50": 1968.164333,
+        "Max": 1995.881625,
+        "P95": 1990.796417,
+        "P99": 1993.836125
+      },
+      "renew": {
+        "N": 371,
+        "Min": 1957.105667,
+        "P50": 1988.329167,
+        "Max": 1996.721333,
+        "P95": 1993.919958,
+        "P99": 1995.832541
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1937.3715,
+        "P50": 1955.539542,
+        "Max": 1968.745375,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 371,
+      "Min": 1728.751959,
+      "P50": 1781.624666,
+      "Max": 1796.656125,
+      "P95": 1793.455125,
+      "P99": 1795.771541
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 184,
+      "observe/queued": 6691,
+      "release/released": 184,
+      "renew/granted": 371,
+      "submit/granted": 8,
+      "submit/queued": 208
+    },
+    "AllStatuses": {
+      "boundary/observe/queued": 1,
+      "cleanup/cancel/cancelled": 24,
+      "cleanup/release/released": 8,
+      "measured/observe/granted": 184,
+      "measured/observe/queued": 6691,
+      "measured/release/released": 184,
+      "measured/renew/granted": 371,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 208
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 1,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 57344,
+      "RowBytes": 0,
+      "IndexBytes": 32768,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 216,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 216,
+      "Bytes": 303104,
+      "RowBytes": 56856,
+      "IndexBytes": 81920,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 711248,
+    "HeapAfter": 4359752,
+    "PeakSampledHeap": 4844280,
+    "Allocated": 378134608,
+    "GCs": 277,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.350334,
+    "ClockRTTMS": 1.617333,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.0704915,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case2-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 7553,
+    "Successes": 7553,
+    "Admissions": 187,
+    "OperationsPerSecond": 503.53333333333336,
+    "SuccessesPerSecond": 503.53333333333336,
+    "AdmissionsPerSecond": 12.466666666666667,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6794,
+        "Min": 0.206709,
+        "P50": 0.576875,
+        "Max": 47.20825,
+        "P95": 8.20175,
+        "P99": 11.093875
+      },
+      "release/ok": {
+        "N": 180,
+        "Min": 7.852959,
+        "P50": 20.036458,
+        "Max": 91.79775,
+        "P95": 52.120958,
+        "P99": 87.168584
+      },
+      "renew/ok": {
+        "N": 368,
+        "Min": 7.206916,
+        "P50": 15.323208,
+        "Max": 194.583167,
+        "P95": 36.368167,
+        "P99": 164.3795
+      },
+      "submit/ok": {
+        "N": 211,
+        "Min": 6.509041,
+        "P50": 23.106541,
+        "Max": 440.519791,
+        "P95": 282.746958,
+        "P99": 392.113708
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 179,
+        "Min": 1932.162833,
+        "P50": 1968.482916,
+        "Max": 1993.892333,
+        "P95": 1989.279375,
+        "P99": 1993.168625
+      },
+      "renew": {
+        "N": 368,
+        "Min": 1804.829833,
+        "P50": 1984.436,
+        "Max": 1992.353084,
+        "P95": 1989.637292,
+        "P99": 1991.2935
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1871.348167,
+        "P50": 1916.855084,
+        "Max": 1949.124958,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 368,
+      "Min": 1604.792,
+      "P50": 1778.620542,
+      "Max": 1793.85175,
+      "P95": 1789.434625,
+      "P99": 1791.381
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 179,
+      "observe/queued": 6615,
+      "release/released": 180,
+      "renew/granted": 368,
+      "submit/granted": 8,
+      "submit/queued": 203
+    },
+    "AllStatuses": {
+      "boundary/observe/queued": 1,
+      "boundary/release/released": 2,
+      "boundary/submit/queued": 1,
+      "cleanup/cancel/cancelled": 25,
+      "cleanup/release/released": 5,
+      "measured/observe/granted": 179,
+      "measured/observe/queued": 6615,
+      "measured/release/released": 180,
+      "measured/renew/granted": 368,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 203
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 4,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 507904,
+      "RowBytes": 217000,
+      "IndexBytes": 221184,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1212,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1212,
+      "Bytes": 786432,
+      "RowBytes": 272732,
+      "IndexBytes": 303104,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 2474648,
+    "HeapAfter": 6048032,
+    "PeakSampledHeap": 7603680,
+    "Allocated": 1820184824,
+    "GCs": 774,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.284063,
+    "ClockRTTMS": 0.925875,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.096893834,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case2-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 7587,
+    "Successes": 7587,
+    "Admissions": 189,
+    "OperationsPerSecond": 505.8,
+    "SuccessesPerSecond": 505.8,
+    "AdmissionsPerSecond": 12.6,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6823,
+        "Min": 0.275875,
+        "P50": 0.679959,
+        "Max": 19.340042,
+        "P95": 9.084833,
+        "P99": 11.777542
+      },
+      "release/ok": {
+        "N": 182,
+        "Min": 8.895875,
+        "P50": 18.245625,
+        "Max": 58.47775,
+        "P95": 43.436958,
+        "P99": 55.894833
+      },
+      "renew/ok": {
+        "N": 368,
+        "Min": 8.256625,
+        "P50": 15.929167,
+        "Max": 78.544208,
+        "P95": 33.580667,
+        "P99": 77.913334
+      },
+      "submit/ok": {
+        "N": 214,
+        "Min": 7.158375,
+        "P50": 21.909542,
+        "Max": 304.673167,
+        "P95": 212.374167,
+        "P99": 286.481584
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 181,
+        "Min": 1916.105084,
+        "P50": 1964.084833,
+        "Max": 1993.312417,
+        "P95": 1987.762125,
+        "P99": 1991.511542
+      },
+      "renew": {
+        "N": 368,
+        "Min": 1920.621792,
+        "P50": 1983.738917,
+        "Max": 1991.31525,
+        "P95": 1989.599875,
+        "P99": 1990.894791
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1913.630791,
+        "P50": 1947.227875,
+        "Max": 1966.90425,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 368,
+      "Min": 1713.593583,
+      "P50": 1775.996792,
+      "Max": 1793.152208,
+      "P95": 1788.954625,
+      "P99": 1790.863666
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 181,
+      "observe/queued": 6642,
+      "release/released": 182,
+      "renew/granted": 368,
+      "submit/granted": 8,
+      "submit/queued": 206
+    },
+    "AllStatuses": {
+      "cleanup/cancel/cancelled": 25,
+      "cleanup/release/released": 7,
+      "measured/observe/granted": 181,
+      "measured/observe/queued": 6642,
+      "measured/release/released": 182,
+      "measured/renew/granted": 368,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 206
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 0,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 507904,
+      "RowBytes": 217000,
+      "IndexBytes": 221184,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1214,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1214,
+      "Bytes": 712704,
+      "RowBytes": 273262,
+      "IndexBytes": 270336,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 2428816,
+    "HeapAfter": 6041048,
+    "PeakSampledHeap": 7305760,
+    "Allocated": 1843981616,
+    "GCs": 795,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.43025,
+    "ClockRTTMS": 1.3015,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.065995792,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case2-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 7586,
+    "Successes": 7586,
+    "Admissions": 189,
+    "OperationsPerSecond": 505.73333333333335,
+    "SuccessesPerSecond": 505.73333333333335,
+    "AdmissionsPerSecond": 12.6,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6824,
+        "Min": 0.257625,
+        "P50": 0.703375,
+        "Max": 16.757541,
+        "P95": 8.385959,
+        "P99": 10.911542
+      },
+      "release/ok": {
+        "N": 181,
+        "Min": 7.992042,
+        "P50": 19.903125,
+        "Max": 52.438417,
+        "P95": 39.236875,
+        "P99": 47.893583
+      },
+      "renew/ok": {
+        "N": 368,
+        "Min": 7.468833,
+        "P50": 15.491917,
+        "Max": 115.440583,
+        "P95": 33.176292,
+        "P99": 109.045625
+      },
+      "submit/ok": {
+        "N": 213,
+        "Min": 7.107084,
+        "P50": 20.697875,
+        "Max": 338.441333,
+        "P95": 214.9175,
+        "P99": 307.11025
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 181,
+        "Min": 1925.745459,
+        "P50": 1963.523709,
+        "Max": 1992.288041,
+        "P95": 1988.664459,
+        "P99": 1991.489542
+      },
+      "renew": {
+        "N": 368,
+        "Min": 1883.816417,
+        "P50": 1984.126458,
+        "Max": 1992.201167,
+        "P95": 1988.820875,
+        "P99": 1990.308208
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1911.976208,
+        "P50": 1943.524208,
+        "Max": 1965.287667,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 368,
+      "Min": 1683.7505,
+      "P50": 1776.553584,
+      "Max": 1792.164791,
+      "P95": 1788.841375,
+      "P99": 1791.091625
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 181,
+      "observe/queued": 6643,
+      "release/released": 181,
+      "renew/granted": 368,
+      "submit/granted": 8,
+      "submit/queued": 205
+    },
+    "AllStatuses": {
+      "cleanup/cancel/cancelled": 24,
+      "cleanup/release/released": 8,
+      "measured/observe/granted": 181,
+      "measured/observe/queued": 6643,
+      "measured/release/released": 181,
+      "measured/renew/granted": 368,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 205
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 0,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 507904,
+      "RowBytes": 217000,
+      "IndexBytes": 221184,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1213,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1213,
+      "Bytes": 720896,
+      "RowBytes": 273029,
+      "IndexBytes": 270336,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 2552256,
+    "HeapAfter": 6282128,
+    "PeakSampledHeap": 8171024,
+    "Allocated": 1834862712,
+    "GCs": 804,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.30875,
+    "ClockRTTMS": 0.9205,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.102184125,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case3-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 10000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 1577,
+    "Successes": 1241,
+    "Admissions": 30,
+    "OperationsPerSecond": 105.13333333333334,
+    "SuccessesPerSecond": 82.73333333333333,
+    "AdmissionsPerSecond": 2,
+    "Latencies": {
+      "observe/error": {
+        "N": 57,
+        "Min": 500.022709,
+        "P50": 500.091458,
+        "Max": 505.339083,
+        "P95": 504.025125,
+        "P99": null
+      },
+      "observe/ok": {
+        "N": 1107,
+        "Min": 0.262792,
+        "P50": 1.040209,
+        "Max": 500.055375,
+        "P95": 390.415125,
+        "P99": 489.655083
+      },
+      "release/error": {
+        "N": 5,
+        "Min": 500.058708,
+        "P50": 500.24075,
+        "Max": 502.755667,
+        "P95": null,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 12,
+        "Min": 297.845375,
+        "P50": 432.717709,
+        "Max": 498.842042,
+        "P95": null,
+        "P99": null
+      },
+      "renew/error": {
+        "N": 13,
+        "Min": 500.046917,
+        "P50": 500.154834,
+        "Max": 503.473083,
+        "P95": null,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 17,
+        "Min": 277.810083,
+        "P50": 416.201167,
+        "Max": 494.532958,
+        "P95": null,
+        "P99": null
+      },
+      "submit/error": {
+        "N": 261,
+        "Min": 500.011208,
+        "P50": 500.093,
+        "Max": 509.630792,
+        "P95": 504.643417,
+        "P99": 507.561625
+      },
+      "submit/ok": {
+        "N": 105,
+        "Min": 51.493958,
+        "P50": 434.712791,
+        "Max": 500.301834,
+        "P95": 499.412833,
+        "P99": 499.702333
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 22,
+        "Min": 1065.647625,
+        "P50": 1944.791709,
+        "Max": 1982.262667,
+        "P95": 1979.699542,
+        "P99": null
+      },
+      "renew": {
+        "N": 17,
+        "Min": 1505.456042,
+        "P50": 1583.538833,
+        "Max": 1722.143917,
+        "P95": null,
+        "P99": null
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1674.007042,
+        "P50": 1825.579791,
+        "Max": 1940.749584,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 30,
+      "Min": 865.501917,
+      "P50": 1732.739375,
+      "Max": 1782.160334,
+      "P95": 1777.940959,
+      "P99": null
+    },
+    "Errors": {
+      "observe/deadline": 57,
+      "release/deadline": 5,
+      "renew/deadline": 13,
+      "submit/deadline": 261
+    },
+    "Statuses": {
+      "observe/": 57,
+      "observe/granted": 22,
+      "observe/queued": 1085,
+      "release/": 5,
+      "release/released": 12,
+      "renew/": 13,
+      "renew/granted": 17,
+      "submit/": 261,
+      "submit/granted": 8,
+      "submit/queued": 97
+    },
+    "AllStatuses": {
+      "boundary/observe/": 2,
+      "boundary/submit/": 3,
+      "boundary/submit/queued": 9,
+      "cleanup/cancel/": 276,
+      "cleanup/cancel/cancelled": 85,
+      "measured/observe/": 57,
+      "measured/observe/granted": 22,
+      "measured/observe/queued": 1085,
+      "measured/release/": 5,
+      "measured/release/released": 12,
+      "measured/renew/": 13,
+      "measured/renew/granted": 17,
+      "measured/submit/": 261,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 97
+    },
+    "AllErrors": {
+      "boundary/observe/deadline": 2,
+      "boundary/submit/deadline": 3,
+      "cleanup/cancel/deadline": 274,
+      "cleanup/cancel/other": 2,
+      "measured/observe/deadline": 57,
+      "measured/release/deadline": 5,
+      "measured/renew/deadline": 13,
+      "measured/submit/deadline": 261
+    },
+    "BoundaryOperations": 14,
+    "BoundaryErrors": 5,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 276,
+    "Before": {
+      "Records": 10000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 10000,
+      "Bytes": 4276224,
+      "RowBytes": 2170000,
+      "IndexBytes": 1884160,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 10193,
+      "Granted": 8,
+      "Queued": 34,
+      "Terminal": 10151,
+      "Bytes": 4562944,
+      "RowBytes": 2216679,
+      "IndexBytes": 1925120,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 16683912,
+    "HeapAfter": 18434664,
+    "PeakSampledHeap": 26429160,
+    "Allocated": 6661295008,
+    "GCs": 673,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.269063,
+    "ClockRTTMS": 1.709875,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.400554083,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case3-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 10000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 4656,
+    "Successes": 4547,
+    "Admissions": 100,
+    "OperationsPerSecond": 310.4,
+    "SuccessesPerSecond": 303.1333333333333,
+    "AdmissionsPerSecond": 6.666666666666667,
+    "Latencies": {
+      "observe/error": {
+        "N": 1,
+        "Min": 500.147541,
+        "P50": 500.147541,
+        "Max": 500.147541,
+        "P95": null,
+        "P99": null
+      },
+      "observe/ok": {
+        "N": 4280,
+        "Min": 0.208291,
+        "P50": 0.784458,
+        "Max": 488.516959,
+        "P95": 10.500542,
+        "P99": 327.856291
+      },
+      "release/error": {
+        "N": 5,
+        "Min": 500.056875,
+        "P50": 500.877584,
+        "Max": 515.283041,
+        "P95": null,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 71,
+        "Min": 91.716459,
+        "P50": 361.275084,
+        "Max": 496.708959,
+        "P95": 462.662083,
+        "P99": null
+      },
+      "renew/error": {
+        "N": 21,
+        "Min": 500.033708,
+        "P50": 500.159625,
+        "Max": 506.668208,
+        "P95": 504.622458,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 77,
+        "Min": 191.937583,
+        "P50": 385.985375,
+        "Max": 498.036084,
+        "P95": 483.274041,
+        "P99": null
+      },
+      "submit/error": {
+        "N": 82,
+        "Min": 500.011666,
+        "P50": 500.081666,
+        "Max": 506.793917,
+        "P95": 503.939917,
+        "P99": null
+      },
+      "submit/ok": {
+        "N": 119,
+        "Min": 52.294708,
+        "P50": 397.537583,
+        "Max": 499.379041,
+        "P95": 486.708583,
+        "P99": 497.833208
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 91,
+        "Min": 1032.49225,
+        "P50": 1947.284791,
+        "Max": 1982.633,
+        "P95": 1973.304167,
+        "P99": null
+      },
+      "renew": {
+        "N": 77,
+        "Min": 1501.130916,
+        "P50": 1613.710625,
+        "Max": 1807.434417,
+        "P95": 1702.729042,
+        "P99": null
+      },
+      "submit": {
+        "N": 9,
+        "Min": 1542.230167,
+        "P50": 1798.429584,
+        "Max": 1945.613166,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 98,
+      "Min": 832.376,
+      "P50": 1742.817667,
+      "Max": 1781.4105,
+      "P95": 1773.175917,
+      "P99": null
+    },
+    "Errors": {
+      "observe/deadline": 1,
+      "release/deadline": 5,
+      "renew/deadline": 21,
+      "submit/deadline": 82
+    },
+    "Statuses": {
+      "observe/": 1,
+      "observe/granted": 91,
+      "observe/queued": 4189,
+      "release/": 5,
+      "release/released": 71,
+      "renew/": 21,
+      "renew/granted": 77,
+      "submit/": 82,
+      "submit/granted": 9,
+      "submit/queued": 110
+    },
+    "AllStatuses": {
+      "boundary/observe/queued": 2,
+      "boundary/renew/": 3,
+      "boundary/submit/": 6,
+      "boundary/submit/queued": 3,
+      "cleanup/cancel/": 84,
+      "cleanup/cancel/cancelled": 50,
+      "measured/observe/": 1,
+      "measured/observe/granted": 91,
+      "measured/observe/queued": 4189,
+      "measured/release/": 5,
+      "measured/release/released": 71,
+      "measured/renew/": 21,
+      "measured/renew/granted": 77,
+      "measured/submit/": 82,
+      "measured/submit/granted": 9,
+      "measured/submit/queued": 110
+    },
+    "AllErrors": {
+      "boundary/renew/deadline": 3,
+      "boundary/submit/deadline": 6,
+      "cleanup/cancel/deadline": 84,
+      "measured/observe/deadline": 1,
+      "measured/release/deadline": 5,
+      "measured/renew/deadline": 21,
+      "measured/submit/deadline": 82
+    },
+    "BoundaryOperations": 14,
+    "BoundaryErrors": 9,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 84,
+    "Before": {
+      "Records": 10000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 10000,
+      "Bytes": 4259840,
+      "RowBytes": 2170000,
+      "IndexBytes": 1867776,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 10157,
+      "Granted": 8,
+      "Queued": 16,
+      "Terminal": 10133,
+      "Bytes": 4562944,
+      "RowBytes": 2209597,
+      "IndexBytes": 1908736,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 15744040,
+    "HeapAfter": 14282560,
+    "PeakSampledHeap": 27062648,
+    "Allocated": 6528017944,
+    "GCs": 749,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.075875,
+    "ClockRTTMS": 1.19425,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.28091125,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case3-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 10000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 4112,
+    "Successes": 3976,
+    "Admissions": 101,
+    "OperationsPerSecond": 274.1333333333333,
+    "SuccessesPerSecond": 265.06666666666666,
+    "AdmissionsPerSecond": 6.733333333333333,
+    "Latencies": {
+      "observe/ok": {
+        "N": 3687,
+        "Min": 0.823417,
+        "P50": 1.82475,
+        "Max": 496.8265,
+        "P95": 12.258375,
+        "P99": 293.782958
+      },
+      "release/ok": {
+        "N": 75,
+        "Min": 114.363959,
+        "P50": 298.846125,
+        "Max": 499.024542,
+        "P95": 470.055083,
+        "P99": null
+      },
+      "renew/error": {
+        "N": 19,
+        "Min": 500.048083,
+        "P50": 500.21375,
+        "Max": 506.569542,
+        "P95": null,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 91,
+        "Min": 88.023,
+        "P50": 281.677917,
+        "Max": 490.647584,
+        "P95": 470.919333,
+        "P99": null
+      },
+      "submit/error": {
+        "N": 117,
+        "Min": 500.006125,
+        "P50": 500.099125,
+        "Max": 519.845708,
+        "P95": 505.816375,
+        "P99": 507.496708
+      },
+      "submit/ok": {
+        "N": 123,
+        "Min": 42.7985,
+        "P50": 327.438916,
+        "Max": 498.384791,
+        "P95": 492.057,
+        "P99": 498.31275
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 90,
+        "Min": 1117.036417,
+        "P50": 1944.262708,
+        "Max": 1982.599083,
+        "P95": 1976.104792,
+        "P99": null
+      },
+      "renew": {
+        "N": 91,
+        "Min": 1508.569416,
+        "P50": 1717.785375,
+        "Max": 1911.812,
+        "P95": 1894.009167,
+        "P99": null
+      },
+      "submit": {
+        "N": 11,
+        "Min": 1516.573583,
+        "P50": 1750.560167,
+        "Max": 1938.767667,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 110,
+      "Min": 917.006167,
+      "P50": 1734.252167,
+      "Max": 1782.35125,
+      "P95": 1774.601584,
+      "P99": 1776.859334
+    },
+    "Errors": {
+      "renew/deadline": 19,
+      "submit/deadline": 117
+    },
+    "Statuses": {
+      "observe/granted": 90,
+      "observe/queued": 3597,
+      "release/released": 75,
+      "renew/": 19,
+      "renew/granted": 91,
+      "submit/": 117,
+      "submit/granted": 11,
+      "submit/queued": 112
+    },
+    "AllStatuses": {
+      "boundary/observe/queued": 3,
+      "boundary/release/released": 3,
+      "boundary/renew/granted": 2,
+      "boundary/submit/queued": 3,
+      "cleanup/cancel/": 117,
+      "cleanup/cancel/cancelled": 44,
+      "cleanup/release/": 2,
+      "cleanup/release/released": 2,
+      "measured/observe/granted": 90,
+      "measured/observe/queued": 3597,
+      "measured/release/released": 75,
+      "measured/renew/": 19,
+      "measured/renew/granted": 91,
+      "measured/submit/": 117,
+      "measured/submit/granted": 11,
+      "measured/submit/queued": 112
+    },
+    "AllErrors": {
+      "cleanup/cancel/deadline": 117,
+      "cleanup/release/deadline": 2,
+      "measured/renew/deadline": 19,
+      "measured/submit/deadline": 117
+    },
+    "BoundaryOperations": 11,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 119,
+    "Before": {
+      "Records": 10000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 10000,
+      "Bytes": 4259840,
+      "RowBytes": 2170000,
+      "IndexBytes": 1867776,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 10162,
+      "Granted": 8,
+      "Queued": 11,
+      "Terminal": 10143,
+      "Bytes": 4612096,
+      "RowBytes": 2210975,
+      "IndexBytes": 1892352,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 13130424,
+    "HeapAfter": 12283896,
+    "PeakSampledHeap": 26150824,
+    "Allocated": 7348279464,
+    "GCs": 830,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.297667,
+    "ClockRTTMS": 1.470667,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.396619417,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case4-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 64,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 8299,
+    "Successes": 8281,
+    "Admissions": 531,
+    "OperationsPerSecond": 553.2666666666667,
+    "SuccessesPerSecond": 552.0666666666667,
+    "AdmissionsPerSecond": 35.4,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6572,
+        "Min": 0.225917,
+        "P50": 0.707542,
+        "Max": 49.833917,
+        "P95": 7.065375,
+        "P99": 9.728667
+      },
+      "release/error": {
+        "N": 2,
+        "Min": 500.054208,
+        "P50": 500.100916,
+        "Max": 500.100916,
+        "P95": null,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 497,
+        "Min": 21.804333,
+        "P50": 233.27525,
+        "Max": 494.717,
+        "P95": 373.765125,
+        "P99": 410.167292
+      },
+      "renew/error": {
+        "N": 1,
+        "Min": 500.834917,
+        "P50": 500.834917,
+        "Max": 500.834917,
+        "P95": null,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 652,
+        "Min": 14.2165,
+        "P50": 231.021292,
+        "Max": 486.662542,
+        "P95": 385.050375,
+        "P99": 453.474792
+      },
+      "submit/error": {
+        "N": 15,
+        "Min": 500.011625,
+        "P50": 500.0365,
+        "Max": 502.168083,
+        "P95": null,
+        "P99": null
+      },
+      "submit/ok": {
+        "N": 560,
+        "Min": 45.154458,
+        "P50": 247.087916,
+        "Max": 491.791,
+        "P95": 400.133666,
+        "P99": 451.02725
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 499,
+        "Min": 1900.894083,
+        "P50": 1965.519709,
+        "Max": 1994.452459,
+        "P95": 1988.47275,
+        "P99": 1993.08375
+      },
+      "renew": {
+        "N": 652,
+        "Min": 1512.423458,
+        "P50": 1768.690833,
+        "Max": 1985.5575,
+        "P95": 1954.300333,
+        "P99": 1977.357667
+      },
+      "submit": {
+        "N": 32,
+        "Min": 1685.634917,
+        "P50": 1834.012167,
+        "Max": 1954.360542,
+        "P95": 1944.66125,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 653,
+      "Min": 1485.596458,
+      "P50": 1759.532042,
+      "Max": 1794.373875,
+      "P95": 1787.467708,
+      "P99": 1792.538167
+    },
+    "Errors": {
+      "release/deadline": 2,
+      "renew/deadline": 1,
+      "submit/deadline": 15
+    },
+    "Statuses": {
+      "observe/granted": 499,
+      "observe/queued": 6073,
+      "release/": 2,
+      "release/released": 497,
+      "renew/": 1,
+      "renew/granted": 652,
+      "submit/": 15,
+      "submit/granted": 32,
+      "submit/queued": 528
+    },
+    "AllStatuses": {
+      "boundary/observe/queued": 1,
+      "boundary/release/released": 17,
+      "boundary/renew/": 2,
+      "boundary/renew/granted": 8,
+      "boundary/submit/": 1,
+      "boundary/submit/queued": 3,
+      "cleanup/cancel/": 15,
+      "cleanup/cancel/cancelled": 36,
+      "cleanup/release/": 3,
+      "cleanup/release/released": 9,
+      "measured/observe/granted": 499,
+      "measured/observe/queued": 6073,
+      "measured/release/": 2,
+      "measured/release/released": 497,
+      "measured/renew/": 1,
+      "measured/renew/granted": 652,
+      "measured/submit/": 15,
+      "measured/submit/granted": 32,
+      "measured/submit/queued": 528
+    },
+    "AllErrors": {
+      "boundary/renew/deadline": 2,
+      "boundary/submit/deadline": 1,
+      "cleanup/cancel/deadline": 15,
+      "cleanup/release/deadline": 3,
+      "measured/release/deadline": 2,
+      "measured/renew/deadline": 1,
+      "measured/submit/deadline": 15
+    },
+    "BoundaryOperations": 32,
+    "BoundaryErrors": 3,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 18,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 516096,
+      "RowBytes": 217000,
+      "IndexBytes": 229376,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1579,
+      "Granted": 18,
+      "Queued": 0,
+      "Terminal": 1561,
+      "Bytes": 2187264,
+      "RowBytes": 369523,
+      "IndexBytes": 368640,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 2458752,
+    "HeapAfter": 5011720,
+    "PeakSampledHeap": 13311536,
+    "Allocated": 4585830088,
+    "GCs": 966,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.335334,
+    "ClockRTTMS": 1.793333,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.114734541,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 128,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 64,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case4-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 64,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 8042,
+    "Successes": 8021,
+    "Admissions": 525,
+    "OperationsPerSecond": 536.1333333333333,
+    "SuccessesPerSecond": 534.7333333333333,
+    "AdmissionsPerSecond": 35,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6349,
+        "Min": 0.152541,
+        "P50": 0.608834,
+        "Max": 212.462292,
+        "P95": 6.925875,
+        "P99": 9.22125
+      },
+      "release/error": {
+        "N": 2,
+        "Min": 500.162958,
+        "P50": 500.199459,
+        "Max": 500.199459,
+        "P95": null,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 491,
+        "Min": 21.180417,
+        "P50": 265.866292,
+        "Max": 486.159792,
+        "P95": 388.529458,
+        "P99": 458.971791
+      },
+      "renew/error": {
+        "N": 1,
+        "Min": 500.055958,
+        "P50": 500.055958,
+        "Max": 500.055958,
+        "P95": null,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 636,
+        "Min": 16.051375,
+        "P50": 249.139959,
+        "Max": 477.589167,
+        "P95": 403.739583,
+        "P99": 453.302542
+      },
+      "submit/error": {
+        "N": 18,
+        "Min": 500.020125,
+        "P50": 500.05875,
+        "Max": 500.685833,
+        "P95": null,
+        "P99": null
+      },
+      "submit/ok": {
+        "N": 545,
+        "Min": 45.251959,
+        "P50": 276.633625,
+        "Max": 496.049917,
+        "P95": 412.207292,
+        "P99": 461.083834
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 493,
+        "Min": 1600.407541,
+        "P50": 1965.16975,
+        "Max": 1994.854209,
+        "P95": 1989.955416,
+        "P99": 1993.729167
+      },
+      "renew": {
+        "N": 636,
+        "Min": 1521.809833,
+        "P50": 1750.691667,
+        "Max": 1983.336625,
+        "P95": 1969.577417,
+        "P99": 1977.882125
+      },
+      "submit": {
+        "N": 32,
+        "Min": 1676.301125,
+        "P50": 1833.90875,
+        "Max": 1954.083041,
+        "P95": 1945.264959,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 637,
+      "Min": 1400.389333,
+      "P50": 1759.036708,
+      "Max": 1794.810875,
+      "P95": 1787.575542,
+      "P99": 1793.261416
+    },
+    "Errors": {
+      "release/deadline": 2,
+      "renew/deadline": 1,
+      "submit/deadline": 18
+    },
+    "Statuses": {
+      "observe/granted": 493,
+      "observe/queued": 5856,
+      "release/": 2,
+      "release/released": 491,
+      "renew/": 1,
+      "renew/granted": 636,
+      "submit/": 18,
+      "submit/granted": 32,
+      "submit/queued": 513
+    },
+    "AllStatuses": {
+      "boundary/observe/queued": 2,
+      "boundary/release/": 2,
+      "boundary/release/released": 9,
+      "boundary/renew/": 1,
+      "boundary/renew/granted": 13,
+      "boundary/submit/queued": 13,
+      "cleanup/cancel/": 11,
+      "cleanup/cancel/cancelled": 42,
+      "cleanup/release/": 6,
+      "cleanup/release/released": 13,
+      "measured/observe/granted": 493,
+      "measured/observe/queued": 5856,
+      "measured/release/": 2,
+      "measured/release/released": 491,
+      "measured/renew/": 1,
+      "measured/renew/granted": 636,
+      "measured/submit/": 18,
+      "measured/submit/granted": 32,
+      "measured/submit/queued": 513
+    },
+    "AllErrors": {
+      "boundary/release/deadline": 2,
+      "boundary/renew/deadline": 1,
+      "cleanup/cancel/deadline": 11,
+      "cleanup/release/deadline": 6,
+      "measured/release/deadline": 2,
+      "measured/renew/deadline": 1,
+      "measured/submit/deadline": 18
+    },
+    "BoundaryOperations": 40,
+    "BoundaryErrors": 3,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 17,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 532480,
+      "RowBytes": 217000,
+      "IndexBytes": 245760,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1576,
+      "Granted": 20,
+      "Queued": 0,
+      "Terminal": 1556,
+      "Bytes": 1548288,
+      "RowBytes": 368408,
+      "IndexBytes": 417792,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 2760400,
+    "HeapAfter": 5371568,
+    "PeakSampledHeap": 13545848,
+    "Allocated": 4512374736,
+    "GCs": 926,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.325396,
+    "ClockRTTMS": 1.517208,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.066601375,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 128,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 64,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case4-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 64,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 8053,
+    "Successes": 8030,
+    "Admissions": 543,
+    "OperationsPerSecond": 536.8666666666667,
+    "SuccessesPerSecond": 535.3333333333334,
+    "AdmissionsPerSecond": 36.2,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6340,
+        "Min": 0.276958,
+        "P50": 0.727333,
+        "Max": 31.492375,
+        "P95": 7.496084,
+        "P99": 10.112583
+      },
+      "release/ok": {
+        "N": 511,
+        "Min": 18.016541,
+        "P50": 252.3215,
+        "Max": 486.280208,
+        "P95": 367.000375,
+        "P99": 402.941583
+      },
+      "renew/ok": {
+        "N": 616,
+        "Min": 18.26325,
+        "P50": 255.425958,
+        "Max": 486.823375,
+        "P95": 370.969,
+        "P99": 417.449083
+      },
+      "submit/error": {
+        "N": 23,
+        "Min": 500.013541,
+        "P50": 500.043,
+        "Max": 500.42525,
+        "P95": 500.108042,
+        "P99": null
+      },
+      "submit/ok": {
+        "N": 563,
+        "Min": 32.888708,
+        "P50": 256.618125,
+        "Max": 491.702708,
+        "P95": 381.416458,
+        "P99": 453.981167
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 511,
+        "Min": 1923.25225,
+        "P50": 1965.394334,
+        "Max": 1994.742916,
+        "P95": 1988.54125,
+        "P99": 1993.188
+      },
+      "renew": {
+        "N": 616,
+        "Min": 1513.128625,
+        "P50": 1744.166709,
+        "Max": 1981.23575,
+        "P95": 1967.255958,
+        "P99": 1979.310791
+      },
+      "submit": {
+        "N": 32,
+        "Min": 1628.56025,
+        "P50": 1817.466584,
+        "Max": 1949.387834,
+        "P95": 1938.358792,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 616,
+      "Min": 1428.432291,
+      "P50": 1761.966625,
+      "Max": 1794.704208,
+      "P95": 1787.146917,
+      "P99": 1793.081834
+    },
+    "Errors": {
+      "submit/deadline": 23
+    },
+    "Statuses": {
+      "observe/granted": 511,
+      "observe/queued": 5829,
+      "release/released": 511,
+      "renew/granted": 616,
+      "submit/": 23,
+      "submit/granted": 32,
+      "submit/queued": 531
+    },
+    "AllStatuses": {
+      "boundary/release/released": 6,
+      "boundary/renew/granted": 16,
+      "boundary/submit/": 4,
+      "boundary/submit/queued": 8,
+      "cleanup/cancel/": 9,
+      "cleanup/cancel/cancelled": 46,
+      "cleanup/release/": 11,
+      "cleanup/release/released": 15,
+      "measured/observe/granted": 511,
+      "measured/observe/queued": 5829,
+      "measured/release/released": 511,
+      "measured/renew/granted": 616,
+      "measured/submit/": 23,
+      "measured/submit/granted": 32,
+      "measured/submit/queued": 531
+    },
+    "AllErrors": {
+      "boundary/submit/deadline": 4,
+      "cleanup/cancel/deadline": 9,
+      "cleanup/release/deadline": 11,
+      "measured/submit/deadline": 23
+    },
+    "BoundaryOperations": 34,
+    "BoundaryErrors": 4,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 20,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 516096,
+      "RowBytes": 217000,
+      "IndexBytes": 229376,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1598,
+      "Granted": 19,
+      "Queued": 0,
+      "Terminal": 1579,
+      "Bytes": 2252800,
+      "RowBytes": 373990,
+      "IndexBytes": 401408,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 2755080,
+    "HeapAfter": 4299912,
+    "PeakSampledHeap": 14544624,
+    "Allocated": 4626842736,
+    "GCs": 960,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.365438,
+    "ClockRTTMS": 1.051125,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.102781458,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 128,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 64,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case5-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "expiry-gc",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 32,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 3389,
+    "Successes": 3389,
+    "Admissions": 601,
+    "OperationsPerSecond": 225.93333333333334,
+    "SuccessesPerSecond": 225.93333333333334,
+    "AdmissionsPerSecond": 40.06666666666667,
+    "Latencies": {
+      "observe/ok": {
+        "N": 1044,
+        "Min": 0.303834,
+        "P50": 0.890042,
+        "Max": 78.44925,
+        "P95": 46.838,
+        "P99": 57.927417
+      },
+      "release/ok": {
+        "N": 573,
+        "Min": 2.482375,
+        "P50": 36.15875,
+        "Max": 225.289709,
+        "P95": 152.247666,
+        "P99": 205.660375
+      },
+      "renew/ok": {
+        "N": 1171,
+        "Min": 2.346,
+        "P50": 21.661125,
+        "Max": 250.375125,
+        "P95": 122.942,
+        "P99": 193.657958
+      },
+      "submit/ok": {
+        "N": 601,
+        "Min": 2.38,
+        "P50": 40.726833,
+        "Max": 349.41925,
+        "P95": 173.454041,
+        "P99": 283.095875
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 32,
+        "Min": 1878.865834,
+        "P50": 1889.907583,
+        "Max": 1953.199417,
+        "P95": 1950.586292,
+        "P99": null
+      },
+      "renew": {
+        "N": 1171,
+        "Min": 1748.723875,
+        "P50": 1977.752667,
+        "Max": 1997.579,
+        "P95": 1995.342542,
+        "P99": 1996.112
+      },
+      "submit": {
+        "N": 569,
+        "Min": 1779.15875,
+        "P50": 1961.86375,
+        "Max": 1997.239042,
+        "P95": 1993.8775,
+        "P99": 1996.2755
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 1171,
+      "Min": 1579.133167,
+      "P50": 1767.890958,
+      "Max": 1797.54775,
+      "P95": 1794.937917,
+      "P99": 1795.967375
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 32,
+      "observe/queued": 1012,
+      "release/released": 573,
+      "renew/granted": 1171,
+      "submit/granted": 569,
+      "submit/queued": 32
+    },
+    "AllStatuses": {
+      "boundary/release/released": 8,
+      "boundary/renew/granted": 6,
+      "boundary/submit/granted": 4,
+      "cleanup/release/released": 24,
+      "measured/observe/granted": 32,
+      "measured/observe/queued": 1012,
+      "measured/release/released": 573,
+      "measured/renew/granted": 1171,
+      "measured/submit/granted": 569,
+      "measured/submit/queued": 32
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 18,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 1064,
+      "Granted": 32,
+      "Queued": 32,
+      "Terminal": 1000,
+      "Bytes": 548864,
+      "RowBytes": 232648,
+      "IndexBytes": 245760,
+      "SeedHistory": 1000,
+      "SeedActive": 32,
+      "SeedQueued": 32,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 669,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 669,
+      "Bytes": 1941504,
+      "RowBytes": 176261,
+      "IndexBytes": 327680,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 64
+    },
+    "HeapBefore": 2740168,
+    "HeapAfter": 3709808,
+    "PeakSampledHeap": 9886464,
+    "Allocated": 1971063752,
+    "GCs": 757,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.07975,
+    "ClockRTTMS": 1.1225,
+    "ExpiryBoundaryMS": 1952.48725,
+    "SetupSeconds": 0.08997825,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 96,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case5-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "expiry-gc",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 32,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 3297,
+    "Successes": 3297,
+    "Admissions": 569,
+    "OperationsPerSecond": 219.8,
+    "SuccessesPerSecond": 219.8,
+    "AdmissionsPerSecond": 37.93333333333333,
+    "Latencies": {
+      "observe/ok": {
+        "N": 1101,
+        "Min": 0.332584,
+        "P50": 0.985,
+        "Max": 57.009291,
+        "P95": 11.859625,
+        "P99": 52.340541
+      },
+      "release/ok": {
+        "N": 540,
+        "Min": 4.0885,
+        "P50": 48.992375,
+        "Max": 278.712958,
+        "P95": 206.721625,
+        "P99": 249.828625
+      },
+      "renew/ok": {
+        "N": 1087,
+        "Min": 3.767541,
+        "P50": 26.339667,
+        "Max": 274.8715,
+        "P95": 178.079333,
+        "P99": 229.274958
+      },
+      "submit/ok": {
+        "N": 569,
+        "Min": 4.210709,
+        "P50": 59.317208,
+        "Max": 361.926959,
+        "P95": 208.551458,
+        "P99": 294.014042
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 32,
+        "Min": 1882.181709,
+        "P50": 1901.457042,
+        "Max": 1961.302333,
+        "P95": 1960.2605,
+        "P99": null
+      },
+      "renew": {
+        "N": 1087,
+        "Min": 1725.0215,
+        "P50": 1973.274959,
+        "Max": 1995.683292,
+        "P95": 1994.135209,
+        "P99": 1994.965458
+      },
+      "submit": {
+        "N": 537,
+        "Min": 1718.572584,
+        "P50": 1942.310417,
+        "Max": 1995.711291,
+        "P95": 1989.582875,
+        "P99": 1994.028875
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 1087,
+      "Min": 1518.515792,
+      "P50": 1755.212959,
+      "Max": 1795.664542,
+      "P95": 1792.988458,
+      "P99": 1794.74825
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 32,
+      "observe/queued": 1069,
+      "release/released": 540,
+      "renew/granted": 1087,
+      "submit/granted": 537,
+      "submit/queued": 32
+    },
+    "AllStatuses": {
+      "boundary/release/released": 3,
+      "boundary/renew/granted": 9,
+      "boundary/submit/granted": 3,
+      "cleanup/release/released": 29,
+      "measured/observe/granted": 32,
+      "measured/observe/queued": 1069,
+      "measured/release/released": 540,
+      "measured/renew/granted": 1087,
+      "measured/submit/granted": 537,
+      "measured/submit/queued": 32
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 15,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 1064,
+      "Granted": 32,
+      "Queued": 32,
+      "Terminal": 1000,
+      "Bytes": 557056,
+      "RowBytes": 232648,
+      "IndexBytes": 253952,
+      "SeedHistory": 1000,
+      "SeedActive": 32,
+      "SeedQueued": 32,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 636,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 636,
+      "Bytes": 1409024,
+      "RowBytes": 167516,
+      "IndexBytes": 335872,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 64
+    },
+    "HeapBefore": 2164248,
+    "HeapAfter": 3415688,
+    "PeakSampledHeap": 9026472,
+    "Allocated": 1766076552,
+    "GCs": 651,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.304584,
+    "ClockRTTMS": 1.756833,
+    "ExpiryBoundaryMS": 1951.002416,
+    "SetupSeconds": 0.072845084,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 96,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "postgres-case5-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "postgres",
+    "Scenario": "expiry-gc",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 32,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 3484,
+    "Successes": 3484,
+    "Admissions": 615,
+    "OperationsPerSecond": 232.26666666666668,
+    "SuccessesPerSecond": 232.26666666666668,
+    "AdmissionsPerSecond": 41,
+    "Latencies": {
+      "observe/ok": {
+        "N": 1085,
+        "Min": 0.305083,
+        "P50": 0.926459,
+        "Max": 64.171,
+        "P95": 11.42725,
+        "P99": 55.392334
+      },
+      "release/ok": {
+        "N": 585,
+        "Min": 2.7945,
+        "P50": 35.290709,
+        "Max": 174.6085,
+        "P95": 106.4825,
+        "P99": 153.715458
+      },
+      "renew/ok": {
+        "N": 1199,
+        "Min": 2.444125,
+        "P50": 22.474167,
+        "Max": 191.046583,
+        "P95": 98.278875,
+        "P99": 146.837542
+      },
+      "submit/ok": {
+        "N": 615,
+        "Min": 2.6175,
+        "P50": 43.363667,
+        "Max": 365.978958,
+        "P95": 129.554625,
+        "P99": 306.225417
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 32,
+        "Min": 1869.011958,
+        "P50": 1905.335291,
+        "Max": 1959.023041,
+        "P95": 1957.567875,
+        "P99": null
+      },
+      "renew": {
+        "N": 1199,
+        "Min": 1808.601417,
+        "P50": 1976.970084,
+        "Max": 1997.310875,
+        "P95": 1995.27175,
+        "P99": 1995.957292
+      },
+      "submit": {
+        "N": 583,
+        "Min": 1834.711916,
+        "P50": 1958.194041,
+        "Max": 1997.1675,
+        "P95": 1993.963083,
+        "P99": 1995.964666
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 1199,
+      "Min": 1608.587792,
+      "P50": 1769.3455,
+      "Max": 1797.22175,
+      "P95": 1795.192209,
+      "P99": 1795.999
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 32,
+      "observe/queued": 1053,
+      "release/released": 585,
+      "renew/granted": 1199,
+      "submit/granted": 583,
+      "submit/queued": 32
+    },
+    "AllStatuses": {
+      "boundary/release/released": 2,
+      "boundary/renew/granted": 7,
+      "boundary/submit/granted": 2,
+      "cleanup/release/released": 30,
+      "measured/observe/granted": 32,
+      "measured/observe/queued": 1053,
+      "measured/release/released": 585,
+      "measured/renew/granted": 1199,
+      "measured/submit/granted": 583,
+      "measured/submit/queued": 32
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 11,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 1064,
+      "Granted": 32,
+      "Queued": 32,
+      "Terminal": 1000,
+      "Bytes": 557056,
+      "RowBytes": 232648,
+      "IndexBytes": 253952,
+      "SeedHistory": 1000,
+      "SeedActive": 32,
+      "SeedQueued": 32,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 681,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 681,
+      "Bytes": 1982464,
+      "RowBytes": 179441,
+      "IndexBytes": 335872,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 64
+    },
+    "HeapBefore": 2694632,
+    "HeapAfter": 3290624,
+    "PeakSampledHeap": 9507776,
+    "Allocated": 2030461440,
+    "GCs": 787,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.200896,
+    "ClockRTTMS": 1.334208,
+    "ExpiryBoundaryMS": 1942.230104,
+    "SetupSeconds": 0.101848583,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 96,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case0-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 8,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 776,
+    "Successes": 776,
+    "Admissions": 200,
+    "OperationsPerSecond": 51.733333333333334,
+    "SuccessesPerSecond": 51.733333333333334,
+    "AdmissionsPerSecond": 13.333333333333334,
+    "Latencies": {
+      "release/ok": {
+        "N": 192,
+        "Min": 3.101,
+        "P50": 7.347292,
+        "Max": 77.939166,
+        "P95": 30.759,
+        "P99": 77.562625
+      },
+      "renew/ok": {
+        "N": 384,
+        "Min": 2.221458,
+        "P50": 7.154666,
+        "Max": 42.32,
+        "P95": 12.299334,
+        "P99": 23.642833
+      },
+      "submit/ok": {
+        "N": 200,
+        "Min": 2.505083,
+        "P50": 5.881792,
+        "Max": 91.516,
+        "P95": 24.149792,
+        "P99": 53.640375
+      }
+    },
+    "Budgets": {
+      "renew": {
+        "N": 384,
+        "Min": 1957.261,
+        "P50": 1992.381916,
+        "Max": 1996.926542,
+        "P95": 1996.026291,
+        "P99": 1996.658334
+      },
+      "submit": {
+        "N": 200,
+        "Min": 1908.439,
+        "P50": 1993.547875,
+        "Max": 1997.065417,
+        "P95": 1996.284167,
+        "P99": 1997.01575
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 384,
+      "Min": 1708.326667,
+      "P50": 1792.220042,
+      "Max": 1796.946209,
+      "P95": 1795.956292,
+      "P99": 1796.512417
+    },
+    "Errors": {},
+    "Statuses": {
+      "release/released": 192,
+      "renew/granted": 384,
+      "submit/granted": 200
+    },
+    "AllStatuses": {
+      "cleanup/release/released": 8,
+      "measured/release/released": 192,
+      "measured/renew/granted": 384,
+      "measured/submit/granted": 200
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 0,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 1150,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 200,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 200,
+      "Bytes": 276990,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 564024,
+    "HeapAfter": 4055584,
+    "PeakSampledHeap": 5160952,
+    "Allocated": 372554256,
+    "GCs": 162,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 3.645021,
+    "ClockRTTMS": 8.471958,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.019996208,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 24,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 16,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case0-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 8,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 775,
+    "Successes": 775,
+    "Admissions": 199,
+    "OperationsPerSecond": 51.666666666666664,
+    "SuccessesPerSecond": 51.666666666666664,
+    "AdmissionsPerSecond": 13.266666666666667,
+    "Latencies": {
+      "release/ok": {
+        "N": 192,
+        "Min": 2.901084,
+        "P50": 8.737083,
+        "Max": 127.992834,
+        "P95": 30.926708,
+        "P99": 67.162625
+      },
+      "renew/ok": {
+        "N": 384,
+        "Min": 2.360917,
+        "P50": 8.395375,
+        "Max": 58.475,
+        "P95": 12.632583,
+        "P99": 19.097209
+      },
+      "submit/ok": {
+        "N": 199,
+        "Min": 2.668209,
+        "P50": 6.867208,
+        "Max": 131.861208,
+        "P95": 26.472958,
+        "P99": 81.404125
+      }
+    },
+    "Budgets": {
+      "renew": {
+        "N": 384,
+        "Min": 1940.897,
+        "P50": 1991.112083,
+        "Max": 1997.241083,
+        "P95": 1994.453167,
+        "P99": 1996.379833
+      },
+      "submit": {
+        "N": 199,
+        "Min": 1867.649792,
+        "P50": 1992.5985,
+        "Max": 1997.122625,
+        "P95": 1995.977791,
+        "P99": 1996.950458
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 384,
+      "Min": 1666.956959,
+      "P50": 1791.023375,
+      "Max": 1796.817041,
+      "P95": 1794.722209,
+      "P99": 1796.505
+    },
+    "Errors": {},
+    "Statuses": {
+      "release/released": 192,
+      "renew/granted": 384,
+      "submit/granted": 199
+    },
+    "AllStatuses": {
+      "boundary/submit/granted": 1,
+      "cleanup/release/released": 8,
+      "measured/release/released": 192,
+      "measured/renew/granted": 384,
+      "measured/submit/granted": 199
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 1,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 1150,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 200,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 200,
+      "Bytes": 276990,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 562600,
+    "HeapAfter": 2862560,
+    "PeakSampledHeap": 5546168,
+    "Allocated": 366904288,
+    "GCs": 161,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 3.250958,
+    "ClockRTTMS": 7.540084,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.015100291,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 24,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 16,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case0-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 8,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 778,
+    "Successes": 778,
+    "Admissions": 200,
+    "OperationsPerSecond": 51.86666666666667,
+    "SuccessesPerSecond": 51.86666666666667,
+    "AdmissionsPerSecond": 13.333333333333334,
+    "Latencies": {
+      "release/ok": {
+        "N": 192,
+        "Min": 1.881458,
+        "P50": 7.429375,
+        "Max": 77.277042,
+        "P95": 33.705709,
+        "P99": 60.573292
+      },
+      "renew/ok": {
+        "N": 386,
+        "Min": 2.352459,
+        "P50": 6.981166,
+        "Max": 61.301667,
+        "P95": 12.643791,
+        "P99": 31.945584
+      },
+      "submit/ok": {
+        "N": 200,
+        "Min": 1.916459,
+        "P50": 5.509375,
+        "Max": 45.714291,
+        "P95": 25.8105,
+        "P99": 32.718916
+      }
+    },
+    "Budgets": {
+      "renew": {
+        "N": 386,
+        "Min": 1938.433333,
+        "P50": 1992.635,
+        "Max": 1997.108541,
+        "P95": 1995.678459,
+        "P99": 1996.703667
+      },
+      "submit": {
+        "N": 200,
+        "Min": 1953.941709,
+        "P50": 1994.066542,
+        "Max": 1997.93975,
+        "P95": 1997.10725,
+        "P99": 1997.904292
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 386,
+      "Min": 1738.183125,
+      "P50": 1792.748166,
+      "Max": 1797.774375,
+      "P95": 1796.046958,
+      "P99": 1797.460541
+    },
+    "Errors": {},
+    "Statuses": {
+      "release/released": 192,
+      "renew/granted": 386,
+      "submit/granted": 200
+    },
+    "AllStatuses": {
+      "boundary/renew/granted": 1,
+      "cleanup/release/released": 8,
+      "measured/release/released": 192,
+      "measured/renew/granted": 386,
+      "measured/submit/granted": 200
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 1,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 1150,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 200,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 200,
+      "Bytes": 276990,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 557296,
+    "HeapAfter": 4552552,
+    "PeakSampledHeap": 5378928,
+    "Allocated": 371361968,
+    "GCs": 160,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 10.512417,
+    "ClockRTTMS": 21.221167,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.026206292,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 24,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 16,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case1-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 7644,
+    "Successes": 7644,
+    "Admissions": 192,
+    "OperationsPerSecond": 509.6,
+    "SuccessesPerSecond": 509.6,
+    "AdmissionsPerSecond": 12.8,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6867,
+        "Min": 0.342042,
+        "P50": 1.596125,
+        "Max": 25.257959,
+        "P95": 3.903459,
+        "P99": 6.07475
+      },
+      "release/ok": {
+        "N": 184,
+        "Min": 2.960083,
+        "P50": 8.917417,
+        "Max": 60.392083,
+        "P95": 30.50825,
+        "P99": 59.851
+      },
+      "renew/ok": {
+        "N": 377,
+        "Min": 3.421583,
+        "P50": 8.608292,
+        "Max": 38.488959,
+        "P95": 25.361917,
+        "P99": 32.822625
+      },
+      "submit/ok": {
+        "N": 216,
+        "Min": 2.770792,
+        "P50": 6.946875,
+        "Max": 290.028583,
+        "P95": 133.678625,
+        "P99": 269.173458
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 184,
+        "Min": 1938.4295,
+        "P50": 1971.6445,
+        "Max": 1996.599459,
+        "P95": 1991.557708,
+        "P99": 1994.648667
+      },
+      "renew": {
+        "N": 377,
+        "Min": 1961.232041,
+        "P50": 1990.763916,
+        "Max": 1996.164917,
+        "P95": 1995.121208,
+        "P99": 1995.7995
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1963.630208,
+        "P50": 1968.6705,
+        "Max": 1979.890458,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 377,
+      "Min": 1737.860083,
+      "P50": 1782.4085,
+      "Max": 1796.561459,
+      "P95": 1793.848417,
+      "P99": 1795.514667
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 184,
+      "observe/queued": 6683,
+      "release/released": 184,
+      "renew/granted": 377,
+      "submit/granted": 8,
+      "submit/queued": 208
+    },
+    "AllStatuses": {
+      "boundary/renew/granted": 2,
+      "cleanup/cancel/cancelled": 24,
+      "cleanup/release/released": 8,
+      "measured/observe/granted": 184,
+      "measured/observe/queued": 6683,
+      "measured/release/released": 184,
+      "measured/renew/granted": 377,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 208
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 2,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 1150,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 216,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 216,
+      "Bytes": 288446,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 571064,
+    "HeapAfter": 4483664,
+    "PeakSampledHeap": 8284664,
+    "Allocated": 573449728,
+    "GCs": 177,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 1.597396,
+    "ClockRTTMS": 3.857208,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.007921041,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case1-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 7550,
+    "Successes": 7550,
+    "Admissions": 192,
+    "OperationsPerSecond": 503.3333333333333,
+    "SuccessesPerSecond": 503.3333333333333,
+    "AdmissionsPerSecond": 12.8,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6776,
+        "Min": 0.363292,
+        "P50": 2.025875,
+        "Max": 13.504542,
+        "P95": 4.64575,
+        "P99": 6.884
+      },
+      "release/ok": {
+        "N": 184,
+        "Min": 4.419041,
+        "P50": 11.208291,
+        "Max": 65.389458,
+        "P95": 37.839042,
+        "P99": 52.637958
+      },
+      "renew/ok": {
+        "N": 374,
+        "Min": 3.372542,
+        "P50": 11.100459,
+        "Max": 45.33325,
+        "P95": 25.421,
+        "P99": 33.528958
+      },
+      "submit/ok": {
+        "N": 216,
+        "Min": 2.8715,
+        "P50": 8.701959,
+        "Max": 336.718958,
+        "P95": 199.563,
+        "P99": 314.205084
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 184,
+        "Min": 1936.52325,
+        "P50": 1969.066416,
+        "Max": 1996.66075,
+        "P95": 1987.619417,
+        "P99": 1995.284625
+      },
+      "renew": {
+        "N": 374,
+        "Min": 1954.63375,
+        "P50": 1988.286917,
+        "Max": 1996.387458,
+        "P95": 1993.298792,
+        "P99": 1995.343792
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1953.465791,
+        "P50": 1963.603958,
+        "Max": 1976.024709,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 374,
+      "Min": 1736.026292,
+      "P50": 1780.910125,
+      "Max": 1796.529167,
+      "P95": 1791.987583,
+      "P99": 1794.961667
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 184,
+      "observe/queued": 6592,
+      "release/released": 184,
+      "renew/granted": 374,
+      "submit/granted": 8,
+      "submit/queued": 208
+    },
+    "AllStatuses": {
+      "boundary/observe/queued": 2,
+      "boundary/renew/granted": 2,
+      "cleanup/cancel/cancelled": 24,
+      "cleanup/release/released": 8,
+      "measured/observe/granted": 184,
+      "measured/observe/queued": 6592,
+      "measured/release/released": 184,
+      "measured/renew/granted": 374,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 208
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 4,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 1150,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 216,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 216,
+      "Bytes": 288446,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 565600,
+    "HeapAfter": 6184848,
+    "PeakSampledHeap": 8183584,
+    "Allocated": 561030088,
+    "GCs": 178,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 2.976229,
+    "ClockRTTMS": 7.209542,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.016773833,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case1-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 0,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 7633,
+    "Successes": 7633,
+    "Admissions": 192,
+    "OperationsPerSecond": 508.8666666666667,
+    "SuccessesPerSecond": 508.8666666666667,
+    "AdmissionsPerSecond": 12.8,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6858,
+        "Min": 0.268292,
+        "P50": 1.483833,
+        "Max": 13.3275,
+        "P95": 3.586834,
+        "P99": 5.3185
+      },
+      "release/ok": {
+        "N": 184,
+        "Min": 1.879125,
+        "P50": 9.53625,
+        "Max": 60.074792,
+        "P95": 38.66275,
+        "P99": 58.457166
+      },
+      "renew/ok": {
+        "N": 375,
+        "Min": 2.27025,
+        "P50": 9.181208,
+        "Max": 34.028042,
+        "P95": 22.952584,
+        "P99": 30.608167
+      },
+      "submit/ok": {
+        "N": 216,
+        "Min": 1.594292,
+        "P50": 7.089458,
+        "Max": 314.512542,
+        "P95": 187.956875,
+        "P99": 288.198583
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 184,
+        "Min": 1937.256667,
+        "P50": 1969.995375,
+        "Max": 1997.114334,
+        "P95": 1990.671333,
+        "P99": 1995.734667
+      },
+      "renew": {
+        "N": 375,
+        "Min": 1965.133958,
+        "P50": 1990.291459,
+        "Max": 1997.480083,
+        "P95": 1996.038417,
+        "P99": 1996.94175
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1956.642083,
+        "P50": 1968.589625,
+        "Max": 1982.9015,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 375,
+      "Min": 1736.568792,
+      "P50": 1782.319333,
+      "Max": 1796.799917,
+      "P95": 1793.844833,
+      "P99": 1796.2325
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 184,
+      "observe/queued": 6674,
+      "release/released": 184,
+      "renew/granted": 375,
+      "submit/granted": 8,
+      "submit/queued": 208
+    },
+    "AllStatuses": {
+      "boundary/renew/granted": 2,
+      "cleanup/cancel/cancelled": 24,
+      "cleanup/release/released": 8,
+      "measured/observe/granted": 184,
+      "measured/observe/queued": 6674,
+      "measured/release/released": 184,
+      "measured/renew/granted": 375,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 208
+    },
+    "AllErrors": {},
+    "BoundaryOperations": 2,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 0,
+    "Before": {
+      "Records": 0,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 0,
+      "Bytes": 1150,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 216,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 216,
+      "Bytes": 288446,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 570920,
+    "HeapAfter": 5259824,
+    "PeakSampledHeap": 8273448,
+    "Allocated": 563724736,
+    "GCs": 174,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 14.501271,
+    "ClockRTTMS": 29.255458,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.034958708,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case2-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 7501,
+    "Successes": 7501,
+    "Admissions": 185,
+    "OperationsPerSecond": 500.06666666666666,
+    "SuccessesPerSecond": 500.06666666666666,
+    "AdmissionsPerSecond": 12.333333333333334,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6754,
+        "Min": 0.221,
+        "P50": 1.367917,
+        "Max": 33.374458,
+        "P95": 4.871833,
+        "P99": 6.965833
+      },
+      "release/ok": {
+        "N": 177,
+        "Min": 9.927,
+        "P50": 24.070375,
+        "Max": 200.98575,
+        "P95": 71.207292,
+        "P99": 163.443375
+      },
+      "renew/ok": {
+        "N": 361,
+        "Min": 9.046083,
+        "P50": 20.656583,
+        "Max": 233.31075,
+        "P95": 73.040875,
+        "P99": 195.102541
+      },
+      "submit/ok": {
+        "N": 209,
+        "Min": 9.322708,
+        "P50": 14.382666,
+        "Max": 470.538541,
+        "P95": 260.416916,
+        "P99": 428.694833
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 177,
+        "Min": 1930.753292,
+        "P50": 1962.295125,
+        "Max": 1988.366583,
+        "P95": 1984.470667,
+        "P99": 1986.110291
+      },
+      "renew": {
+        "N": 361,
+        "Min": 1766.55125,
+        "P50": 1978.913709,
+        "Max": 1990.898917,
+        "P95": 1986.787583,
+        "P99": 1989.034
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1895.780583,
+        "P50": 1942.31975,
+        "Max": 1976.614958,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 361,
+      "Min": 1603.169542,
+      "P50": 1769.060334,
+      "Max": 1788.677667,
+      "P95": 1785.059083,
+      "P99": 1787.599875
+    },
+    "Errors": {},
+    "Statuses": {
+      "observe/granted": 177,
+      "observe/queued": 6577,
+      "release/released": 177,
+      "renew/granted": 361,
+      "submit/granted": 8,
+      "submit/queued": 201
+    },
+    "AllStatuses": {
+      "boundary/observe/queued": 9,
+      "boundary/release/released": 1,
+      "boundary/renew/granted": 1,
+      "cleanup/cancel/": 6,
+      "cleanup/cancel/cancelled": 18,
+      "cleanup/release/": 2,
+      "cleanup/release/released": 5,
+      "measured/observe/granted": 177,
+      "measured/observe/queued": 6577,
+      "measured/release/released": 177,
+      "measured/renew/granted": 361,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 201
+    },
+    "AllErrors": {
+      "cleanup/cancel/deadline": 6,
+      "cleanup/release/deadline": 2
+    },
+    "BoundaryOperations": 11,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 8,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 1380222,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1209,
+      "Granted": 8,
+      "Queued": 0,
+      "Terminal": 1201,
+      "Bytes": 1669130,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 6235496,
+    "HeapAfter": 10317152,
+    "PeakSampledHeap": 13046056,
+    "Allocated": 4869839000,
+    "GCs": 955,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 2.209209,
+    "ClockRTTMS": 4.997583,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.041938167,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case2-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 7429,
+    "Successes": 7420,
+    "Admissions": 185,
+    "OperationsPerSecond": 495.26666666666665,
+    "SuccessesPerSecond": 494.6666666666667,
+    "AdmissionsPerSecond": 12.333333333333334,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6672,
+        "Min": 0.198459,
+        "P50": 1.354375,
+        "Max": 14.185958,
+        "P95": 4.714041,
+        "P99": 7.155167
+      },
+      "release/ok": {
+        "N": 178,
+        "Min": 11.382209,
+        "P50": 23.595666,
+        "Max": 381.758583,
+        "P95": 101.919209,
+        "P99": 187.693458
+      },
+      "renew/ok": {
+        "N": 361,
+        "Min": 11.1445,
+        "P50": 21.571875,
+        "Max": 379.161708,
+        "P95": 87.320375,
+        "P99": 196.041125
+      },
+      "submit/error": {
+        "N": 9,
+        "Min": 500.006042,
+        "P50": 500.02025,
+        "Max": 501.76975,
+        "P95": null,
+        "P99": null
+      },
+      "submit/ok": {
+        "N": 209,
+        "Min": 9.002833,
+        "P50": 14.632417,
+        "Max": 436.253459,
+        "P95": 178.123875,
+        "P99": 391.883375
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 177,
+        "Min": 1928.263958,
+        "P50": 1966.339292,
+        "Max": 1986.744125,
+        "P95": 1983.586958,
+        "P99": 1985.83925
+      },
+      "renew": {
+        "N": 361,
+        "Min": 1620.013292,
+        "P50": 1977.970417,
+        "Max": 1988.5595,
+        "P95": 1985.456042,
+        "P99": 1987.302666
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1893.315125,
+        "P50": 1939.958833,
+        "Max": 1979.046958,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 361,
+      "Min": 1603.081167,
+      "P50": 1770.93475,
+      "Max": 1787.488334,
+      "P95": 1784.657,
+      "P99": 1786.606208
+    },
+    "Errors": {
+      "submit/deadline": 9
+    },
+    "Statuses": {
+      "observe/granted": 177,
+      "observe/queued": 6495,
+      "release/released": 178,
+      "renew/granted": 361,
+      "submit/": 9,
+      "submit/granted": 8,
+      "submit/queued": 201
+    },
+    "AllStatuses": {
+      "boundary/submit/queued": 1,
+      "cleanup/cancel/": 7,
+      "cleanup/cancel/cancelled": 27,
+      "cleanup/release/": 2,
+      "cleanup/release/released": 5,
+      "measured/observe/granted": 177,
+      "measured/observe/queued": 6495,
+      "measured/release/released": 178,
+      "measured/renew/granted": 361,
+      "measured/submit/": 9,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 201
+    },
+    "AllErrors": {
+      "cleanup/cancel/deadline": 7,
+      "cleanup/release/deadline": 2,
+      "measured/submit/deadline": 9
+    },
+    "BoundaryOperations": 1,
+    "BoundaryErrors": 0,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 9,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 1380222,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1218,
+      "Granted": 8,
+      "Queued": 0,
+      "Terminal": 1210,
+      "Bytes": 1675574,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 6245928,
+    "HeapAfter": 5655440,
+    "PeakSampledHeap": 12605808,
+    "Allocated": 4930426824,
+    "GCs": 973,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 1.03325,
+    "ClockRTTMS": 2.2875,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.033311958,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case2-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 7375,
+    "Successes": 7362,
+    "Admissions": 185,
+    "OperationsPerSecond": 491.6666666666667,
+    "SuccessesPerSecond": 490.8,
+    "AdmissionsPerSecond": 12.333333333333334,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6619,
+        "Min": 0.18925,
+        "P50": 1.130458,
+        "Max": 22.929666,
+        "P95": 5.17325,
+        "P99": 7.585292
+      },
+      "release/ok": {
+        "N": 176,
+        "Min": 10.57525,
+        "P50": 21.728875,
+        "Max": 254.69875,
+        "P95": 96.092,
+        "P99": 214.160375
+      },
+      "renew/error": {
+        "N": 1,
+        "Min": 500.027084,
+        "P50": 500.027084,
+        "Max": 500.027084,
+        "P95": null,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 358,
+        "Min": 11.278291,
+        "P50": 24.793625,
+        "Max": 326.043542,
+        "P95": 97.509791,
+        "P99": 244.443084
+      },
+      "submit/error": {
+        "N": 12,
+        "Min": 500.00575,
+        "P50": 500.043208,
+        "Max": 500.235375,
+        "P95": null,
+        "P99": null
+      },
+      "submit/ok": {
+        "N": 209,
+        "Min": 8.86925,
+        "P50": 14.373083,
+        "Max": 470.090333,
+        "P95": 164.832542,
+        "P99": 422.819542
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 177,
+        "Min": 1931.4785,
+        "P50": 1965.05625,
+        "Max": 1987.414083,
+        "P95": 1983.470584,
+        "P99": 1985.753583
+      },
+      "renew": {
+        "N": 358,
+        "Min": 1673.785458,
+        "P50": 1974.529375,
+        "Max": 1988.482709,
+        "P95": 1986.083042,
+        "P99": 1987.741375
+      },
+      "submit": {
+        "N": 8,
+        "Min": 1864.245875,
+        "P50": 1932.830625,
+        "Max": 1974.690625,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 359,
+      "Min": 1621.61025,
+      "P50": 1769.593167,
+      "Max": 1788.443167,
+      "P95": 1785.179375,
+      "P99": 1786.796834
+    },
+    "Errors": {
+      "renew/deadline": 1,
+      "submit/deadline": 12
+    },
+    "Statuses": {
+      "observe/granted": 177,
+      "observe/queued": 6442,
+      "release/released": 176,
+      "renew/": 1,
+      "renew/granted": 358,
+      "submit/": 12,
+      "submit/granted": 8,
+      "submit/queued": 201
+    },
+    "AllStatuses": {
+      "boundary/observe/queued": 7,
+      "boundary/renew/": 1,
+      "boundary/renew/granted": 2,
+      "cleanup/cancel/": 8,
+      "cleanup/cancel/cancelled": 30,
+      "cleanup/release/": 3,
+      "cleanup/release/released": 4,
+      "measured/observe/granted": 177,
+      "measured/observe/queued": 6442,
+      "measured/release/released": 176,
+      "measured/renew/": 1,
+      "measured/renew/granted": 358,
+      "measured/submit/": 12,
+      "measured/submit/granted": 8,
+      "measured/submit/queued": 201
+    },
+    "AllErrors": {
+      "boundary/renew/deadline": 1,
+      "cleanup/cancel/deadline": 8,
+      "cleanup/release/deadline": 3,
+      "measured/renew/deadline": 1,
+      "measured/submit/deadline": 12
+    },
+    "BoundaryOperations": 10,
+    "BoundaryErrors": 1,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 11,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 1380222,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1218,
+      "Granted": 8,
+      "Queued": 0,
+      "Terminal": 1210,
+      "Bytes": 1675574,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 4968224,
+    "HeapAfter": 9454592,
+    "PeakSampledHeap": 12613168,
+    "Allocated": 4893817800,
+    "GCs": 950,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 2.225354,
+    "ClockRTTMS": 5.521292,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.058544917,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case3-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 10000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 723,
+    "Successes": 266,
+    "Admissions": 59,
+    "OperationsPerSecond": 48.2,
+    "SuccessesPerSecond": 17.733333333333334,
+    "AdmissionsPerSecond": 3.933333333333333,
+    "Latencies": {
+      "observe/ok": {
+        "N": 192,
+        "Min": 0.183042,
+        "P50": 2.140625,
+        "Max": 358.19575,
+        "P95": 178.078208,
+        "P99": 358.061291
+      },
+      "release/error": {
+        "N": 6,
+        "Min": 500.017792,
+        "P50": 500.265791,
+        "Max": 500.530458,
+        "P95": null,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 1,
+        "Min": 85.222375,
+        "P50": 85.222375,
+        "Max": 85.222375,
+        "P95": null,
+        "P99": null
+      },
+      "renew/error": {
+        "N": 51,
+        "Min": 500.015083,
+        "P50": 500.098166,
+        "Max": 508.512417,
+        "P95": 507.410375,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 11,
+        "Min": 76.421917,
+        "P50": 195.398875,
+        "Max": 461.488042,
+        "P95": null,
+        "P99": null
+      },
+      "submit/error": {
+        "N": 400,
+        "Min": 500.001958,
+        "P50": 500.077083,
+        "Max": 527.824625,
+        "P95": 500.993917,
+        "P99": 511.945708
+      },
+      "submit/ok": {
+        "N": 62,
+        "Min": 74.256542,
+        "P50": 100.2585,
+        "Max": 482.641917,
+        "P95": 393.474958,
+        "P99": null
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 31,
+        "Min": 1481.023666,
+        "P50": 1805.450708,
+        "Max": 1899.759167,
+        "P95": 1894.284458,
+        "P99": null
+      },
+      "renew": {
+        "N": 11,
+        "Min": 1537.559958,
+        "P50": 1803.928125,
+        "Max": 1923.402083,
+        "P95": null,
+        "P99": null
+      },
+      "submit": {
+        "N": 28,
+        "Min": 1528.351542,
+        "P50": 1913.394792,
+        "Max": 1922.176542,
+        "P95": 1921.913833,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 62,
+      "Min": 1280.969083,
+      "P50": 1627.240709,
+      "Max": 1721.657291,
+      "P95": 1720.992208,
+      "P99": null
+    },
+    "Errors": {
+      "release/deadline": 6,
+      "renew/deadline": 51,
+      "submit/deadline": 400
+    },
+    "Statuses": {
+      "observe/granted": 31,
+      "observe/queued": 161,
+      "release/": 6,
+      "release/released": 1,
+      "renew/": 51,
+      "renew/granted": 11,
+      "submit/": 400,
+      "submit/granted": 28,
+      "submit/queued": 34
+    },
+    "AllStatuses": {
+      "boundary/observe/granted": 2,
+      "boundary/observe/queued": 1,
+      "boundary/renew/": 1,
+      "boundary/submit/": 10,
+      "cleanup/cancel/": 404,
+      "cleanup/cancel/cancelled": 59,
+      "cleanup/release/": 1,
+      "cleanup/release/released": 1,
+      "measured/observe/granted": 31,
+      "measured/observe/queued": 161,
+      "measured/release/": 6,
+      "measured/release/released": 1,
+      "measured/renew/": 51,
+      "measured/renew/granted": 11,
+      "measured/submit/": 400,
+      "measured/submit/granted": 28,
+      "measured/submit/queued": 34
+    },
+    "AllErrors": {
+      "boundary/renew/deadline": 1,
+      "boundary/submit/deadline": 10,
+      "cleanup/cancel/deadline": 404,
+      "cleanup/release/deadline": 1,
+      "measured/release/deadline": 6,
+      "measured/renew/deadline": 51,
+      "measured/submit/deadline": 400
+    },
+    "BoundaryOperations": 14,
+    "BoundaryErrors": 11,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 405,
+    "Before": {
+      "Records": 10000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 10000,
+      "Bytes": 13648734,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 10111,
+      "Granted": 3,
+      "Queued": 0,
+      "Terminal": 10108,
+      "Bytes": 13662674,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 20021352,
+    "HeapAfter": 34609888,
+    "PeakSampledHeap": 58310144,
+    "Allocated": 12250848960,
+    "GCs": 592,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.859542,
+    "ClockRTTMS": 1.994917,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.254349291,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case3-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 10000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 722,
+    "Successes": 273,
+    "Admissions": 52,
+    "OperationsPerSecond": 48.13333333333333,
+    "SuccessesPerSecond": 18.2,
+    "AdmissionsPerSecond": 3.466666666666667,
+    "Latencies": {
+      "observe/error": {
+        "N": 4,
+        "Min": 501.059833,
+        "P50": 501.106041,
+        "Max": 543.124375,
+        "P95": null,
+        "P99": null
+      },
+      "observe/ok": {
+        "N": 208,
+        "Min": 0.198083,
+        "P50": 3.451208,
+        "Max": 365.804375,
+        "P95": 228.314667,
+        "P99": 355.649375
+      },
+      "release/error": {
+        "N": 2,
+        "Min": 500.148333,
+        "P50": 500.567083,
+        "Max": 500.567083,
+        "P95": null,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 1,
+        "Min": 85.757875,
+        "P50": 85.757875,
+        "Max": 85.757875,
+        "P95": null,
+        "P99": null
+      },
+      "renew/error": {
+        "N": 46,
+        "Min": 500.008292,
+        "P50": 500.085708,
+        "Max": 506.978292,
+        "P95": 503.9985,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 6,
+        "Min": 126.190833,
+        "P50": 327.428458,
+        "Max": 437.407292,
+        "P95": null,
+        "P99": null
+      },
+      "submit/error": {
+        "N": 397,
+        "Min": 500.002041,
+        "P50": 500.068875,
+        "Max": 527.072333,
+        "P95": 500.84675,
+        "P99": 511.463
+      },
+      "submit/ok": {
+        "N": 58,
+        "Min": 75.214125,
+        "P50": 97.98,
+        "Max": 463.522916,
+        "P95": 448.311166,
+        "P99": null
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 23,
+        "Min": 1556.662625,
+        "P50": 1766.047791,
+        "Max": 1894.362292,
+        "P95": 1893.890083,
+        "P99": null
+      },
+      "renew": {
+        "N": 6,
+        "Min": 1561.831708,
+        "P50": 1715.041958,
+        "Max": 1872.885167,
+        "P95": null,
+        "P99": null
+      },
+      "submit": {
+        "N": 29,
+        "Min": 1540.604334,
+        "P50": 1909.463125,
+        "Max": 1924.110875,
+        "P95": 1921.900834,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 52,
+      "Min": 1339.824875,
+      "P50": 1647.863292,
+      "Max": 1724.042917,
+      "P95": 1719.483083,
+      "P99": null
+    },
+    "Errors": {
+      "observe/deadline": 4,
+      "release/deadline": 2,
+      "renew/deadline": 46,
+      "submit/deadline": 397
+    },
+    "Statuses": {
+      "observe/": 4,
+      "observe/granted": 23,
+      "observe/queued": 185,
+      "release/": 2,
+      "release/released": 1,
+      "renew/": 46,
+      "renew/granted": 6,
+      "submit/": 397,
+      "submit/granted": 29,
+      "submit/queued": 29
+    },
+    "AllStatuses": {
+      "boundary/renew/": 2,
+      "boundary/submit/": 11,
+      "boundary/submit/queued": 1,
+      "cleanup/cancel/": 421,
+      "cleanup/cancel/cancelled": 42,
+      "cleanup/release/": 1,
+      "measured/observe/": 4,
+      "measured/observe/granted": 23,
+      "measured/observe/queued": 185,
+      "measured/release/": 2,
+      "measured/release/released": 1,
+      "measured/renew/": 46,
+      "measured/renew/granted": 6,
+      "measured/submit/": 397,
+      "measured/submit/granted": 29,
+      "measured/submit/queued": 29
+    },
+    "AllErrors": {
+      "boundary/renew/deadline": 2,
+      "boundary/submit/deadline": 11,
+      "cleanup/cancel/deadline": 421,
+      "cleanup/release/deadline": 1,
+      "measured/observe/deadline": 4,
+      "measured/release/deadline": 2,
+      "measured/renew/deadline": 46,
+      "measured/submit/deadline": 397
+    },
+    "BoundaryOperations": 14,
+    "BoundaryErrors": 13,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 422,
+    "Before": {
+      "Records": 10000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 10000,
+      "Bytes": 13648734,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 10092,
+      "Granted": 4,
+      "Queued": 0,
+      "Terminal": 10088,
+      "Bytes": 13649070,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 20044224,
+    "HeapAfter": 34379536,
+    "PeakSampledHeap": 71508808,
+    "Allocated": 10206854800,
+    "GCs": 506,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 16.235188,
+    "ClockRTTMS": 33.709625,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.330986542,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case3-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 10000,
+    "Capacity": 8,
+    "Workers": 32,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 852,
+    "Successes": 419,
+    "Admissions": 61,
+    "OperationsPerSecond": 56.8,
+    "SuccessesPerSecond": 27.933333333333334,
+    "AdmissionsPerSecond": 4.066666666666666,
+    "Latencies": {
+      "observe/ok": {
+        "N": 342,
+        "Min": 0.203,
+        "P50": 3.660583,
+        "Max": 337.535458,
+        "P95": 192.386417,
+        "P99": 292.29725
+      },
+      "release/error": {
+        "N": 2,
+        "Min": 500.351959,
+        "P50": 500.363667,
+        "Max": 500.363667,
+        "P95": null,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 1,
+        "Min": 168.539375,
+        "P50": 168.539375,
+        "Max": 168.539375,
+        "P95": null,
+        "P99": null
+      },
+      "renew/error": {
+        "N": 56,
+        "Min": 500.007042,
+        "P50": 500.125417,
+        "Max": 532.346625,
+        "P95": 514.501041,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 9,
+        "Min": 111.236083,
+        "P50": 137.479625,
+        "Max": 397.45175,
+        "P95": null,
+        "P99": null
+      },
+      "submit/error": {
+        "N": 375,
+        "Min": 500.00275,
+        "P50": 500.125542,
+        "Max": 518.81725,
+        "P95": 503.448542,
+        "P99": 515.330083
+      },
+      "submit/ok": {
+        "N": 67,
+        "Min": 78.430833,
+        "P50": 141.05825,
+        "Max": 494.238375,
+        "P95": 452.018541,
+        "P99": null
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 44,
+        "Min": 1516.333542,
+        "P50": 1812.075,
+        "Max": 1903.020958,
+        "P95": 1896.710417,
+        "P99": null
+      },
+      "renew": {
+        "N": 9,
+        "Min": 1601.80225,
+        "P50": 1862.389375,
+        "Max": 1887.941917,
+        "P95": null,
+        "P99": null
+      },
+      "submit": {
+        "N": 17,
+        "Min": 1547.151459,
+        "P50": 1836.855584,
+        "Max": 1919.195042,
+        "P95": null,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 65,
+      "Min": 1316.329417,
+      "P50": 1620.267333,
+      "Max": 1719.172375,
+      "P95": 1714.130458,
+      "P99": null
+    },
+    "Errors": {
+      "release/deadline": 2,
+      "renew/deadline": 56,
+      "submit/deadline": 375
+    },
+    "Statuses": {
+      "observe/granted": 44,
+      "observe/queued": 298,
+      "release/": 2,
+      "release/released": 1,
+      "renew/": 56,
+      "renew/granted": 9,
+      "submit/": 375,
+      "submit/granted": 17,
+      "submit/queued": 50
+    },
+    "AllStatuses": {
+      "boundary/observe/granted": 2,
+      "boundary/observe/queued": 4,
+      "boundary/renew/": 1,
+      "boundary/submit/": 6,
+      "boundary/submit/queued": 1,
+      "cleanup/cancel/": 399,
+      "cleanup/cancel/cancelled": 44,
+      "cleanup/release/": 3,
+      "measured/observe/granted": 44,
+      "measured/observe/queued": 298,
+      "measured/release/": 2,
+      "measured/release/released": 1,
+      "measured/renew/": 56,
+      "measured/renew/granted": 9,
+      "measured/submit/": 375,
+      "measured/submit/granted": 17,
+      "measured/submit/queued": 50
+    },
+    "AllErrors": {
+      "boundary/renew/deadline": 1,
+      "boundary/submit/deadline": 6,
+      "cleanup/cancel/deadline": 399,
+      "cleanup/release/deadline": 3,
+      "measured/release/deadline": 2,
+      "measured/renew/deadline": 56,
+      "measured/submit/deadline": 375
+    },
+    "BoundaryOperations": 14,
+    "BoundaryErrors": 7,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 402,
+    "Before": {
+      "Records": 10000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 10000,
+      "Bytes": 13648734,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 10105,
+      "Granted": 8,
+      "Queued": 1,
+      "Terminal": 10096,
+      "Bytes": 13658378,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 10000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 39900400,
+    "HeapAfter": 34657160,
+    "PeakSampledHeap": 53023768,
+    "Allocated": 11970497408,
+    "GCs": 596,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 0.902438,
+    "ClockRTTMS": 1.989125,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.245929375,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 64,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case4-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 64,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 8677,
+    "Successes": 8222,
+    "Admissions": 353,
+    "OperationsPerSecond": 578.4666666666667,
+    "SuccessesPerSecond": 548.1333333333333,
+    "AdmissionsPerSecond": 23.533333333333335,
+    "Latencies": {
+      "observe/ok": {
+        "N": 7484,
+        "Min": 0.11425,
+        "P50": 2.188583,
+        "Max": 210.906875,
+        "P95": 36.620583,
+        "P99": 61.640083
+      },
+      "release/error": {
+        "N": 47,
+        "Min": 500.007291,
+        "P50": 500.075292,
+        "Max": 504.882541,
+        "P95": 504.131833,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 78,
+        "Min": 8.97,
+        "P50": 26.070958,
+        "Max": 488.3675,
+        "P95": 383.559583,
+        "P99": null
+      },
+      "renew/error": {
+        "N": 212,
+        "Min": 500.004083,
+        "P50": 500.065291,
+        "Max": 506.519667,
+        "P95": 503.871959,
+        "P99": 505.543292
+      },
+      "renew/ok": {
+        "N": 278,
+        "Min": 9.785041,
+        "P50": 38.721125,
+        "Max": 496.207541,
+        "P95": 431.79125,
+        "P99": 484.787083
+      },
+      "submit/error": {
+        "N": 196,
+        "Min": 500.006291,
+        "P50": 500.0965,
+        "Max": 505.940959,
+        "P95": 503.495625,
+        "P99": 505.081209
+      },
+      "submit/ok": {
+        "N": 382,
+        "Min": 8.15175,
+        "P50": 18.064042,
+        "Max": 489.106583,
+        "P95": 398.598709,
+        "P99": 464.590708
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 314,
+        "Min": 1547.876292,
+        "P50": 1957.522625,
+        "Max": 1989.052333,
+        "P95": 1983.434667,
+        "P99": 1988.005792
+      },
+      "renew": {
+        "N": 278,
+        "Min": 1502.981459,
+        "P50": 1960.823875,
+        "Max": 1989.535959,
+        "P95": 1987.665875,
+        "P99": 1988.630666
+      },
+      "submit": {
+        "N": 39,
+        "Min": 1521.91375,
+        "P50": 1872.385208,
+        "Max": 1989.811583,
+        "P95": 1989.515208,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 490,
+      "Min": 1321.881833,
+      "P50": 1758.3655,
+      "Max": 1789.7625,
+      "P95": 1785.860917,
+      "P99": 1788.888875
+    },
+    "Errors": {
+      "release/deadline": 47,
+      "renew/deadline": 212,
+      "submit/deadline": 196
+    },
+    "Statuses": {
+      "observe/granted": 314,
+      "observe/queued": 7170,
+      "release/": 47,
+      "release/released": 78,
+      "renew/": 212,
+      "renew/granted": 278,
+      "submit/": 196,
+      "submit/granted": 39,
+      "submit/queued": 343
+    },
+    "AllStatuses": {
+      "boundary/release/": 3,
+      "boundary/renew/": 3,
+      "boundary/renew/granted": 3,
+      "boundary/submit/": 5,
+      "boundary/submit/queued": 1,
+      "cleanup/cancel/": 209,
+      "cleanup/cancel/cancelled": 237,
+      "cleanup/release/": 6,
+      "cleanup/release/released": 4,
+      "measured/observe/granted": 314,
+      "measured/observe/queued": 7170,
+      "measured/release/": 47,
+      "measured/release/released": 78,
+      "measured/renew/": 212,
+      "measured/renew/granted": 278,
+      "measured/submit/": 196,
+      "measured/submit/granted": 39,
+      "measured/submit/queued": 343
+    },
+    "AllErrors": {
+      "boundary/release/deadline": 3,
+      "boundary/renew/deadline": 3,
+      "boundary/submit/deadline": 5,
+      "cleanup/cancel/deadline": 209,
+      "cleanup/release/deadline": 6,
+      "measured/release/deadline": 47,
+      "measured/renew/deadline": 212,
+      "measured/submit/deadline": 196
+    },
+    "BoundaryOperations": 15,
+    "BoundaryErrors": 11,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 215,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 1380222,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1486,
+      "Granted": 32,
+      "Queued": 8,
+      "Terminal": 1446,
+      "Bytes": 1998534,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 6259568,
+    "HeapAfter": 15965632,
+    "PeakSampledHeap": 18346432,
+    "Allocated": 8462944144,
+    "GCs": 1186,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 1.624396,
+    "ClockRTTMS": 3.597209,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.045898292,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 128,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 64,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case4-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 64,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 8099,
+    "Successes": 7598,
+    "Admissions": 353,
+    "OperationsPerSecond": 539.9333333333333,
+    "SuccessesPerSecond": 506.53333333333336,
+    "AdmissionsPerSecond": 23.533333333333335,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6852,
+        "Min": 0.175,
+        "P50": 1.841792,
+        "Max": 94.345917,
+        "P95": 31.330291,
+        "P99": 46.669167
+      },
+      "release/error": {
+        "N": 42,
+        "Min": 500.009042,
+        "P50": 500.278125,
+        "Max": 505.091833,
+        "P95": 503.975459,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 78,
+        "Min": 9.822583,
+        "P50": 33.459917,
+        "Max": 482.705959,
+        "P95": 297.585834,
+        "P99": null
+      },
+      "renew/error": {
+        "N": 216,
+        "Min": 500.008042,
+        "P50": 500.072875,
+        "Max": 506.10125,
+        "P95": 504.261542,
+        "P99": 504.9945
+      },
+      "renew/ok": {
+        "N": 284,
+        "Min": 9.550291,
+        "P50": 38.303042,
+        "Max": 493.564041,
+        "P95": 382.60975,
+        "P99": 483.497916
+      },
+      "submit/error": {
+        "N": 243,
+        "Min": 500.001458,
+        "P50": 500.083792,
+        "Max": 505.16175,
+        "P95": 504.103625,
+        "P99": 504.8895
+      },
+      "submit/ok": {
+        "N": 384,
+        "Min": 9.04525,
+        "P50": 27.069833,
+        "Max": 486.216333,
+        "P95": 400.995375,
+        "P99": 477.831916
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 304,
+        "Min": 1830.75425,
+        "P50": 1961.001292,
+        "Max": 1988.157958,
+        "P95": 1983.897708,
+        "P99": 1987.114291
+      },
+      "renew": {
+        "N": 284,
+        "Min": 1505.976959,
+        "P50": 1961.236292,
+        "Max": 1990.412709,
+        "P95": 1987.067875,
+        "P99": 1988.603542
+      },
+      "submit": {
+        "N": 49,
+        "Min": 1518.20125,
+        "P50": 1905.447459,
+        "Max": 1990.08275,
+        "P95": 1989.677125,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 500,
+      "Min": 1318.133125,
+      "P50": 1760.800375,
+      "Max": 1790.370584,
+      "P95": 1786.494583,
+      "P99": 1789.179167
+    },
+    "Errors": {
+      "release/deadline": 42,
+      "renew/deadline": 216,
+      "submit/deadline": 243
+    },
+    "Statuses": {
+      "observe/granted": 304,
+      "observe/queued": 6548,
+      "release/": 42,
+      "release/released": 78,
+      "renew/": 216,
+      "renew/granted": 284,
+      "submit/": 243,
+      "submit/granted": 49,
+      "submit/queued": 335
+    },
+    "AllStatuses": {
+      "boundary/release/": 2,
+      "boundary/renew/": 7,
+      "boundary/renew/granted": 2,
+      "boundary/submit/": 7,
+      "boundary/submit/queued": 1,
+      "cleanup/cancel/": 253,
+      "cleanup/cancel/cancelled": 252,
+      "cleanup/release/": 4,
+      "cleanup/release/released": 4,
+      "measured/observe/granted": 304,
+      "measured/observe/queued": 6548,
+      "measured/release/": 42,
+      "measured/release/released": 78,
+      "measured/renew/": 216,
+      "measured/renew/granted": 284,
+      "measured/submit/": 243,
+      "measured/submit/granted": 49,
+      "measured/submit/queued": 335
+    },
+    "AllErrors": {
+      "boundary/release/deadline": 2,
+      "boundary/renew/deadline": 7,
+      "boundary/submit/deadline": 7,
+      "cleanup/cancel/deadline": 253,
+      "cleanup/release/deadline": 4,
+      "measured/release/deadline": 42,
+      "measured/renew/deadline": 216,
+      "measured/submit/deadline": 243
+    },
+    "BoundaryOperations": 19,
+    "BoundaryErrors": 16,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 257,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 1380222,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1500,
+      "Granted": 32,
+      "Queued": 7,
+      "Terminal": 1461,
+      "Bytes": 2008558,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 6253992,
+    "HeapAfter": 11842960,
+    "PeakSampledHeap": 17466696,
+    "Allocated": 8531585504,
+    "GCs": 1185,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 15.974813,
+    "ClockRTTMS": 32.406375,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.075729792,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 128,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 64,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case4-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "steady",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 64,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 7998,
+    "Successes": 7497,
+    "Admissions": 331,
+    "OperationsPerSecond": 533.2,
+    "SuccessesPerSecond": 499.8,
+    "AdmissionsPerSecond": 22.066666666666666,
+    "Latencies": {
+      "observe/ok": {
+        "N": 6808,
+        "Min": 0.144708,
+        "P50": 2.476667,
+        "Max": 87.533375,
+        "P95": 43.450125,
+        "P99": 60.945542
+      },
+      "release/error": {
+        "N": 49,
+        "Min": 500.004917,
+        "P50": 500.072333,
+        "Max": 505.635084,
+        "P95": 504.214833,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 64,
+        "Min": 9.313083,
+        "P50": 23.675208,
+        "Max": 486.970959,
+        "P95": 333.122375,
+        "P99": null
+      },
+      "renew/error": {
+        "N": 201,
+        "Min": 500.004042,
+        "P50": 500.07325,
+        "Max": 506.972,
+        "P95": 503.759834,
+        "P99": 505.001583
+      },
+      "renew/ok": {
+        "N": 262,
+        "Min": 9.875833,
+        "P50": 44.523125,
+        "Max": 486.284292,
+        "P95": 396.87025,
+        "P99": 469.62175
+      },
+      "submit/error": {
+        "N": 251,
+        "Min": 500.003334,
+        "P50": 500.054292,
+        "Max": 506.992459,
+        "P95": 502.5675,
+        "P99": 504.992625
+      },
+      "submit/ok": {
+        "N": 363,
+        "Min": 8.360709,
+        "P50": 22.423417,
+        "Max": 499.160458,
+        "P95": 371.588958,
+        "P99": 476.677875
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 282,
+        "Min": 1835.849625,
+        "P50": 1957.18225,
+        "Max": 1988.156333,
+        "P95": 1984.321208,
+        "P99": 1986.336
+      },
+      "renew": {
+        "N": 262,
+        "Min": 1513.330708,
+        "P50": 1955.145958,
+        "Max": 1989.429167,
+        "P95": 1986.469,
+        "P99": 1988.710333
+      },
+      "submit": {
+        "N": 49,
+        "Min": 1522.932125,
+        "P50": 1922.201083,
+        "Max": 1991.457625,
+        "P95": 1990.271,
+        "P99": null
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 463,
+      "Min": 1322.865041,
+      "P50": 1756.130125,
+      "Max": 1791.340334,
+      "P95": 1785.957417,
+      "P99": 1789.556042
+    },
+    "Errors": {
+      "release/deadline": 49,
+      "renew/deadline": 201,
+      "submit/deadline": 251
+    },
+    "Statuses": {
+      "observe/granted": 282,
+      "observe/queued": 6526,
+      "release/": 49,
+      "release/released": 64,
+      "renew/": 201,
+      "renew/granted": 262,
+      "submit/": 251,
+      "submit/granted": 49,
+      "submit/queued": 314
+    },
+    "AllStatuses": {
+      "boundary/observe/granted": 2,
+      "boundary/observe/queued": 16,
+      "boundary/release/": 1,
+      "boundary/renew/": 8,
+      "boundary/renew/granted": 1,
+      "boundary/submit/": 6,
+      "cleanup/cancel/": 259,
+      "cleanup/cancel/cancelled": 237,
+      "cleanup/release/": 6,
+      "cleanup/release/released": 4,
+      "measured/observe/granted": 282,
+      "measured/observe/queued": 6526,
+      "measured/release/": 49,
+      "measured/release/released": 64,
+      "measured/renew/": 201,
+      "measured/renew/granted": 262,
+      "measured/submit/": 251,
+      "measured/submit/granted": 49,
+      "measured/submit/queued": 314
+    },
+    "AllErrors": {
+      "boundary/release/deadline": 1,
+      "boundary/renew/deadline": 8,
+      "boundary/submit/deadline": 6,
+      "cleanup/cancel/deadline": 259,
+      "cleanup/release/deadline": 6,
+      "measured/release/deadline": 49,
+      "measured/renew/deadline": 201,
+      "measured/submit/deadline": 251
+    },
+    "BoundaryOperations": 34,
+    "BoundaryErrors": 15,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 265,
+    "Before": {
+      "Records": 1000,
+      "Granted": 0,
+      "Queued": 0,
+      "Terminal": 1000,
+      "Bytes": 1380222,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 1484,
+      "Granted": 32,
+      "Queued": 5,
+      "Terminal": 1447,
+      "Bytes": 1997102,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 0
+    },
+    "HeapBefore": 4982520,
+    "HeapAfter": 7420328,
+    "PeakSampledHeap": 19348824,
+    "Allocated": 8442446800,
+    "GCs": 1163,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 17.207604,
+    "ClockRTTMS": 34.790792,
+    "ExpiryBoundaryMS": 0,
+    "SetupSeconds": 0.091366875,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 128,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 64,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case5-run1.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "expiry-gc",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 32,
+    "Repeat": 1,
+    "DurationSeconds": 15,
+    "Operations": 3261,
+    "Successes": 3191,
+    "Admissions": 543,
+    "OperationsPerSecond": 217.4,
+    "SuccessesPerSecond": 212.73333333333332,
+    "AdmissionsPerSecond": 36.2,
+    "Latencies": {
+      "observe/ok": {
+        "N": 1217,
+        "Min": 0.208166,
+        "P50": 2.801125,
+        "Max": 51.691042,
+        "P95": 8.662209,
+        "P99": 46.315125
+      },
+      "release/error": {
+        "N": 17,
+        "Min": 500.010333,
+        "P50": 500.06,
+        "Max": 500.51775,
+        "P95": null,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 464,
+        "Min": 3.841166,
+        "P50": 20.682583,
+        "Max": 473.481375,
+        "P95": 273.236042,
+        "P99": 414.854458
+      },
+      "renew/error": {
+        "N": 36,
+        "Min": 500.008875,
+        "P50": 500.071625,
+        "Max": 501.823542,
+        "P95": 501.572667,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 965,
+        "Min": 3.246083,
+        "P50": 18.471625,
+        "Max": 488.027291,
+        "P95": 250.14225,
+        "P99": 417.763833
+      },
+      "submit/error": {
+        "N": 17,
+        "Min": 500.017958,
+        "P50": 500.041292,
+        "Max": 500.676584,
+        "P95": null,
+        "P99": null
+      },
+      "submit/ok": {
+        "N": 545,
+        "Min": 2.158833,
+        "P50": 7.248292,
+        "Max": 493.595708,
+        "P95": 296.095458,
+        "P99": 462.245166
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 211,
+        "Min": 1920.517958,
+        "P50": 1958.190083,
+        "Max": 1993.608708,
+        "P95": 1985.689959,
+        "P99": 1990.579042
+      },
+      "renew": {
+        "N": 965,
+        "Min": 1511.510709,
+        "P50": 1981.184375,
+        "Max": 1996.688917,
+        "P95": 1994.413917,
+        "P99": 1995.277417
+      },
+      "submit": {
+        "N": 332,
+        "Min": 1505.752292,
+        "P50": 1992.611416,
+        "Max": 1997.49225,
+        "P95": 1995.64025,
+        "P99": 1996.816542
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 1001,
+      "Min": 1305.726959,
+      "P50": 1780.118041,
+      "Max": 1797.318375,
+      "P95": 1794.76425,
+      "P99": 1795.891375
+    },
+    "Errors": {
+      "release/deadline": 17,
+      "renew/deadline": 36,
+      "submit/deadline": 17
+    },
+    "Statuses": {
+      "observe/granted": 211,
+      "observe/queued": 1006,
+      "release/": 17,
+      "release/released": 464,
+      "renew/": 36,
+      "renew/granted": 965,
+      "submit/": 17,
+      "submit/granted": 332,
+      "submit/queued": 213
+    },
+    "AllStatuses": {
+      "boundary/release/": 1,
+      "boundary/release/released": 5,
+      "boundary/renew/": 3,
+      "boundary/renew/granted": 2,
+      "boundary/submit/": 2,
+      "boundary/submit/granted": 1,
+      "cleanup/cancel/": 4,
+      "cleanup/cancel/cancelled": 56,
+      "cleanup/release/released": 18,
+      "measured/observe/granted": 211,
+      "measured/observe/queued": 1006,
+      "measured/release/": 17,
+      "measured/release/released": 464,
+      "measured/renew/": 36,
+      "measured/renew/granted": 965,
+      "measured/submit/": 17,
+      "measured/submit/granted": 332,
+      "measured/submit/queued": 213
+    },
+    "AllErrors": {
+      "boundary/release/deadline": 1,
+      "boundary/renew/deadline": 3,
+      "boundary/submit/deadline": 2,
+      "cleanup/cancel/deadline": 4,
+      "measured/release/deadline": 17,
+      "measured/renew/deadline": 36,
+      "measured/submit/deadline": 17
+    },
+    "BoundaryOperations": 14,
+    "BoundaryErrors": 6,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 4,
+    "Before": {
+      "Records": 1064,
+      "Granted": 32,
+      "Queued": 32,
+      "Terminal": 1000,
+      "Bytes": 1442430,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 32,
+      "SeedQueued": 32,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 629,
+      "Granted": 6,
+      "Queued": 0,
+      "Terminal": 623,
+      "Bytes": 852442,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 64
+    },
+    "HeapBefore": 5387992,
+    "HeapAfter": 5010144,
+    "PeakSampledHeap": 11389880,
+    "Allocated": 4183432648,
+    "GCs": 1011,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 2.401417,
+    "ClockRTTMS": 5.189167,
+    "ExpiryBoundaryMS": 1942.508583,
+    "SetupSeconds": 0.063514791,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 96,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case5-run2.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "expiry-gc",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 32,
+    "Repeat": 2,
+    "DurationSeconds": 15,
+    "Operations": 3303,
+    "Successes": 3230,
+    "Admissions": 546,
+    "OperationsPerSecond": 220.2,
+    "SuccessesPerSecond": 215.33333333333334,
+    "AdmissionsPerSecond": 36.4,
+    "Latencies": {
+      "observe/ok": {
+        "N": 1277,
+        "Min": 0.210834,
+        "P50": 2.253125,
+        "Max": 34.626875,
+        "P95": 5.214708,
+        "P99": 29.939916
+      },
+      "release/error": {
+        "N": 17,
+        "Min": 500.009625,
+        "P50": 500.094875,
+        "Max": 502.208083,
+        "P95": null,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 462,
+        "Min": 3.834458,
+        "P50": 21.571417,
+        "Max": 486.137042,
+        "P95": 304.808667,
+        "P99": 464.932625
+      },
+      "renew/error": {
+        "N": 42,
+        "Min": 500.009125,
+        "P50": 500.082875,
+        "Max": 502.534084,
+        "P95": 501.715708,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 941,
+        "Min": 3.541083,
+        "P50": 20.080542,
+        "Max": 499.3925,
+        "P95": 257.827625,
+        "P99": 446.365292
+      },
+      "submit/error": {
+        "N": 14,
+        "Min": 500.034792,
+        "P50": 500.06825,
+        "Max": 501.987875,
+        "P95": null,
+        "P99": null
+      },
+      "submit/ok": {
+        "N": 550,
+        "Min": 2.960708,
+        "P50": 7.6935,
+        "Max": 480.985,
+        "P95": 264.942542,
+        "P99": 446.18025
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 194,
+        "Min": 1925.836292,
+        "P50": 1962.018,
+        "Max": 1993.992625,
+        "P95": 1988.659041,
+        "P99": 1992.481875
+      },
+      "renew": {
+        "N": 941,
+        "Min": 1499.8085,
+        "P50": 1979.384458,
+        "Max": 1996.171875,
+        "P95": 1994.290166,
+        "P99": 1995.564125
+      },
+      "submit": {
+        "N": 352,
+        "Min": 1518.618,
+        "P50": 1992.405333,
+        "Max": 1996.596292,
+        "P95": 1995.60275,
+        "P99": 1996.28975
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 983,
+      "Min": 1316.637625,
+      "P50": 1782.034708,
+      "Max": 1796.578167,
+      "P95": 1794.885875,
+      "P99": 1795.714292
+    },
+    "Errors": {
+      "release/deadline": 17,
+      "renew/deadline": 42,
+      "submit/deadline": 14
+    },
+    "Statuses": {
+      "observe/granted": 194,
+      "observe/queued": 1083,
+      "release/": 17,
+      "release/released": 462,
+      "renew/": 42,
+      "renew/granted": 941,
+      "submit/": 14,
+      "submit/granted": 352,
+      "submit/queued": 198
+    },
+    "AllStatuses": {
+      "boundary/release/": 2,
+      "boundary/release/released": 1,
+      "boundary/renew/": 3,
+      "boundary/renew/granted": 6,
+      "boundary/submit/": 1,
+      "cleanup/cancel/": 4,
+      "cleanup/cancel/cancelled": 60,
+      "cleanup/release/released": 19,
+      "measured/observe/granted": 194,
+      "measured/observe/queued": 1083,
+      "measured/release/": 17,
+      "measured/release/released": 462,
+      "measured/renew/": 42,
+      "measured/renew/granted": 941,
+      "measured/submit/": 14,
+      "measured/submit/granted": 352,
+      "measured/submit/queued": 198
+    },
+    "AllErrors": {
+      "boundary/release/deadline": 2,
+      "boundary/renew/deadline": 3,
+      "boundary/submit/deadline": 1,
+      "cleanup/cancel/deadline": 4,
+      "measured/release/deadline": 17,
+      "measured/renew/deadline": 42,
+      "measured/submit/deadline": 14
+    },
+    "BoundaryOperations": 13,
+    "BoundaryErrors": 6,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 4,
+    "Before": {
+      "Records": 1064,
+      "Granted": 32,
+      "Queued": 32,
+      "Terminal": 1000,
+      "Bytes": 1442430,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 32,
+      "SeedQueued": 32,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 628,
+      "Granted": 5,
+      "Queued": 0,
+      "Terminal": 623,
+      "Bytes": 851726,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 64
+    },
+    "HeapBefore": 4031560,
+    "HeapAfter": 5625584,
+    "PeakSampledHeap": 11710608,
+    "Allocated": 4179983088,
+    "GCs": 1002,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 3.027583,
+    "ClockRTTMS": 7.268834,
+    "ExpiryBoundaryMS": 1947.072417,
+    "SetupSeconds": 0.058797166,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 96,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  },
+  {
+    "File": "redis-case5-run3.jsonl.gz",
+    "Type": "summary",
+    "Backend": "redis",
+    "Scenario": "expiry-gc",
+    "History": 1000,
+    "Capacity": 32,
+    "Workers": 32,
+    "Repeat": 3,
+    "DurationSeconds": 15,
+    "Operations": 3349,
+    "Successes": 3263,
+    "Admissions": 522,
+    "OperationsPerSecond": 223.26666666666668,
+    "SuccessesPerSecond": 217.53333333333333,
+    "AdmissionsPerSecond": 34.8,
+    "Latencies": {
+      "observe/ok": {
+        "N": 1425,
+        "Min": 0.206666,
+        "P50": 1.742708,
+        "Max": 30.852041,
+        "P95": 7.563084,
+        "P99": 22.652792
+      },
+      "release/error": {
+        "N": 20,
+        "Min": 500.007958,
+        "P50": 500.106208,
+        "Max": 502.068958,
+        "P95": 502.068958,
+        "P99": null
+      },
+      "release/ok": {
+        "N": 427,
+        "Min": 3.15775,
+        "P50": 22.568333,
+        "Max": 485.64625,
+        "P95": 279.713792,
+        "P99": 446.72875
+      },
+      "renew/error": {
+        "N": 49,
+        "Min": 500.021708,
+        "P50": 500.110459,
+        "Max": 501.60525,
+        "P95": 501.386417,
+        "P99": null
+      },
+      "renew/ok": {
+        "N": 886,
+        "Min": 3.190417,
+        "P50": 21.393958,
+        "Max": 491.620542,
+        "P95": 292.482583,
+        "P99": 463.029166
+      },
+      "submit/error": {
+        "N": 17,
+        "Min": 500.020875,
+        "P50": 500.828708,
+        "Max": 502.690792,
+        "P95": null,
+        "P99": null
+      },
+      "submit/ok": {
+        "N": 525,
+        "Min": 3.14925,
+        "P50": 7.91325,
+        "Max": 481.471,
+        "P95": 259.161292,
+        "P99": 425.263667
+      }
+    },
+    "Budgets": {
+      "observe": {
+        "N": 252,
+        "Min": 1928.289625,
+        "P50": 1961.503625,
+        "Max": 1993.243916,
+        "P95": 1987.193458,
+        "P99": 1991.527167
+      },
+      "renew": {
+        "N": 886,
+        "Min": 1508.255458,
+        "P50": 1978.210583,
+        "Max": 1996.193583,
+        "P95": 1994.061084,
+        "P99": 1995.316875
+      },
+      "submit": {
+        "N": 270,
+        "Min": 1615.814667,
+        "P50": 1992.704083,
+        "Max": 1996.80175,
+        "P95": 1995.816209,
+        "P99": 1996.532875
+      }
+    },
+    "PriorRenewBudget": {
+      "N": 935,
+      "Min": 1415.728875,
+      "P50": 1776.6065,
+      "Max": 1796.779208,
+      "P95": 1794.775209,
+      "P99": 1795.884083
+    },
+    "Errors": {
+      "release/deadline": 20,
+      "renew/deadline": 49,
+      "submit/deadline": 17
+    },
+    "Statuses": {
+      "observe/granted": 252,
+      "observe/queued": 1173,
+      "release/": 20,
+      "release/released": 427,
+      "renew/": 49,
+      "renew/granted": 886,
+      "submit/": 17,
+      "submit/granted": 270,
+      "submit/queued": 255
+    },
+    "AllStatuses": {
+      "boundary/observe/granted": 1,
+      "boundary/release/": 1,
+      "boundary/release/released": 4,
+      "boundary/renew/": 2,
+      "boundary/renew/granted": 6,
+      "boundary/submit/granted": 1,
+      "boundary/submit/queued": 1,
+      "cleanup/cancel/": 9,
+      "cleanup/cancel/cancelled": 62,
+      "cleanup/release/released": 21,
+      "measured/observe/granted": 252,
+      "measured/observe/queued": 1173,
+      "measured/release/": 20,
+      "measured/release/released": 427,
+      "measured/renew/": 49,
+      "measured/renew/granted": 886,
+      "measured/submit/": 17,
+      "measured/submit/granted": 270,
+      "measured/submit/queued": 255
+    },
+    "AllErrors": {
+      "boundary/release/deadline": 1,
+      "boundary/renew/deadline": 2,
+      "cleanup/cancel/deadline": 9,
+      "measured/release/deadline": 20,
+      "measured/renew/deadline": 49,
+      "measured/submit/deadline": 17
+    },
+    "BoundaryOperations": 16,
+    "BoundaryErrors": 3,
+    "InvariantErrors": null,
+    "UnusableGrants": 0,
+    "CleanupErrors": 9,
+    "Before": {
+      "Records": 1064,
+      "Granted": 32,
+      "Queued": 32,
+      "Terminal": 1000,
+      "Bytes": 1442430,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 1000,
+      "SeedActive": 32,
+      "SeedQueued": 32,
+      "SeedExpired": 0
+    },
+    "After": {
+      "Records": 607,
+      "Granted": 4,
+      "Queued": 0,
+      "Terminal": 603,
+      "Bytes": 836690,
+      "RowBytes": 0,
+      "IndexBytes": 0,
+      "SeedHistory": 0,
+      "SeedActive": 0,
+      "SeedQueued": 0,
+      "SeedExpired": 64
+    },
+    "HeapBefore": 4007368,
+    "HeapAfter": 7624384,
+    "PeakSampledHeap": 11277816,
+    "Allocated": 3968052000,
+    "GCs": 974,
+    "GoVersion": "go1.27.3",
+    "GOMAXPROCS": 12,
+    "OffsetMS": 2.52425,
+    "ClockRTTMS": 5.4135,
+    "ExpiryBoundaryMS": 1952.87075,
+    "SetupSeconds": 0.051827584,
+    "Settings": {
+      "hold_ms": 600,
+      "max_queued": 96,
+      "max_records": 100000,
+      "operation_timeout_ms": 500,
+      "poll_every_ms": 50,
+      "pool_size": 32,
+      "renew_every_ms": 200,
+      "retention_ms": 60000,
+      "ttl_ms": 2000
+    }
+  }
+]

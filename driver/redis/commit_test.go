@@ -17,7 +17,7 @@ import (
 	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
-const emptyTestIndex = `{"Meta":"","Records":{}}`
+const emptyTestIndex = `{"Meta":"","Records":{},"Expires":{},"Deletes":[]}`
 
 // Script validation and time-window rejection must leave the whole Hash intact:
 // Redis Lua errors do not roll back writes performed before the error.
@@ -127,7 +127,7 @@ func TestLuaCommitRequiresOwner(t *testing.T) {
 	}
 	defer d.releaseUpdateLock(ctx, key, "current")
 	for _, owner := range []string{"", "other"} {
-		raw, err := d.evalKeys(ctx, commitScript, []string{key, updateLockKey(key)}, owner, "new", 0, 0, emptyTestIndex)
+		raw, err := d.evalKeys(ctx, partitionCommit, []string{key, updateLockKey(key), key + ":history"}, owner, "new", 0, 0, emptyTestIndex)
 		if owner == "" {
 			if err == nil {
 				t.Fatal("empty owner accepted", raw)
@@ -288,7 +288,7 @@ func evalTestCommit(t *testing.T, d *Driver, key string, args ...any) (any, erro
 		t.Fatalf("acquire test update lock: %t %v", ok, err)
 	}
 	defer d.releaseUpdateLock(ctx, key, owner)
-	return d.evalKeys(ctx, commitScript, []string{key, updateLockKey(key)}, append([]any{owner}, args...)...)
+	return d.evalKeys(ctx, partitionCommit, []string{key, updateLockKey(key), key + ":history"}, append([]any{owner}, args...)...)
 }
 
 func TestUpdateLockOwnershipAndExpiry(t *testing.T) {
@@ -324,7 +324,7 @@ func TestUpdateLockOwnershipAndExpiry(t *testing.T) {
 				t.Fatal(ok, err)
 			}
 		}
-		raw, err := d.evalKeys(ctx, commitScript, []string{key, lock}, "old", "stale", 0, 0, emptyTestIndex)
+		raw, err := d.evalKeys(ctx, partitionCommit, []string{key, lock, key + ":history"}, "old", "stale", 0, 0, emptyTestIndex)
 		if err != nil || raw != int64(0) || client.Exists(ctx, key).Val() != 0 {
 			t.Fatalf("expired owner published: %v %v", raw, err)
 		}
@@ -360,7 +360,7 @@ func TestBusyUpdateLockAvoidsFullState(t *testing.T) {
 				if isScript(cmd, acquireUpdateLockScript) {
 					tries++
 				}
-				if isScript(cmd, readScript) {
+				if isScript(cmd, partitionRead) {
 					reads++
 				}
 				if isCommit(cmd) {
@@ -406,7 +406,7 @@ func TestObserveRechecksAfterAcquiringUpdateLock(t *testing.T) {
 				return err
 			}
 		}
-		if isScript(cmd, readScript) || isCommit(cmd) {
+		if isScript(cmd, partitionRead) || isCommit(cmd) {
 			reads++
 		}
 		return next(ctx, cmd)
@@ -447,7 +447,7 @@ func TestUpdateLockCleanupAfterCancellation(t *testing.T) {
 	defer cancel()
 	client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
 		err := next(ctx, cmd)
-		if isScript(cmd, readScript) && err == nil {
+		if isScript(cmd, partitionRead) && err == nil {
 			cancel()
 		}
 		return err
@@ -537,7 +537,7 @@ func TestConcurrentObserveMaintainsOnce(t *testing.T) {
 			default:
 			}
 		}
-		if isScript(cmd, readScript) && reads.Add(1) == 1 {
+		if isScript(cmd, partitionRead) && reads.Add(1) == 1 {
 			close(entered)
 			select {
 			case <-proceed:
@@ -591,7 +591,7 @@ func TestConcurrentObserveMaintainsOnce(t *testing.T) {
 
 func TestCommitDoesNotResendOldSnapshot(t *testing.T) {
 	d, client, _ := fixture(t)
-	if err := client.ScriptLoad(context.Background(), deltaCommitScript).Err(); err != nil {
+	if err := client.ScriptLoad(context.Background(), partitionCommit).Err(); err != nil {
 		t.Fatal(err)
 	}
 	r := request()
@@ -604,8 +604,8 @@ func TestCommitDoesNotResendOldSnapshot(t *testing.T) {
 	client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
 		if isCommit(cmd) {
 			commits++
-			// Two declared keys plus owner, next state, bounds and projection.
-			if len(cmd.Args()) != 10 {
+			// Three declared keys plus owner, active state, bounds and projection.
+			if len(cmd.Args()) != 11 {
 				t.Error("commit sent an extra snapshot or existence guard")
 			}
 			for _, arg := range cmd.Args()[5:] {

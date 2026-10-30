@@ -38,6 +38,7 @@ type config struct {
 	Backend, Address, Scenario, Output string
 	History, Capacity, Workers, Repeat int
 	Duration                           time.Duration
+	FullStateFixture                   bool
 }
 type sample struct {
 	Op, Phase, Status, Error, ErrorClass string
@@ -83,6 +84,7 @@ type backend struct {
 	db                               *sql.DB
 	namespace, key, resource, rt, qt string
 	seedRoles                        map[string]string
+	fullStateFixture                 bool
 }
 
 func main() {
@@ -96,6 +98,7 @@ func main() {
 	flag.IntVar(&c.Workers, "workers", 8, "lifecycle workers")
 	flag.IntVar(&c.Repeat, "repeat", 1, "trial number")
 	flag.DurationVar(&c.Duration, "duration", 15*time.Second, "measurement window")
+	flag.BoolVar(&c.FullStateFixture, "full-state-fixture", false, "baseline-only fixture for the pre-partition storage layout")
 	flag.Parse()
 	if err := run(c); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -207,7 +210,7 @@ func run(c config) error {
 	var mu sync.Mutex
 	data := make([]sample, 0, 10000)
 	var admitted atomic.Int64
-	call := func(op, phase string, r a.Request, id string, prior time.Time) (a.Result, error, time.Time) {
+	call := func(op, phase string, r a.Request, id string, prior time.Time) (a.Result, time.Time, error) {
 		begin := time.Now()
 		cx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
@@ -255,7 +258,7 @@ func run(c config) error {
 		mu.Lock()
 		data = append(data, s)
 		mu.Unlock()
-		return out, e, deadline
+		return out, deadline, e
 	}
 	var wg sync.WaitGroup
 	for worker := 0; worker < c.Workers; worker++ {
@@ -269,16 +272,16 @@ func run(c config) error {
 				r.Tenant = fmt.Sprintf("tenant-%d", w%8)
 				r.Weight = 1
 				r.WaitUntil = time.Now().Add(9 * time.Second).UTC().Truncate(time.Millisecond)
-				out, e, deadline := call("submit", "measured", r, "", time.Time{})
+				out, deadline, e := call("submit", "measured", r, "", time.Time{})
 				for e == nil && out.Status == a.Queued && time.Now().Before(stop) {
 					sleep(earlier(stop, time.Now().Add(pollEvery)))
 					if !time.Now().Before(stop) {
 						break
 					}
-					out, e, deadline = call("observe", "measured", r, "", time.Time{})
+					out, deadline, e = call("observe", "measured", r, "", time.Time{})
 				}
 				if e != nil || out.Status != a.Granted || !time.Now().Before(deadline) {
-					call("cancel", "cleanup", r, "", time.Time{})
+					_, _, _ = call("cancel", "cleanup", r, "", time.Time{})
 					continue
 				}
 				if time.Now().Before(stop) {
@@ -296,7 +299,7 @@ func run(c config) error {
 						break
 					}
 					old := deadline
-					next, e, end := call("renew", "measured", r, out.LeaseID, old)
+					next, end, e := call("renew", "measured", r, out.LeaseID, old)
 					if e != nil || next.Status != a.Granted || !time.Now().Before(old) || !time.Now().Before(end) {
 						live = false
 						break
@@ -308,9 +311,9 @@ func run(c config) error {
 					phase = "cleanup"
 				}
 				if live {
-					call("release", phase, r, out.LeaseID, time.Time{})
+					_, _, _ = call("release", phase, r, out.LeaseID, time.Time{})
 				} else {
-					call("cancel", "cleanup", r, "", time.Time{})
+					_, _, _ = call("cancel", "cleanup", r, "", time.Time{})
 				}
 			}
 		}(worker)
@@ -361,12 +364,12 @@ func run(c config) error {
 	enc := json.NewEncoder(f)
 	for _, s := range data {
 		if err = enc.Encode(s); err != nil {
-			f.Close()
+			_ = f.Close()
 			return err
 		}
 	}
 	if err = enc.Encode(result); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err = f.Close(); err != nil {
@@ -457,7 +460,7 @@ func summarize(c config, data []sample) report {
 	return r
 }
 func connect(c config) (*backend, error) {
-	b := &backend{namespace: "validation-" + a.NewRequest(time.Now()).Owner, resource: "capacity"}
+	b := &backend{namespace: "validation-" + a.NewRequest(time.Now()).Owner, resource: "capacity", fullStateFixture: c.FullStateFixture}
 	if c.Backend == "redis" {
 		b.r = redis.NewClient(&redis.Options{Addr: c.Address, ContextTimeoutEnabled: true, PoolSize: max(c.Workers, 16)})
 		d, err := rd.New(b.r, b.namespace)
@@ -494,7 +497,7 @@ func (b *backend) close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if b.r != nil {
-		_ = b.r.Del(ctx, b.key, strings.TrimSuffix(b.key, ":state")+":update-lock").Err()
+		_ = b.r.Del(ctx, b.key, b.key+":history", strings.TrimSuffix(b.key, ":state")+":update-lock").Err()
 		_ = b.r.Close()
 	}
 	if b.db != nil {
@@ -559,11 +562,60 @@ func (b *backend) seed(ctx context.Context, s *a.SharedState) error {
 	}
 
 	if b.r != nil {
-		data, err := a.EncodeState(s)
+		if b.fullStateFixture {
+			data, err := a.EncodeState(s)
+			if err != nil {
+				return err
+			}
+			return b.r.HSet(ctx, b.key, "state", string(data)).Err()
+		}
+		active := *s
+		active.Records = make(map[string]*a.DriverRecord)
+		observation, err := s.Observation()
 		if err != nil {
 			return err
 		}
-		return b.r.HSet(ctx, b.key, "state", string(data)).Err()
+		token := a.NewRequest(s.Time).Owner
+		meta, err := json.Marshal(struct {
+			a.Observation
+			Token string
+		}{observation, token})
+		if err != nil {
+			return err
+		}
+		fields := map[string]any{"meta": string(meta)}
+		var history []redis.Z
+		for id, rec := range s.Records {
+			encoded, err := json.Marshal(struct {
+				Token  string
+				Record *a.DriverRecord
+			}{token, rec})
+			if err != nil {
+				return err
+			}
+			fields["r:"+id] = string(encoded)
+			if rec.Status == a.Queued || rec.Status == a.Granted {
+				active.Records[id] = rec
+			} else {
+				at := rec.Finished.Add(s.Config.Retention)
+				if rec.Request.SubmitUntil.After(at) {
+					at = rec.Request.SubmitUntil
+				}
+				history = append(history, redis.Z{Score: float64(at.UnixMilli()), Member: id})
+			}
+		}
+		data, err := a.EncodeState(&active)
+		if err != nil {
+			return err
+		}
+		fields["state"] = string(data)
+		pipe := b.r.TxPipeline()
+		pipe.HSet(ctx, b.key, fields)
+		if len(history) > 0 {
+			pipe.ZAdd(ctx, b.key+":history", history...)
+		}
+		_, err = pipe.Exec(ctx)
+		return err
 	}
 	tx, err := b.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -580,19 +632,30 @@ func (b *backend) seed(ctx context.Context, s *a.SharedState) error {
 	if err != nil {
 		return err
 	}
+	if !b.fullStateFixture {
+		if _, err = tx.ExecContext(ctx, "UPDATE "+b.rt+" SET total_records=$1 WHERE namespace=$2 AND resource=$3", len(s.Records), b.namespace, s.Resource); err != nil {
+			return err
+		}
+	}
 	positions := map[string]int{}
 	for _, queue := range s.Queues {
 		for i, id := range queue {
 			positions[id] = i
 		}
 	}
-	args := make([]any, 0, 256*14)
+	width := 14
+	columns := "namespace,resource,id,owner,tenant,weight,submit_until_ms,wait_until_ms,status,lease_id,until_ms,finished_ms,failure,queue_position"
+	if !b.fullStateFixture {
+		width++
+		columns += ",gc_after_ms"
+	}
+	args := make([]any, 0, 256*width)
 	var values []string
 	flush := func() error {
 		if len(values) == 0 {
 			return nil
 		}
-		_, err := tx.ExecContext(ctx, "INSERT INTO "+b.qt+" (namespace,resource,id,owner,tenant,weight,submit_until_ms,wait_until_ms,status,lease_id,until_ms,finished_ms,failure,queue_position) VALUES "+strings.Join(values, ","), args...)
+		_, err := tx.ExecContext(ctx, "INSERT INTO "+b.qt+" ("+columns+") VALUES "+strings.Join(values, ","), args...)
 		args = args[:0]
 		values = values[:0]
 		return err
@@ -608,12 +671,23 @@ func (b *backend) seed(ctx context.Context, s *a.SharedState) error {
 		if n, ok := positions[id]; ok {
 			position = n
 		}
-		place := make([]string, 14)
+		place := make([]string, width)
 		for i := range place {
 			place[i] = fmt.Sprintf("$%d", len(args)+i+1)
 		}
 		values = append(values, "("+strings.Join(place, ",")+")")
 		args = append(args, b.namespace, s.Resource, id, r.Request.Owner, r.Request.Tenant, r.Request.Weight, r.Request.SubmitUntil.UnixMilli(), r.Request.WaitUntil.UnixMilli(), r.Status, r.LeaseID, until, finished, r.Failure, position)
+		if !b.fullStateFixture {
+			var gc any
+			if r.Status != a.Queued && r.Status != a.Granted {
+				at := r.Finished.Add(s.Config.Retention)
+				if r.Request.SubmitUntil.After(at) {
+					at = r.Request.SubmitUntil
+				}
+				gc = at.UnixMilli()
+			}
+			args = append(args, gc)
+		}
 		if len(values) == 256 {
 			if err := flush(); err != nil {
 				return err
@@ -632,6 +706,7 @@ func (b *backend) stats(ctx context.Context) (population, error) {
 		if err != nil {
 			return m, err
 		}
+		partitioned := !b.fullStateFixture
 		s, err := a.DecodeState(data)
 		if err != nil {
 			return m, err
@@ -648,7 +723,44 @@ func (b *backend) stats(ctx context.Context) (population, error) {
 				m.Terminal++
 			}
 		}
+		if partitioned {
+			ids, e := b.r.ZRange(ctx, b.key+":history", 0, -1).Result()
+			if e != nil {
+				return m, e
+			}
+			fields := make([]string, len(ids))
+			for i, id := range ids {
+				fields[i] = "r:" + id
+			}
+			var records []any
+			if len(fields) != 0 {
+				records, e = b.r.HMGet(ctx, b.key, fields...).Result()
+				if e != nil {
+					return m, e
+				}
+			}
+			for i, id := range ids {
+				encoded, ok := records[i].(string)
+				if !ok {
+					return m, errors.New("missing terminal projection in validation snapshot")
+				}
+				var projection struct{ Record *a.DriverRecord }
+				if e = json.Unmarshal([]byte(encoded), &projection); e != nil || projection.Record == nil {
+					return m, errors.New("invalid terminal projection in validation snapshot")
+				}
+				m.Records++
+				m.Terminal++
+				b.seedCount(&m, id, string(projection.Record.Status))
+			}
+		}
 		m.Bytes, err = b.r.MemoryUsage(ctx, b.key, 0).Result()
+		if err == nil && partitioned {
+			if n, e := b.r.MemoryUsage(ctx, b.key+":history", 0).Result(); e == nil {
+				m.Bytes += n
+			} else if !errors.Is(e, redis.Nil) {
+				return m, e
+			}
+		}
 		return m, err
 	}
 	err := b.db.QueryRowContext(ctx, "SELECT count(*),count(*) FILTER(WHERE status='granted'),count(*) FILTER(WHERE status='queued'),coalesce(sum(pg_column_size(q)),0) FROM "+b.qt+" q WHERE namespace=$1", b.namespace).Scan(&m.Records, &m.Granted, &m.Queued, &m.RowBytes)
@@ -661,13 +773,13 @@ func (b *backend) stats(ctx context.Context) (population, error) {
 		for rows.Next() {
 			var id, status string
 			if e = rows.Scan(&id, &status); e != nil {
-				rows.Close()
+				_ = rows.Close()
 				return m, e
 			}
 			b.seedCount(&m, id, status)
 		}
 		e = rows.Err()
-		rows.Close()
+		_ = rows.Close()
 		if e != nil {
 			return m, e
 		}

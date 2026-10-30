@@ -155,10 +155,11 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 
 	var state *airlock.SharedState
 	var before map[string]row
+	var totalRecords int
 	if cmd.Kind == airlock.Resize {
-		state, before, err = d.loadResource(ctx, tx, cmd.Resource(), nil)
+		state, before, err = d.loadState(ctx, tx, cmd.Resource(), nil, "", &totalRecords)
 	} else {
-		state, before, err = d.load(ctx, tx, cmd.Request)
+		state, before, err = d.loadState(ctx, tx, cmd.Resource(), &cmd.Request.Config, cmd.Request.ID, &totalRecords)
 	}
 	if err != nil {
 		return airlock.Result{}, err
@@ -171,11 +172,15 @@ func (d *Driver) execute(ctx context.Context, cmd airlock.Command) (airlock.Resu
 		return airlock.Result{}, fmt.Errorf("airlock/postgres: clock: %w", err)
 	}
 
-	next, result, _, transitionErr := airlock.Transition(state, now, cmd)
+	history, err := d.reclaim(ctx, tx, state, cmd.Request.ID, now, totalRecords)
+	if err != nil {
+		return airlock.Result{}, err
+	}
+	next, result, _, transitionErr := airlock.TransitionPartial(state, now, cmd, history)
 	if next == nil {
 		return result, transitionErr
 	}
-	if err = d.persist(ctx, tx, next, before); err != nil {
+	if err = d.persistState(ctx, tx, next, before, history); err != nil {
 		return airlock.Result{}, err
 	}
 	if err = tx.Commit(); err != nil {

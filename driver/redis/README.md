@@ -43,15 +43,16 @@ Do not mutate client options or install hooks that retry ambiguous operations.
 
 ## Atomicity, time, and retries
 
-Each resource uses one persistent key:
-`airlock:{sha256(namespace + NUL + resource)}:state`. Namespace is valid UTF-8,
-without NUL, at most 256 bytes. The hash tag gives every operation one Cluster
-slot. The key is a hash: `state` holds the authoritative JSON snapshot, `meta`
-holds observation metadata, and `r:<request-id>` holds each indexed request.
-Missing keys and hashes missing their snapshot are distinguished; empty, corrupt,
-and wrong-type state fails closed. State keys never expire and retain config/cursor
-even when idle; the separate update-lock keys described below have a TTL. All
-participants must use the same immutable queue/lease policy; creation-capacity hints may differ.
+Each resource uses a permanent hash
+`airlock:{sha256(namespace + NUL + resource)}:state` and an expiry sorted set
+at that exact key plus `:history`, in the same Cluster slot. Namespace is valid
+UTF-8, without NUL, at most 256 bytes. The hash stores an active-only `SharedState` JSON snapshot (Version 1) in
+`state`, observation metadata in `meta`,
+and independent records in `r:<request-id>`. Terminal IDs are indexed by
+`max(Finished + Retention, SubmitUntil)` in whole milliseconds. Missing, corrupt,
+wrong-type and incomplete state fails closed. Resource keys do not expire;
+the separate update lock has a TTL. All participants must use the same immutable
+queue/lease policy; creation-capacity hints may differ.
 
 Mutations and due maintenance first contend for
 `airlock:{same-resource-hash}:update-lock`, a separate string key in the same
@@ -89,23 +90,20 @@ confirmed expiry discards the candidate, releases any remaining ownership and
 retries from a fresh read within the operation deadline. The lock covers driver
 state updates only and is never held while application work runs.
 
-The full-publication script prepares request indexes tagged with a unique candidate token, then
-publishes the snapshot and matching observation header together in its final
-`HSET`. Within the commit script, no command follows that publication. A
-preparation error cannot authorize work: missing or token-mismatched projections fall back to the
-authoritative snapshot. Tokens are independent of Revision so different failed
-candidates for the same revision cannot be mistaken for a committed result.
-Redis scripts do not roll back earlier writes.
+The commit validates arguments and key types before mutation, then persistently
+clears `state` and `meta`. It updates changed records and the history index, and
+publishes the active snapshot and metadata in its final HSET. Empty state is an
+incomplete publication, not an absent resource. Redis scripts do not roll back
+earlier writes: any intermediate runtime failure leaves the resource unavailable
+for reads and writes. There is no automatic replay or reset. Publication reuses a
+stable record token and never encodes unrelated retained history.
 
-For mutations changing/deleting at most 256 records, an incremental publication
-reuses the committed generation token and writes only changed projections. Its
-single final HSET publishes those records, state and metadata atomically; it never
-stages changed records separately. Deletions precede publication and can only make
-Observe fall back to the unchanged snapshot if publication fails. The bound avoids
-Lua unpack limits. Larger changes and Observe maintenance use a full rebuild.
-An atomic HLEN check also forces a full rebuild for missing/orphaned fields during
-ordinary mutations. Old full writers and readers remain compatible: full writes
-replace the generation and all projections, while token mismatches still fail closed.
+This development storage layout has no upgrade or compatibility path. Only this
+layout is supported; no old snapshot loader, version marker or migration runs on
+ordinary commands. To recover an incomplete publication, stop all clients and
+active work, then restore/reconcile the complete resource and history from
+trustworthy state. Do not delete/reset only the state key or index: that can
+forget live capacity or request outcomes.
 
 Only known lock contention or explicit ownership/time-window misses
 trigger bounded, context-aware backoff (1–10ms). Each script command disables
@@ -125,16 +123,22 @@ maintenance, it releases the lock and returns the committed result without full
 state work. Contenders also recheck the projection between attempts, so they can
 return a new result without acquiring the lock themselves.
 
-Mutations still read/write the bounded snapshot and maintain the request index,
-with O(records) work and additional memory. Incremental projections reduce encoding
-and Redis write traffic; full snapshot transfer, validation and scheduling remain
-O(records), including retained terminal history. No Pub/Sub or worker is introduced.
-The core client's default polling interval remains 50ms per queued acquisition;
-this change reduces each poll's cost, not the number of polling callers.
+Mutations load all active records, the target terminal record (even if due, so
+identity conflicts precede GC), and all due terminal records. Counts and the next
+history boundary use the expiry index. Non-due history does not enter snapshot
+encoding, validation or scheduling; steady-state work is O(active + due) plus
+indexed lookups. GC is not batch-capped: a large simultaneous expiry can still
+make one operation expensive. MaxRecords counts all unexpired retained history
+exactly; expired history cannot cause a false history-full rejection. The core
+client still polls queued acquisitions every 50ms by default. No Pub/Sub or worker
+is introduced.
+
 Independent resources use different state and update-lock keys but share backend
 CPU/network/pool capacity. Queue admission order follows successful state
 transitions; the update lock does not promise FIFO ownership. Call start order
 and polling frequency do not guarantee grant order.
+
+See the [partitioned history guide](../../docs/guides/partitioned-history.md) for the cross-driver protocol and rollout boundaries.
 
 ## Operational limits
 

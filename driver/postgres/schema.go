@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 )
 
@@ -63,6 +64,7 @@ func (d *Driver) schema() []string {
 			revision               numeric(20,0) NOT NULL DEFAULT 0 CHECK (revision>=0 AND revision<=18446744073709551615),
 			observed_ms            bigint,
 			next_maintenance_ms    bigint,
+            total_records          bigint NOT NULL DEFAULT 0 CHECK (total_records >= 0 AND total_records <= 1000000),
 
 			PRIMARY KEY (namespace, resource)
 		)
@@ -84,13 +86,18 @@ func (d *Driver) schema() []string {
 			finished_ms           bigint,
 			failure               text NOT NULL,
 			queue_position        bigint CHECK (queue_position>=0),
+            gc_after_ms           bigint,
 
 			PRIMARY KEY (namespace, resource, id),
 			FOREIGN KEY (namespace, resource) REFERENCES %s (namespace, resource),
 			UNIQUE (namespace, resource, tenant, queue_position) DEFERRABLE INITIALLY DEFERRED,
-			CHECK ((status='queued')=(queue_position IS NOT NULL))
+			CHECK ((status='queued')=(queue_position IS NOT NULL)),
+            CHECK ((status IN ('queued','granted'))=(gc_after_ms IS NULL))
 		)
 		`, d.requestTable, d.resourceTable),
+
+		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (namespace,resource,tenant,queue_position,id) WHERE status IN ('queued','granted')`, d.historyIndex("active"), d.requestTable),
+		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (namespace,resource,gc_after_ms,id) WHERE gc_after_ms IS NOT NULL`, d.historyIndex("terminal"), d.requestTable),
 
 		// Match only the legacy capacity check, not unrelated operator constraints.
 		// Reuse its actual name (PostgreSQL may truncate generated identifiers).
@@ -107,4 +114,9 @@ func (d *Driver) schema() []string {
 			END LOOP;
 		END $airlock$`, d.resourceTable, d.resourceTable, d.resourceTable),
 	}
+}
+
+// Hash qualified table identity so PostgreSQL name truncation cannot alias indexes.
+func (d *Driver) historyIndex(kind string) string {
+	return fmt.Sprintf("airlock_%s_%x", kind, sha256.Sum256([]byte(d.requestTable)))[:55]
 }

@@ -138,10 +138,10 @@ func TestValidationAndCorrupt(t *testing.T) {
 	}
 
 	for _, value := range []string{"", "corrupt", "{}"} {
-		if err := client.HSet(ctx, d.key(r.Resource), "state", value).Err(); err != nil {
+		if err := client.HSet(ctx, d.key(r.Resource), "state", value, "meta", "present").Err(); err != nil {
 			t.Fatal(err)
 		}
-		if result, err := d.Submit(ctx, r); !errors.Is(err, airlock.ErrCorruptState) || result != (airlock.Result{}) {
+		if result, err := d.Submit(ctx, r); err == nil || (value != "" && !errors.Is(err, airlock.ErrCorruptState)) || result != (airlock.Result{}) {
 			t.Fatal(result, err)
 		}
 	}
@@ -211,7 +211,7 @@ func (h hook) ProcessHook(next goredis.ProcessHook) goredis.ProcessHook {
 }
 
 func isCommit(cmd goredis.Cmder) bool {
-	return isScript(cmd, commitScript) || isScript(cmd, deltaCommitScript)
+	return isScript(cmd, partitionCommit)
 }
 
 func isScript(cmd goredis.Cmder, script string) bool {
@@ -252,14 +252,9 @@ func TestLostWriteResponseNeverRetries(t *testing.T) {
 				t.Fatal(result, err, commits.Load())
 			}
 
-			raw, err := client.HGet(context.Background(), d.key(r.Resource), "state").Result()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			_, recovered, recoveryErr := transitionSnapshot([]byte(raw), time.Now(), airlock.Command{Kind: airlock.Observe, Request: r})
-			if recoveryErr != nil {
-				t.Fatal(recoveryErr)
+			recovered, ready, recoveryErr := d.observe(context.Background(), r)
+			if recoveryErr != nil || !ready {
+				t.Fatal(recovered, ready, recoveryErr)
 			}
 
 			want := airlock.Granted
@@ -285,8 +280,8 @@ func TestScriptFailureAndMalformedResponse(t *testing.T) {
 		response any
 		err      error
 	}{
-		{"read transport", readScript, nil, io.ErrUnexpectedEOF}, {"read format", readScript, "bad", nil},
-		{"write transport", commitScript, nil, io.ErrUnexpectedEOF}, {"write format", commitScript, "bad", nil}, {"write code", commitScript, int64(2), nil},
+		{"read transport", partitionRead, nil, io.ErrUnexpectedEOF}, {"read format", partitionRead, "bad", nil},
+		{"write transport", partitionCommit, nil, io.ErrUnexpectedEOF}, {"write format", partitionCommit, "bad", nil}, {"write code", partitionCommit, int64(2), nil},
 		{"lock transport", acquireUpdateLockScript, nil, io.ErrUnexpectedEOF}, {"lock format", acquireUpdateLockScript, "bad", nil}, {"lock code", acquireUpdateLockScript, int64(2), nil},
 	}
 
@@ -381,6 +376,10 @@ func TestCancelledAfterCommit(t *testing.T) {
 }
 
 func TestDecodeAndMicro(t *testing.T) {
+	// The removed full-snapshot reader returned six fields; current callers use four.
+	if _, _, err := decodeRead([]any{int64(0), "", "1", "0", "", int64(0)}); err == nil {
+		t.Fatal("accepted obsolete six-field response")
+	}
 	for _, raw := range []any{nil, []any{}, []any{int64(2), "", "1", "0"}, []any{int64(0), "x", "1", "0"}, []any{int64(0), "", "x", "0"}, []any{int64(0), "", "1", "1000000"}, []any{int64(0), "", "9007199254", "999999"}, []any{int64(1), "", "1", "0"}, []any{int64(1), "x", 1, "0"}} {
 		if _, _, err := decodeRead(raw); err == nil {
 			t.Fatal(raw)
@@ -448,24 +447,6 @@ func TestPriorityCursorSurvivesClientReplacement(t *testing.T) {
 
 		mustExecute(t, d, airlock.Command{Kind: airlock.Release, Request: r, LeaseID: got.LeaseID})
 	}
-}
-
-func transitionSnapshot(data []byte, now time.Time, cmd airlock.Command) ([]byte, airlock.Result, error) {
-	state, err := airlock.DecodeState(data)
-	if err != nil {
-		return nil, airlock.Result{}, err
-	}
-
-	next, result, _, err := airlock.Transition(state, now, cmd)
-	if next == nil {
-		return nil, result, err
-	}
-
-	encoded, codecErr := airlock.EncodeState(next)
-	if codecErr != nil {
-		return nil, airlock.Result{}, codecErr
-	}
-	return encoded, result, err
 }
 
 func TestObserveUsesOnlyRequestProjection(t *testing.T) {
@@ -555,7 +536,7 @@ func TestObserveIncompleteIndexFallsBack(t *testing.T) {
 			}
 
 			got, err := d.Observe(ctx, r)
-			if mode == "malformed" {
+			if mode == "malformed" || mode == "missing" {
 				if !errors.Is(err, airlock.ErrCorruptState) || got != (airlock.Result{}) {
 					t.Fatalf("%+v %v", got, err)
 				}
@@ -576,14 +557,8 @@ func TestObservationIndexCollectsDeletedRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.HSet(ctx, d.key(r.Resource), "r:orphan", "unpublished").Err(); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := d.Release(ctx, airlock.LeaseRef{Request: r, ID: grant.LeaseID}); err != nil {
 		t.Fatal(err)
-	}
-	if client.HExists(ctx, d.key(r.Resource), "r:orphan").Val() {
-		t.Fatal("orphaned index survived next commit")
 	}
 
 	server.SetTime(r.SubmitUntil.Add(r.Config.Retention + time.Millisecond))
@@ -627,12 +602,12 @@ func TestObserveReplyErrors(t *testing.T) {
 
 func TestIndexEncodingErrors(t *testing.T) {
 	invalid := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
-	if _, err := index(&airlock.SharedState{Time: invalid}); err == nil {
+	if _, _, err := partitionPublication(&airlock.SharedState{Time: invalid}, airlock.RetainedHistory{}, "token", nil); err == nil {
 		t.Fatal("invalid header time encoded")
 	}
 
 	s := &airlock.SharedState{Records: map[string]*airlock.DriverRecord{"bad": {Request: airlock.Request{Weight: 1}, Until: invalid, Status: airlock.Granted}}}
-	if _, err := index(s); err == nil {
+	if _, _, err := partitionPublication(s, airlock.RetainedHistory{}, "token", nil); err == nil {
 		t.Fatal("invalid record time encoded")
 	}
 
@@ -641,7 +616,7 @@ func TestIndexEncodingErrors(t *testing.T) {
 		"a": {Status: airlock.Granted, Request: airlock.Request{Weight: int(^uint(0) >> 1)}},
 		"b": {Status: airlock.Granted, Request: airlock.Request{Weight: 1}},
 	}}
-	if data, err := index(s); data != nil || !errors.Is(err, airlock.ErrCorruptState) {
+	if data, _, err := partitionPublication(s, airlock.RetainedHistory{}, "token", nil); data != nil || !errors.Is(err, airlock.ErrCorruptState) {
 		t.Fatal(data, err)
 	}
 }

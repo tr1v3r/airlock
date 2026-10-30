@@ -1,0 +1,37 @@
+/tmp/airlock-terminal-baseline: go1.27.3
+	path	github.com/tr1v3r/airlock/tools/mixedload
+	mod	github.com/tr1v3r/airlock/tools/mixedload	v0.0.0-20261030065031-0a599bff2d11+dirty	
+	dep	github.com/cespare/xxhash/v2	v2.3.0	h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
+	dep	github.com/jackc/pgpassfile	v1.0.0	h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
+	dep	github.com/jackc/pgservicefile	v0.0.0-20240606120523-5a60cdf6a761	h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=
+	dep	github.com/jackc/pgx/v5	v5.11.0	h1:IzBBtyK9AHqf98cctWFifYSci2hgQR/cd56wB4p+ogg=
+	dep	github.com/jackc/puddle/v2	v2.2.2	h1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=
+	dep	github.com/redis/go-redis/v9	v9.23.0	h1:/TTVdJa8BRNsybwwGGnmiYktHNlUXtbOQxlWpHBPL3s=
+	dep	github.com/tr1v3r/airlock	v0.0.0
+	=>	../..	(devel)	
+	
+	dep	github.com/tr1v3r/airlock/driver/postgres	v0.0.0
+	=>	../../driver/postgres	(devel)	
+	
+	dep	github.com/tr1v3r/airlock/driver/redis	v0.0.0
+	=>	../../driver/redis	(devel)	
+	
+	dep	go.uber.org/atomic	v1.12.0	h1:BvcXdFKuviU4fTL/f+SxdQ5qJX/Jix8pAkgdUcb3XOE=
+	dep	golang.org/x/sync	v0.24.0	h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=
+	dep	golang.org/x/sys	v0.48.0	h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
+	dep	golang.org/x/text	v0.41.0	h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	DefaultGODEBUG=tracebacklabels=0,x509sslcertoverrideplatform=0
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=arm64
+	build	GOOS=darwin
+	build	GOARM64=v8.0
+	build	vcs=git
+	build	vcs.revision=0a599bff2d11df3c7250f334f93b06e3acc243e3
+	build	vcs.time=2026-10-30T06:50:31Z
+	build	vcs.modified=true

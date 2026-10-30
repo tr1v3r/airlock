@@ -71,7 +71,7 @@ func TestResizeUnknownCommitAndOwnerLoss(t *testing.T) {
 	for _, mode := range []string{"lost-response", "lost-owner", "expired-window"} {
 		t.Run(mode, func(t *testing.T) {
 			d, client, server := fixture(t)
-			if err := client.ScriptLoad(context.Background(), deltaCommitScript).Err(); err != nil {
+			if err := client.ScriptLoad(context.Background(), partitionCommit).Err(); err != nil {
 				t.Fatal(err)
 			}
 			r := request()

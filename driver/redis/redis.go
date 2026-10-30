@@ -1,5 +1,5 @@
-// Package redis stores Airlock admission state in one persistent Redis key per
-// resource, plus a short-lived per-resource update lock. It uses backend time and
+// Package redis stores Airlock admission state in a persistent hash and terminal
+// expiry index per resource, plus a short-lived per-resource update lock. It uses backend time and
 // owner-checked commits within a time window. It never executes work or owns the
 // injected client. Durability depends on the Redis deployment.
 // Methods require non-nil contexts and follow airlock.Driver recovery rules.
@@ -173,7 +173,7 @@ func micro(t time.Time) (int64, error) {
 // decodeRead validates the atomic snapshot/existence/time reply before computing a transition.
 func decodeRead(raw any) ([]byte, time.Time, error) {
 	values, ok := raw.([]any)
-	if !ok || (len(values) != 4 && len(values) != 6) {
+	if !ok || len(values) != 4 {
 		return nil, time.Time{}, errors.New("airlock/redis: malformed read response")
 	}
 
@@ -268,83 +268,7 @@ func (d *Driver) executeUpdate(ctx context.Context, command airlock.Command, key
 		}
 	}
 
-	raw, err := d.eval(ctx, readScript, key)
-	if err != nil {
-		return airlock.Result{}, false, fmt.Errorf("airlock/redis: read: %w", err)
-	}
-
-	snapshot, now, err := decodeRead(raw)
-	if err != nil {
-		return airlock.Result{}, false, err
-	}
-
-	state, decodeErr := airlock.DecodeState(snapshot)
-	if decodeErr != nil {
-		return airlock.Result{}, false, decodeErr
-	}
-
-	var token string
-	var before map[string]recordVersion
-	if command.Kind != airlock.Observe {
-		token, before = projectionBaseline(state, raw)
-	}
-	nextState, result, window, transitionErr := airlock.Transition(state, now, command)
-	var next []byte
-	if nextState != nil {
-		var encodeErr error
-		next, encodeErr = airlock.EncodeState(nextState)
-		if encodeErr != nil {
-			return airlock.Result{}, false, encodeErr
-		}
-	}
-
-	if next == nil {
-		return result, false, transitionErr
-	}
-
-	lower, err := micro(window.NotBefore)
-	if err != nil {
-		return airlock.Result{}, false, err
-	}
-
-	upper, err := micro(window.Before)
-	if err != nil {
-		return airlock.Result{}, false, err
-	}
-
-	projection, err := deltaIndex(nextState, token, before)
-	if err != nil {
-		return airlock.Result{}, false, err
-	}
-	script := deltaCommitScript
-	if projection == nil {
-		projection, err = index(nextState)
-		if err != nil {
-			return airlock.Result{}, false, err
-		}
-		script = commitScript
-	}
-
-	raw, err = d.evalKeys(
-		ctx, script, []string{key, updateLockKey(key)},
-		owner, string(next), lower, upper, string(projection),
-	)
-	if err != nil {
-		return airlock.Result{}, false, fmt.Errorf("airlock/redis: commit: %w", err)
-	}
-
-	committed, ok := raw.(int64)
-	if !ok || (committed != 0 && committed != 1) {
-		return airlock.Result{}, false, errors.New("airlock/redis: malformed commit response")
-	}
-
-	if committed == 1 {
-		if err := ctx.Err(); err != nil {
-			return airlock.Result{}, false, err
-		}
-		return result, false, transitionErr
-	}
-	return airlock.Result{}, true, nil
+	return d.executePartitioned(ctx, command, key, owner)
 }
 
 // Verify the Redis backend implements the public Driver contract.

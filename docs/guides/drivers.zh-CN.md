@@ -33,7 +33,7 @@ LeaseRef 包含原 Request，ID 字段是授予时的 LeaseID。Result 表达生
 ## 复用状态机，保持原子边界
 
 存储布局由 driver 决定：多张 SQL 表、快照等都可以，前提是满足同一原子性契约。参考辅助函数不是强制要求。
-三个驱动统一使用结构化入口：
+memory及自定义驱动可使用完整状态辅助入口：
 
 ```go
 func Transition(state *SharedState, now time.Time, cmd Command) (
@@ -43,8 +43,8 @@ func Transition(state *SharedState, now time.Time, cmd Command) (
 
 nil 输入表示新资源。调用时转交输入 maps/records 的独占所有权，报错后也不能复用输入。
 Transition 不做 I/O；返回非 nil 状态时，即使同时返回业务错误也必须原子持久化。
-PostgreSQL 将 SharedState、DriverRecord 映射为关系表；memory 和 Redis 在 Transition
-前后使用 DecodeState、EncodeState 处理快照。
+Redis和PostgreSQL使用可选的TransitionPartial，避免加载无关终态历史；存储与精确计数要求见
+[活动状态与终态历史分离](partitioned-history.zh-CN.md)。辅助接口不限定自定义驱动的存储布局或执行算法。
 
 Command/Operation/ValidateCommand 是实现工具，不是公开 Driver 的调用接口。
 直接调用者必须提供完整 ResourceConfig，只有 NewShared 会补齐默认配置。

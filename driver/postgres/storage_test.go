@@ -52,13 +52,17 @@ func TestLoadRelationalFailures(t *testing.T) {
 				observed = nil
 			}
 
-			m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"v", "c", "r", "p", "cursor", "rev", "time", "capacity", "cv"}).AddRow(1, config, rotations, "", 0, revision, observed, r.Config.Admission.Capacity, "1"))
+			total := 1
+			if mode == "initial-config" {
+				total = 0
+			}
+			m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"v", "c", "r", "p", "cursor", "rev", "time", "capacity", "cv", "total"}).AddRow(1, config, rotations, "", 0, revision, observed, r.Config.Admission.Capacity, "1", total))
 			if mode != "bad-revision" && mode != "bad-rotations" {
 				q := m.ExpectQuery("SELECT id")
 				if mode == "query" {
 					q.WillReturnError(errors.New("read failed"))
 				} else {
-					rows := sqlmock.NewRows([]string{"id", "owner", "tenant", "weight", "submit", "wait", "status", "lease", "until", "finished", "failure", "position"})
+					rows := sqlmock.NewRows([]string{"id", "owner", "tenant", "weight", "submit", "wait", "status", "lease", "until", "finished", "failure", "position", "gc"})
 					var position any = int64(0)
 					if mode == "status-position" {
 						position = nil
@@ -74,7 +78,7 @@ func TestLoadRelationalFailures(t *testing.T) {
 					}
 
 					if mode != "initial-config" {
-						rows.AddRow(r.ID, r.Owner, r.Tenant, weight, r.SubmitUntil.UnixMilli(), r.WaitUntil.UnixMilli(), "queued", "", r.WaitUntil.UnixMilli(), nil, "", position)
+						rows.AddRow(r.ID, r.Owner, r.Tenant, weight, r.SubmitUntil.UnixMilli(), r.WaitUntil.UnixMilli(), "queued", "", r.WaitUntil.UnixMilli(), nil, "", position, nil)
 					}
 
 					if mode == "rows" {
@@ -206,4 +210,14 @@ func TestQueuePositionExhaustionFailsClosed(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Fixture helpers deliberately discard omitted-history metadata; production uses
+// loadState/persistState with the exact count and retention boundary.
+func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) (*airlock.SharedState, map[string]row, error) {
+	return d.loadState(ctx, tx, request.Resource, &request.Config, request.ID, new(int))
+}
+
+func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState, before map[string]row) error {
+	return d.persistState(ctx, tx, s, before, airlock.RetainedHistory{})
 }

@@ -1,5 +1,9 @@
 # Shared mutation cost / Shared 修改路径成本
 
+Historical experiment: the later fresh-layout simplification removes the old
+full/delta projection writer benchmarks. Use commit `08c366f` to access those
+historical benchmark fixtures; the commands below are not current-layout benchmarks.
+
 Baseline: `2a522e05e08223f19d381025986cea572ac7b479`. Candidate: the code and
 benchmarks accompanying this document. Measurements use Go 1.27.3, darwin/arm64,
 Apple M3 Pro (12 logical CPUs), PostgreSQL 18 Alpine and Redis 8 Alpine in dedicated

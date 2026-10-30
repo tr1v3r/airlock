@@ -67,3 +67,12 @@ They do not cover Shared polling jitter introduced by #58 (`f739f5e`).
 That change does not modify Driver, but future end-to-end Shared experiments
 should include #58 and evaluate adaptive polling and failed cleanup together;
 these results do not imply that the latest Shared implementation lacks jitter.
+
+## Development layout fixtures
+
+Current fixtures directly create the sole partitioned version-1 layout; warmup
+validates storage but performs no migration. `-full-state-fixture` is only for
+building/running the historical pre-partition baseline with this harness, not a
+runtime compatibility mode. compare.py passes it only to the baseline binary.
+The saved 72-trial terminal-history study is pinned to its original commits and
+is not a performance measurement of later layout simplifications.
