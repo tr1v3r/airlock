@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -175,7 +176,7 @@ func eventually(t *testing.T, deadline time.Duration, interval time.Duration, de
 
 // startWorkers launches n worker goroutines on m, each looping Acquire(1) with
 // short random holds until stop closes. The returned function waits for them.
-func startWorkers(m *Manager, gateway string, n int, stop <-chan struct{}) func() {
+func startWorkers(m *Manager, gateway string, n int, stop <-chan struct{}, accounting ...func(int)) func() {
 	var wg sync.WaitGroup
 	for i := 0; i < n; i++ {
 		wg.Add(1)
@@ -195,7 +196,13 @@ func startWorkers(m *Manager, gateway string, n int, stop <-chan struct{}) func(
 				if err != nil {
 					continue
 				}
+				if len(accounting) > 0 {
+					accounting[0](1)
+				}
 				time.Sleep(time.Duration(1+rng.Intn(8)) * time.Millisecond)
+				if len(accounting) > 0 {
+					accounting[0](-1)
+				}
 				permit.Release()
 			}
 		}(time.Now().UnixNano()+int64(i), i)
@@ -203,44 +210,39 @@ func startWorkers(m *Manager, gateway string, n int, stop <-chan struct{}) func(
 	return wg.Wait
 }
 
-// TestIntegrationSafetyAcrossGateways checks the timing-independent stage-1
-// guarantee: with two gateways sharing one capacity-4 pool under sustained
-// concurrent load, the sum of local in-use tokens never exceeds pool capacity.
-// Safety argument: local InUse is admitted only under capacity == held, and
-// held chunks are bounded by the pool, so sum(InUse) <= sum(held) <= 4 must
-// hold under any interleaving.
+// TestIntegrationSafetyAcrossGateways counts delivered simulated work with one
+// atomic counter across gateways. Deterministic operation-barrier regressions
+// separately exercise return/close boundaries; this load test is not a proof of
+// every interleaving or of safety after TTL reallocation.
 func TestIntegrationSafetyAcrossGateways(t *testing.T) {
 	pool := &poolHarness{}
 	a := newIntegrationManager(t, pool, "gw-a")
 	b := newIntegrationManager(t, pool, "gw-b")
-
-	stop := make(chan struct{})
-	waitA := startWorkers(a, "a", 4, stop)
-	waitB := startWorkers(b, "b", 4, stop)
-
-	const runFor = 2 * time.Second
-	deadline := time.Now().Add(runFor)
-	maxObserved := 0
-	for time.Now().Before(deadline) {
-		sum := a.Stats().InUse + b.Stats().InUse
-		if sum > maxObserved {
-			maxObserved = sum
+	var active, peak atomic.Int64
+	var exceeded atomic.Bool
+	account := func(delta int) {
+		n := active.Add(int64(delta))
+		for old := peak.Load(); n > old; old = peak.Load() {
+			if peak.CompareAndSwap(old, n) {
+				break
+			}
 		}
-		if sum > testPoolCapacity {
-			close(stop)
-			waitA()
-			waitB()
-			t.Fatalf("safety violated: sum(InUse)=%d exceeds pool capacity %d", sum, testPoolCapacity)
+		if n > testPoolCapacity {
+			exceeded.Store(true)
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
-
+	stop := make(chan struct{})
+	waitA := startWorkers(a, "a", 4, stop, account)
+	waitB := startWorkers(b, "b", 4, stop, account)
+	time.Sleep(2 * time.Second)
 	close(stop)
 	waitA()
 	waitB()
-
-	if maxObserved == 0 {
-		t.Fatal("safety sampler observed no admission; workers never acquired")
+	if exceeded.Load() {
+		t.Fatalf("delivered work exceeded capacity: peak=%d", peak.Load())
+	}
+	if active.Load() != 0 || peak.Load() == 0 {
+		t.Fatalf("active=%d peak=%d", active.Load(), peak.Load())
 	}
 }
 
@@ -286,11 +288,11 @@ func TestIntegrationIdleReturn(t *testing.T) {
 	})
 }
 
-// TestIntegrationBanDrainsGateway checks Resize(capacity=0) semantics: after
+// TestIntegrationResizeZeroBlocksNewChunks checks Resize(capacity=0): after
 // the pool is banned, a fresh gateway with live demand never obtains a new
 // chunk and its local admission stops (TryAcquire fails), while permits
 // granted before the ban still Release cleanly.
-func TestIntegrationBanDrainsGateway(t *testing.T) {
+func TestIntegrationResizeZeroBlocksNewChunks(t *testing.T) {
 	pool := &poolHarness{}
 	a := newIntegrationManager(t, pool, "gw-a")
 
@@ -379,7 +381,10 @@ func TestIntegrationManagerCloseIdempotent(t *testing.T) {
 	if err := m.Close(ctx); err != nil {
 		t.Fatalf("second Close should be idempotent, got %v", err)
 	}
-	_, _ = m.TryAcquire("post-close", 1)
+	if p, err := m.TryAcquire("post-close", 1); err == nil {
+		p.Release()
+		t.Fatal("post-close admission succeeded")
+	}
 	if m.Stats().Capacity < 0 {
 		t.Fatalf("negative capacity after close: %+v", m.Stats())
 	}

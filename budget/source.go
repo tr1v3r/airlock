@@ -73,3 +73,6 @@ func (c *sharedChunk) Renew(ctx context.Context) error { return c.lease.Renew(ct
 
 // Release returns the whole chunk to the pool.
 func (c *sharedChunk) Release(ctx context.Context) error { return c.lease.Release(ctx) }
+
+// Valid observes the Shared lease deadline even between control iterations.
+func (c *sharedChunk) Valid() bool { return c.lease.Valid() }

@@ -20,14 +20,19 @@ type fakeLease struct {
 	releaseErr error
 	renewed    int
 	released   int
+	invalid    bool
 }
 
 func (l *fakeLease) Weight() int { return l.weight }
+func (l *fakeLease) Valid() bool { l.mu.Lock(); defer l.mu.Unlock(); return !l.invalid }
 
 func (l *fakeLease) Renew(ctx context.Context) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.renewed++
+	if l.renewErr != nil {
+		l.invalid = true
+	}
 	return l.renewErr
 }
 
@@ -45,7 +50,8 @@ func (l *fakeLease) Release(ctx context.Context) error {
 // with airlock.ErrWeightExceedsCapacity; maxWeight (when positive) rejects
 // heavier chunks the same way; capacity (when positive) models the pool total:
 // an Acquire that would push live held weight above it is rejected the same
-// way; err fails with a plain backend error.
+// way; exhausted free capacity returns a wait deadline, as real Shared does.
+// err fails with a plain backend error.
 type fakeSource struct {
 	mu        sync.Mutex
 	blocked   bool
@@ -60,9 +66,11 @@ type fakeSource struct {
 func (f *fakeSource) Acquire(ctx context.Context, tenant string, weight int) (chunkLease, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.blocked || (f.maxWeight > 0 && weight > f.maxWeight) ||
-		(f.capacity > 0 && f.live+weight > f.capacity) {
+	if f.blocked || (f.maxWeight > 0 && weight > f.maxWeight) {
 		return nil, airlock.ErrWeightExceedsCapacity
+	}
+	if f.capacity > 0 && f.live+weight > f.capacity {
+		return nil, context.DeadlineExceeded
 	}
 	if f.err != nil {
 		return nil, f.err
@@ -480,68 +488,41 @@ func TestStepHeldZeroResizesLocalToZero(t *testing.T) {
 	}
 }
 
-func TestStepPausedProbeAndRecovery(t *testing.T) {
-	src := &fakeSource{}
-	src.setBlocked(true)
+func TestStepPoolBlockedAndRecovery(t *testing.T) {
+	src := &fakeSource{blocked: true}
 	opts := baseOpts()
-	opts.Denominations = []int{16, 4, 1}
 	opts.MinHeld = 32
 	m := mustManager(t, src, opts)
 	m.step()
-	if !m.paused {
-		t.Fatal("want paused after ErrWeightExceedsCapacity")
-	}
 	if m.Held() != 0 {
-		t.Fatalf("Held = %d, want 0", m.Held())
+		t.Fatal("blocked pool granted budget")
 	}
-	// While blocked every step still probes once with the smallest denomination.
-	before := len(src.weights())
 	m.step()
-	if !m.paused {
-		t.Fatal("paused cleared while still blocked")
+	if len(src.weights()) != 0 {
+		t.Fatal("blocked retry granted budget")
 	}
-	if got := len(src.weights()); got != before {
-		t.Errorf("probe attempts changed record count: %d -> %d", before, got)
-	}
-	// Unblock: the probe succeeds, clears paused and the chunk counts.
 	src.setBlocked(false)
 	m.step()
-	if m.paused {
-		t.Fatal("paused not cleared after successful probe")
-	}
-	if m.Held() != 1 {
-		t.Errorf("Held = %d, want 1 (smallest denomination)", m.Held())
-	}
-	if got := src.weights(); len(got) == 0 || got[len(got)-1] != 1 {
-		t.Errorf("last acquired = %v, want probe of denomination 1", got)
+	if m.Held() != 32 {
+		t.Fatalf("Held=%d, want32 after recovery", m.Held())
 	}
 }
 
-func TestStepPausedByWeightCap(t *testing.T) {
-	src := &fakeSource{}
-	src.mu.Lock()
-	src.capacity = 16
-	src.mu.Unlock()
+func TestStepPoolCapacityAndRecovery(t *testing.T) {
+	src := &fakeSource{capacity: 16}
 	opts := baseOpts()
-	opts.Denominations = []int{16, 4, 1}
 	opts.MinHeld = 32
 	m := mustManager(t, src, opts)
 	m.step()
-	if !m.paused {
-		t.Fatal("want paused when second 16-chunk exceeds pool capacity")
-	}
 	if m.Held() != 16 {
-		t.Fatalf("Held = %d, want 16", m.Held())
+		t.Fatalf("Held=%d want16", m.Held())
 	}
 	src.mu.Lock()
 	src.capacity = 0
 	src.mu.Unlock()
 	m.step()
-	if m.paused {
-		t.Fatal("paused not cleared")
-	}
-	if m.Held() != 17 {
-		t.Errorf("Held = %d, want 17 after probe", m.Held())
+	if m.Held() != 32 {
+		t.Fatalf("Held=%d want32 after recovery", m.Held())
 	}
 }
 
@@ -555,9 +536,6 @@ func TestStepBackendErrorKeepsState(t *testing.T) {
 	opts.MinHeld = 4
 	m := mustManager(t, src, opts)
 	m.step()
-	if m.paused {
-		t.Error("plain backend error must not pause")
-	}
 	if m.Held() != 0 {
 		t.Errorf("Held = %d, want 0", m.Held())
 	}
@@ -640,7 +618,8 @@ func TestCloseReportsReleaseErrors(t *testing.T) {
 	if err := m.Close(context.Background()); err == nil {
 		t.Error("Close with failing release: want error")
 	}
-	// Idempotency is preserved even after an error: no double release.
+	// Unknown cleanup remains frozen and may be retried with the same lease.
+	src.leases[0].releaseErr = nil
 	if err := m.Close(context.Background()); err != nil {
 		t.Errorf("second Close: %v, want nil", err)
 	}

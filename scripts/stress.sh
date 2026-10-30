@@ -36,6 +36,10 @@ export AIRLOCK_STRESS=0
 printf 'Concurrency: count=%s cpu=1,2,4 AIRLOCK_STRESS=0\n' "$count"
 go test -race -v -shuffle=on -count="$count" -cpu=1,2,4 -timeout=10m \
   -run "$concurrent_pattern" .
+# Exercise budget gate/lifecycle barriers without repeating its timed integration
+# load. The full race/coverage lane still runs every budget test once.
+go test -race -v -shuffle=on -count="$count" -cpu=1,2,4 -timeout=3m \
+  -run '^Test(Return|Close|ExpiredChunk|WeightedColdStart|WaitingWeights|InsufficientFreeCapacity|TryAndAcquireValidation|ConcurrentClose|RealSharedFallback|ResizeZeroPreserves|SharedLeaseInvalidation|TryAcquireRechecks|QueuedAcquireRechecks|CancelHeavyWaiter|RejectNonfinite|AcquireFastPath|NewReports)' ./budget
 if [[ "${1:-quick}" == extended ]]; then
   export AIRLOCK_STRESS=1
   echo 'Expanded Local/Shared workload: count=1 cpu=1 AIRLOCK_STRESS=1'
