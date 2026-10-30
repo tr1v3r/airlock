@@ -98,10 +98,6 @@ jobs:
         with:
           go-version: stable
       - run: bash scripts/check.sh coverage
-      - name: Exercise concurrency with different CPU counts and test orders
-        # One process runs ten full suites for each of the three CPU settings.
-        # This is a cumulative test budget, not an admission/lease timeout.
-        run: go test -race -shuffle=on -count=10 -cpu=1,2,4 -timeout=10m ./...
       - name: Upload coverage evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

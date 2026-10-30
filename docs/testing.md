@@ -23,12 +23,12 @@ claiming independent-module validation.
 | --- | --- | --- |
 | Compatibility | Root + memory/PostgreSQL/Redis separately: shuffled tests and vet; root local examples | Every PR/push; Linux Go 1.26/oldstable/stable, macOS/Windows stable; no automatic toolchain upgrade |
 | Quality | Formatting all tracked Go; root module/dependency guard, root lint, workflow syntax; Python regression tests | Every PR/push; 15-minute job limit |
-| Race / coverage | Root uncached race, CPU 1/2/4 × ten repetitions, per-file and total 95% statements | Every PR/push; 15-minute job; excludes examples/comparison/conformance helper from coverage |
+| Race / coverage | Full root suite once with uncached race and per-file/total 95% statements; every serial model and differential scenario retained | Every PR/push; 15-minute job; excludes examples/comparison/conformance helper from coverage |
 | Independent drivers | `driver-check.sh`: tidy diff, verify, vet, race and per-file coverage per module; memory hello/lifecycle executable examples | Every PR/push; stable Linux; PostgreSQL ExampleNew is compile-only (no Output assertion) |
 | Backend integration | PostgreSQL 16/18, Redis 7/8; shared conformance plus backend-specific locking, response-loss, corruption and cancellation cases | Every PR/push; isolated Linux services; no services needed for ordinary unit tests |
 | Topology / failover | Three-primary Redis Cluster; PostgreSQL fenced synchronous standby; expected Redis asynchronous acknowledged-state loss | Every PR/push; isolated Docker fixtures; not arbitrary failover/partition proofs |
-| Bounded stress | Local dynamic model/storm, Shared concurrent/clock tests, durable model traces; four fuzz targets | Every PR/push; quick script below; no `AIRLOCK_STRESS=1` expansion |
-| Extended stress | Larger local/Shared/model workloads; repeated nested races and longer fuzz sessions | Weekly schedule or manual dispatch only; 30-minute job limit |
+| Bounded stress | Selected Local scheduling/model/race and Shared lifecycle/clock cases once at CPU 1/2/4; four fuzz targets | Every PR/push; quick script below; no `AIRLOCK_STRESS=1` expansion |
+| Extended stress | Selected normal concurrency cases ten times at CPU 1/2/4; larger Local/Shared and serial model once; repeated nested races and longer fuzz sessions | Weekly schedule or manual dispatch only; 30-minute job limit |
 | Security | `govulncheck -test ./...` separately for root and each nested dependency graph | Every PR/push and weekly; Dependabot lists all four module directories |
 | Installation | Fresh consumer installs core + three drivers at documented `@dev`, then at the pushed candidate; checks selected versions and compiles/runs local + memory APIs | Same-repository PRs, push, schedule/dispatch; no replace; no backend service |
 | Fixture ownership | Fake Docker + fake Go: ownership and failure-order assertions without a daemon | Python suite on every PR/push; 22 fixture scenarios |
@@ -43,6 +43,21 @@ at a reachable upstream candidate before publication.
 安装任务只在 fork PR / merge-group 临时提交时按条件跳过；这些运行不构成发布安装验证。
 其他必需任务不能跳过，失败与取消不能变绿。扩展任务只在每周/手动运行；对应 skip 条件由
 Python 回归测试覆盖。每周定时任务使用仓库默认分支的工作流。
+
+The full race/coverage run remains the safety net for every root test, fuzz seed,
+and example. Only `scripts/stress.sh` owns the explicit repeated concurrency
+inventory: local fairness/weighted/priority/resize/TryAcquire races, Local models
+that coordinate waiter goroutines, and Shared queue/renew/release/gate/clock
+regressions. The serial Transition model, partial-state differential tests, scale
+fixtures and benchmark smoke tests are not repeated for CPU scheduling. New
+concurrency regressions should be added to that inventory; no test is removed
+from the full suite. Verbose race/stress logs expose cases, elapsed times and
+shuffle seeds instead of remaining silent until a package completes.
+
+全量 race/覆盖率仍执行根模块全部测试、fuzz 种子和示例；只有选定并发用例进入 CPU
+重复矩阵。串行 Transition 模型、部分状态差分、规模 fixture 和 benchmark smoke
+不做调度重复。新增并发回归应同步加入 `scripts/stress.sh` 的清单；全量测试不删减。
+详细日志输出用例、耗时与乱序种子。
 
 ### Uniform Go 1.26 floor
 
@@ -75,13 +90,15 @@ GOWORK=off go test -race -shuffle=on -count=1 -timeout=5m ./...
 bash scripts/driver-check.sh
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
 
-# Normal PR budget: concurrent cases at CPU 1/4, one serial 8-seed × 128-step model;
-# each fuzz target 5s / two workers.
+# Normal PR budget: selected concurrent cases once at CPU 1/2/4;
+# each fuzz target 5s / two workers. Full coverage already runs the normal serial
+# model (8 seeds x 128 steps) and all partial-state differential cases once.
 bash scripts/stress.sh quick
 
-# Larger opt-in workload: AIRLOCK_STRESS=1; Local/clock and nested tests at
-# CPU 1/2/4 × three repetitions; heavy Shared once at CPU 1 (20-minute bound);
-# serial model once at 64 seeds × 250 steps; each fuzz target 30s / two workers.
+# Larger opt-in workload: selected normal concurrent cases at CPU 1/2/4 x ten
+# repetitions; then AIRLOCK_STRESS=1 Local/Shared once at CPU 1 (20-minute bound),
+# serial model once at 64 seeds x 250 steps; nested tests at CPU 1/2/4 x three
+# repetitions; each fuzz target 30s / two workers.
 # Not part of the normal PR critical path.
 bash scripts/stress.sh extended
 
@@ -142,20 +159,23 @@ failures are failures, not silently downgraded to a workspace build.
 - Shared: concurrent acquire/renew/release/cancel and bounded client/backend clock
   offsets; lifecycle example checks cancellation while renewal blocks, join-before-
   release, and same-lease cleanup retries. The application must stop its actual work.
-  In extended mode, `TestSharedConcurrent*` runs once at CPU 1 with a 20-minute
-  bound: the 128-client/eight-round lifecycle workload already expands concurrency
-  internally. Local/clock and nested driver tests retain CPU 1/2/4 × three runs;
-  quick mode's combined Local/Shared/clock schedule remains unchanged.
-  扩展 Shared 高并发组单遍执行（CPU=1、20 分钟上限），不再把 128 客户端×8 轮乘 9；
-  Local/clock 与 nested driver 保持 CPU/重复矩阵，普通 quick 任务不改。
+  Quick mode runs the selected normal concurrency cases once at CPU 1/2/4;
+  extended mode repeats them ten times at each CPU count with normal fixture sizes.
+  Expanded Shared concurrency and the Local storm then run once at CPU 1 with a
+  20-minute bound: the 128-client/eight-round Shared lifecycle workload already
+  expands concurrency internally. Nested drivers retain CPU 1/2/4 × three runs.
+  quick 对选定普通规模并发用例按 CPU 1/2/4 各跑一次，extended 各重复十轮；
+  扩大的 Shared 和 Local storm 随后单遍执行（CPU=1、20 分钟上限），不把扩展规模
+  乘重复矩阵。nested driver 保留 CPU 1/2/4 各三轮。
 - Durable protocol: deterministic operation traces, malformed snapshots/commands,
   publication-window boundary fuzzing and restore allocation scaling. The serial
-  model runs once, without the CPU/repetition multiplier: 8 seeds × 128 steps in
-  quick mode, 64 × 250 in extended mode, alternating ungrouped/priority mode by
-  seed, with a three-minute test deadline. CPU schedules add no interleavings to this serial
+  model runs without the CPU/repetition multiplier: full race/coverage executes
+  8 seeds × 128 steps once; extended mode additionally executes 64 × 250 once,
+  alternating ungrouped/priority mode by seed, with a three-minute test deadline
+  for the expanded model. CPU schedules add no interleavings to this serial
   model. Fuzz inputs are bounded; this is not unbounded exhaustion testing.
-  串行状态模型不参与并发 CPU/重复乘积；quick 为 8×128，extended 为 64×250，
-  均覆盖无分组/优先级两种模式。Local 保留 CPU/重复矩阵，Shared 的扩展规模按上文单独设限。
+  串行状态模型不参与并发 CPU/重复乘积；全量 race/覆盖率执行普通 8×128，
+  extended 另执行一次扩展 64×250，均覆盖无分组/优先级两种模式。
 - Driver conformance: concurrent same-identity calls, owner conflicts, cancel versus
   submit, renew versus release, and pre-cancelled operations. Normal fanout is 8;
   stress fanout is 16 where configured. These shared helpers are in the pinned core.

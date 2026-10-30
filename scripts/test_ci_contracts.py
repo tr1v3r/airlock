@@ -2,6 +2,7 @@
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -185,57 +186,103 @@ class CompatibilityMatrixTests(unittest.TestCase):
 
 
 class StressBudgetTests(unittest.TestCase):
-    def test_model_and_heavy_shared_are_not_multiplied_by_local_schedule(self):
-        for lane, count, cpus, fuzztime, stress in (
-            ("quick", "1", "1,4", "5s", "0"),
-            ("extended", "3", "1,2,4", "30s", "1"),
-        ):
-            with self.subTest(lane=lane), tempfile.TemporaryDirectory(prefix="airlock-stress-wrapper-") as temp:
-                directory = pathlib.Path(temp)
-                log = directory / "go.jsonl"
-                fake = directory / "go"
-                fake.write_text(f"#!{sys.executable}\n" + textwrap.dedent('''
-                    import json, os, sys
-                    with open(os.environ["FAKE_GO_LOG"], "a") as out:
-                        out.write(json.dumps({"args": sys.argv[1:], "stress": os.environ["AIRLOCK_STRESS"]}) + "\\n")
-                '''))
-                fake.chmod(0o755)
-                env = dict(os.environ, PATH=f"{directory}{os.pathsep}{os.environ['PATH']}", FAKE_GO_LOG=str(log))
-                result = subprocess.run(["bash", str(ROOT / "scripts/stress.sh"), lane],
-                                        env=env, text=True, capture_output=True, timeout=10)
+    def invoke(self, lane, fail_at=0):
+        with tempfile.TemporaryDirectory(prefix="airlock-stress-wrapper-") as temp:
+            directory = pathlib.Path(temp)
+            log = directory / "go.jsonl"
+            fake = directory / "go"
+            fake.write_text(f"#!{sys.executable}\n" + textwrap.dedent('''
+                import json, os, pathlib, sys
+                log = pathlib.Path(os.environ["FAKE_GO_LOG"])
+                calls = log.read_text().splitlines() if log.exists() else []
+                with log.open("a") as out:
+                    out.write(json.dumps({"args": sys.argv[1:], "stress": os.environ["AIRLOCK_STRESS"]}) + "\\n")
+                if len(calls) + 1 == int(os.environ["FAKE_GO_FAIL_AT"]):
+                    sys.exit(23)
+            '''))
+            fake.chmod(0o755)
+            env = dict(os.environ, PATH=f"{directory}{os.pathsep}{os.environ['PATH']}",
+                       FAKE_GO_LOG=str(log), FAKE_GO_FAIL_AT=str(fail_at), AIRLOCK_STRESS="1")
+            result = subprocess.run(["bash", str(ROOT / "scripts/stress.sh"), lane],
+                                    env=env, text=True, capture_output=True, timeout=10)
+            calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+            return result, calls
+
+    def test_quick_and_extended_keep_repetition_separate_from_size_expansion(self):
+        for lane, count, fuzztime in (("quick", "1", "5s"), ("extended", "10", "30s")):
+            with self.subTest(lane=lane):
+                result, calls = self.invoke(lane)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                calls = [json.loads(line) for line in log.read_text().splitlines()]
-                self.assertEqual(len(calls), 6 if lane == "quick" else 10)
-                concurrent = calls[0]["args"]
-                self.assertIn("-count=" + count, concurrent)
-                self.assertIn("-cpu=" + cpus, concurrent)
-                expected_pattern = "^Test(Local|SharedConcurrent|SharedClock)" if lane == "quick" else "^Test(Local|SharedClock)"
-                self.assertIn(expected_pattern, concurrent)
-                self.assertFalse(any("TransitionModel" in arg for arg in concurrent))
-                model_index = 1
+                self.assertEqual(len(calls), 5 if lane == "quick" else 10)
+                concurrent = calls[0]
+                self.assertEqual(concurrent["stress"], "0")
+                for arg in ("-race", "-v", "-shuffle=on", "-count=" + count, "-cpu=1,2,4"):
+                    self.assertIn(arg, concurrent["args"])
+                fuzz_index = 1
                 if lane == "extended":
-                    shared = calls[1]["args"]
-                    self.assertIn("^TestSharedConcurrent", shared)
-                    self.assertIn("-count=1", shared)
-                    self.assertIn("-cpu=1", shared)
-                    self.assertIn("-timeout=20m", shared)
-                    self.assertFalse(any("SharedConcurrent" in arg for arg in concurrent))
-                    model_index = 2
-                model = calls[model_index]["args"]
-                self.assertIn("^TestTransitionModelTraces$", model)
-                self.assertIn("-count=1", model)
-                self.assertIn("-timeout=3m", model)
-                self.assertFalse(any(arg.startswith("-cpu") for arg in model))
-                for call in calls[model_index + 1:model_index + 5]:
-                    self.assertIn("-fuzztime=" + fuzztime, call["args"])
-                    self.assertIn("-fuzzminimizetime=1s", call["args"])
-                    self.assertIn("-parallel=2", call["args"])
-                if lane == "extended":
+                    expanded = calls[1]
+                    self.assertEqual(expanded["stress"], "1")
+                    for arg in ("-count=1", "-cpu=1", "-timeout=20m"):
+                        self.assertIn(arg, expanded["args"])
+                    model = calls[2]["args"]
+                    self.assertIn("^TestTransitionModelTraces$", model)
+                    self.assertIn("-count=1", model)
+                    self.assertFalse(any(arg.startswith("-cpu") for arg in model))
+                    fuzz_index = 3
                     for call in calls[-3:]:
                         self.assertIn("-count=3", call["args"])
                         self.assertIn("-cpu=1,2,4", call["args"])
-                        self.assertIn("-timeout=5m", call["args"])
-                self.assertTrue(all(call["stress"] == stress for call in calls))
+                for call in calls[fuzz_index:fuzz_index + 4]:
+                    self.assertIn("-fuzztime=" + fuzztime, call["args"])
+                    self.assertIn("-fuzzminimizetime=1s", call["args"])
+                    self.assertIn("-parallel=2", call["args"])
+
+    def test_repeat_selection_covers_regressions_and_excludes_serial_work(self):
+        result, calls = self.invoke("quick")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = calls[0]["args"]
+        pattern = re.compile(args[args.index("-run") + 1])
+        # Representative regression names are independent of the wrapper's regex.
+        for name in (
+            "TestCancelGrantRaceAndDuplicateRelease", "TestAirlockMultipleSlotsAndChurn",
+            "TestWeightedCancelGrantRaceAndConcurrentRelease", "TestPriorityMixedWeightConcurrentCapacity",
+            "TestResizeCancellationGrantRace", "TestResizeZeroReleaseCancelRace",
+            "TestResizeZeroPriorityProtectedHead",
+            "TestTryAcquireMixedWithWaitingAndConcurrentRelease", "TestLocalDynamicModel",
+            "TestSharedConcurrentWeightedLifecycle", "TestSharedConcurrentLeaseOperations",
+            "TestSharedReleaseCancelsGateWaitAndInvalidatesInFlightRenew", "TestSharedLeaseGateWaitingIsBounded",
+            "TestSharedRenewCannotResurrectExpiredLease", "TestSharedClockAllowanceOffsets",
+        ):
+            self.assertIsNotNone(pattern.fullmatch(name), name)
+        for name in (
+            "TestTransitionModelTraces", "TestTransitionPartialMatchesCompleteState",
+            "TestTransitionScaleFixtures", "TestSharedBenchmarkSmoke", "TestLocalModelMutationSensitivity",
+        ):
+            self.assertIsNone(pattern.fullmatch(name), name)
+        inventory = [name for path in ROOT.glob("*_test.go")
+                     for name in re.findall(r"^func (Test\w+)\(", path.read_text(), re.MULTILINE)]
+        self.assertGreater(sum(bool(pattern.fullmatch(name)) for name in inventory), 40)
+        # A stale/misspelled explicit entry must not silently become a no-op.
+        script = (ROOT / "scripts/stress.sh").read_text()
+        groups = re.findall(r"^  '([^']+)'$", script, re.MULTILINE)
+        self.assertTrue(groups)
+        for group in groups:
+            for alternative in group.split("|"):
+                selection = re.compile("Test(?:" + alternative + ")")
+                self.assertTrue(any(selection.fullmatch(name) for name in inventory), alternative)
+
+    def test_failure_stops_later_test_phases(self):
+        for lane, phases in (("quick", 5), ("extended", 10)):
+            for fail_at in range(1, phases + 1):
+                with self.subTest(lane=lane, phase=fail_at):
+                    result, calls = self.invoke(lane, fail_at)
+                    self.assertEqual(result.returncode, 23, result.stdout + result.stderr)
+                    self.assertEqual(len(calls), fail_at)
+
+    def test_unknown_lane_runs_nothing(self):
+        result, calls = self.invoke("unknown")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":
