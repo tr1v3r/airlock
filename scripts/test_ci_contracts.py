@@ -213,22 +213,33 @@ class StressBudgetTests(unittest.TestCase):
             with self.subTest(lane=lane):
                 result, calls = self.invoke(lane)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertEqual(len(calls), 5 if lane == "quick" else 10)
+                self.assertEqual(len(calls), 6 if lane == "quick" else 11)
                 concurrent = calls[0]
                 self.assertEqual(concurrent["stress"], "0")
                 for arg in ("-race", "-v", "-shuffle=on", "-count=" + count, "-cpu=1,2,4"):
                     self.assertIn(arg, concurrent["args"])
-                fuzz_index = 1
+                budget = calls[1]
+                self.assertEqual(budget["stress"], "0")
+                for arg in ("-race", "-v", "-shuffle=on", "-count=" + count, "-cpu=1,2,4", "./budget"):
+                    self.assertIn(arg, budget["args"])
+                budget_pattern = re.compile(budget["args"][budget["args"].index("-run") + 1])
+                self.assertIsNotNone(budget_pattern.match("TestReturnFreezesBeforeBackendReissues"))
+                self.assertIsNotNone(budget_pattern.match("TestCloseFreezesDrainsAndRetriesAfterDeadline"))
+                self.assertIsNone(budget_pattern.match("TestIntegrationSafetyAcrossGateways"))
+                regressions = ROOT / "budget/regression_test.go"
+                for name in re.findall(r"^func (Test\w+)\(", regressions.read_text(), re.MULTILINE):
+                    self.assertIsNotNone(budget_pattern.match(name), name)
+                fuzz_index = 2
                 if lane == "extended":
-                    expanded = calls[1]
+                    expanded = calls[2]
                     self.assertEqual(expanded["stress"], "1")
                     for arg in ("-count=1", "-cpu=1", "-timeout=20m"):
                         self.assertIn(arg, expanded["args"])
-                    model = calls[2]["args"]
+                    model = calls[3]["args"]
                     self.assertIn("^TestTransitionModelTraces$", model)
                     self.assertIn("-count=1", model)
                     self.assertFalse(any(arg.startswith("-cpu") for arg in model))
-                    fuzz_index = 3
+                    fuzz_index = 4
                     for call in calls[-3:]:
                         self.assertIn("-count=3", call["args"])
                         self.assertIn("-cpu=1,2,4", call["args"])
@@ -272,7 +283,7 @@ class StressBudgetTests(unittest.TestCase):
                 self.assertTrue(any(selection.fullmatch(name) for name in inventory), alternative)
 
     def test_failure_stops_later_test_phases(self):
-        for lane, phases in (("quick", 5), ("extended", 10)):
+        for lane, phases in (("quick", 6), ("extended", 11)):
             for fail_at in range(1, phases + 1):
                 with self.subTest(lane=lane, phase=fail_at):
                     result, calls = self.invoke(lane, fail_at)

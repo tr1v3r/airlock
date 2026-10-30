@@ -54,10 +54,16 @@ concurrency regressions should be added to that inventory; no test is removed
 from the full suite. Verbose race/stress logs expose cases, elapsed times and
 shuffle seeds instead of remaining silent until a package completes.
 
+The same CPU/count schedule also exercises `budget`'s deterministic admission,
+expiry, return and shutdown regressions. Its timed integration load stays in the
+single full-suite run, rather than being multiplied by the repetition matrix.
+
 全量 race/覆盖率仍执行根模块全部测试、fuzz 种子和示例；只有选定并发用例进入 CPU
 重复矩阵。串行 Transition 模型、部分状态差分、规模 fixture 和 benchmark smoke
 不做调度重复。新增并发回归应同步加入 `scripts/stress.sh` 的清单；全量测试不删减。
 详细日志输出用例、耗时与乱序种子。
+`budget` 的确定性准入、过期、归还与关闭回归也进入相同 CPU/次数矩阵；
+其按时间运行的集成负载只在全量测试中执行，不乘重复矩阵。
 
 ### Uniform Go 1.26 floor
 
