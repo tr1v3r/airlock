@@ -1,0 +1,37 @@
+{
+  "recorded_utc": "2026-10-30T07:16:03.922324+00:00",
+  "baseline": "0a599bf",
+  "candidate": "3dda02174c35446cb332a85b0e48800d912947a4",
+  "workload_source_sha256": "0c714784434883769b0d4732a5a724a74c2bcdc41fca574fb504f4195ddcaf8b",
+  "host": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.2\nBuildVersion:\t\t25F84",
+  "logical_cpu": "12",
+  "memory_bytes": "38654705664",
+  "go": "go1.27.3",
+  "note": "Both variants compile identical tools/mixedload/main.go. Baseline worktree has only this harness overlay; core/drivers remain baseline commit. Steady-state measurement excludes setup/migration; no other team load during trials.",
+  "containers": {
+    "airlock-terminal-compare-pg": {
+      "image": "postgres:18-alpine",
+      "image_id": "sha256:d198b39c31a6df6012ac71d61fe3596277c3c06e0884fc24965669cb8d799f10",
+      "ports": {
+        "5432/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "32857"
+          }
+        ]
+      }
+    },
+    "airlock-terminal-compare-redis": {
+      "image": "redis:8-alpine",
+      "image_id": "sha256:9eba214ac186cd19f8675fd248d92db3bfef0180773990b304b378cbe384c45f",
+      "ports": {
+        "6379/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "32856"
+          }
+        ]
+      }
+    }
+  }
+}

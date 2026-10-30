@@ -43,7 +43,8 @@ and indexed collection remain in one transaction under the resource row lock.
 Run `EnsureSchema` during controlled deployment; schema/index DDL may block writes.
 
 An existing v1 resource is fully read and validated once, then migrated on its
-first successful modifying transition. That initial operation is still proportional
+first committed transition, including maintenance or a business-error transition
+with a nonnil next state. That initial operation is still proportional
 to history and can need a larger deployment budget. Subsequent mutations use the
 partitioned format. Read-only observations may leave a v1 resource unmigrated.
 
@@ -63,6 +64,7 @@ from out-of-band mutation. Complete integrity audits are separate from the hot
 path; history summaries are not a cryptographic proof of all payloads.
 
 An incomplete Redis publication remains unavailable. Stop affected writers and
+stop or drain their active business work before recovery, then
 investigate complete persisted records/indexes and uncertain business outcomes;
 do not remove only the marker, recreate an empty resource, or blindly replay the
 failed mutation. Backend durability and application lease/fencing requirements
