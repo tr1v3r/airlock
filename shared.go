@@ -389,3 +389,57 @@ func (l *Lease) enterOperation(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
+
+// withDefaults normalizes client configuration before validation and snapshotting.
+// Direct Driver/Transition callers still supply a complete ResourceConfig.
+// Only zero selects a default; invalid nonzero values remain validation errors.
+// withDefaults normalizes client configuration before validation and snapshotting.
+// Direct Driver/Transition callers still supply a complete ResourceConfig.
+// Only zero selects a default; invalid nonzero values remain validation errors.
+func (o SharedOptions) withDefaults() SharedOptions {
+	if o.Config.LeaseTTL == 0 {
+		o.Config.LeaseTTL = 30 * time.Second
+	}
+
+	if o.Config.MaxWait == 0 {
+		o.Config.MaxWait = 30 * time.Second
+	}
+
+	if o.Config.SubmitWindow == 0 {
+		o.Config.SubmitWindow = 5 * time.Second
+	}
+
+	if o.Config.Retention == 0 {
+		o.Config.Retention = time.Minute
+	}
+
+	if o.Config.MaxRecords == 0 {
+		o.Config.MaxRecords = maxCountLimit
+	}
+
+	if o.OperationTimeout == 0 {
+		o.OperationTimeout = 5 * time.Second
+	}
+
+	if o.PollInterval == 0 {
+		o.PollInterval = 50 * time.Millisecond
+	}
+	return o
+}
+
+// DistributedOptions is the former name for SharedOptions.
+//
+// Deprecated: Use SharedOptions instead.
+type DistributedOptions = SharedOptions
+
+// Distributed is the former name for Shared.
+//
+// Deprecated: Use Shared instead.
+type Distributed = Shared
+
+// NewDistributed constructs shared admission using the former API name.
+//
+// Deprecated: Use NewShared instead.
+func NewDistributed(driver Driver, options DistributedOptions) (*Distributed, error) {
+	return NewShared(driver, options)
+}
