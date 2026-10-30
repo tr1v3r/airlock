@@ -1,9 +1,10 @@
 package main
 
 import (
-	a "github.com/tr1v3r/airlock"
 	"testing"
 	"time"
+
+	a "github.com/tr1v3r/airlock"
 )
 
 func TestFixtureLifecycleAndRetention(t *testing.T) {

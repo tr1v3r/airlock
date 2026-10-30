@@ -20,6 +20,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	redis "github.com/redis/go-redis/v9"
+
 	a "github.com/tr1v3r/airlock"
 	pg "github.com/tr1v3r/airlock/driver/postgres"
 	rd "github.com/tr1v3r/airlock/driver/redis"
