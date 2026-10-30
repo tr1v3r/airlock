@@ -17,7 +17,7 @@ import (
 	"github.com/tr1v3r/airlock/internal/driverconformance"
 )
 
-const emptyTestIndex = `{"Meta":"","Records":{}}`
+const emptyTestIndex = `{"Meta":"","Records":{},"Expires":{},"Deletes":[]}`
 
 // Script validation and time-window rejection must leave the whole Hash intact:
 // Redis Lua errors do not roll back writes performed before the error.
@@ -127,7 +127,7 @@ func TestLuaCommitRequiresOwner(t *testing.T) {
 	}
 	defer d.releaseUpdateLock(ctx, key, "current")
 	for _, owner := range []string{"", "other"} {
-		raw, err := d.evalKeys(ctx, commitScript, []string{key, updateLockKey(key)}, owner, "new", 0, 0, emptyTestIndex)
+		raw, err := d.evalKeys(ctx, partitionCommit, []string{key, updateLockKey(key), key + ":history"}, owner, "new", 0, 0, emptyTestIndex)
 		if owner == "" {
 			if err == nil {
 				t.Fatal("empty owner accepted", raw)
@@ -288,7 +288,7 @@ func evalTestCommit(t *testing.T, d *Driver, key string, args ...any) (any, erro
 		t.Fatalf("acquire test update lock: %t %v", ok, err)
 	}
 	defer d.releaseUpdateLock(ctx, key, owner)
-	return d.evalKeys(ctx, commitScript, []string{key, updateLockKey(key)}, append([]any{owner}, args...)...)
+	return d.evalKeys(ctx, partitionCommit, []string{key, updateLockKey(key), key + ":history"}, append([]any{owner}, args...)...)
 }
 
 func TestUpdateLockOwnershipAndExpiry(t *testing.T) {
@@ -324,7 +324,7 @@ func TestUpdateLockOwnershipAndExpiry(t *testing.T) {
 				t.Fatal(ok, err)
 			}
 		}
-		raw, err := d.evalKeys(ctx, commitScript, []string{key, lock}, "old", "stale", 0, 0, emptyTestIndex)
+		raw, err := d.evalKeys(ctx, partitionCommit, []string{key, lock, key + ":history"}, "old", "stale", 0, 0, emptyTestIndex)
 		if err != nil || raw != int64(0) || client.Exists(ctx, key).Val() != 0 {
 			t.Fatalf("expired owner published: %v %v", raw, err)
 		}

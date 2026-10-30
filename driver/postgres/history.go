@@ -11,8 +11,7 @@ import (
 
 // storedHistory is transaction-local metadata, never shared between commands.
 type storedHistory struct {
-	partitioned bool
-	total       int
+	total int
 }
 
 func terminalDeadline(rec *airlock.DriverRecord, retention time.Duration) sql.NullInt64 {
@@ -30,7 +29,7 @@ func terminalDeadline(rec *airlock.DriverRecord, retention time.Duration) sql.Nu
 // remains for core's conflict-before-GC check. Nil transitions roll back deletions.
 // Work is O(due), not O(retained history); capped GC cannot falsely fill MaxRecords.
 func (d *Driver) reclaim(ctx context.Context, tx *sql.Tx, s *airlock.SharedState, target string, now time.Time, stored storedHistory) (airlock.RetainedHistory, error) {
-	if !stored.partitioned {
+	if s == nil || stored.total == len(s.Records) {
 		return airlock.RetainedHistory{}, nil
 	}
 	if s.Time.After(now) {

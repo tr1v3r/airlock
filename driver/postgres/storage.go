@@ -18,7 +18,6 @@ import (
 type row struct {
 	record   airlock.DriverRecord
 	position sql.NullInt64
-	indexed  bool
 }
 
 func millis(t time.Time) sql.NullInt64 {
@@ -36,11 +35,7 @@ const resourceColumns = `state_version, config, rotations, protected, cursor, re
 const requestColumns = `id, owner, tenant, weight, submit_until_ms, wait_until_ms, status, lease_id, until_ms, finished_ms, failure, queue_position`
 
 func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) (*airlock.SharedState, map[string]row, error) {
-	return d.loadResource(ctx, tx, request.Resource, &request.Config)
-}
-
-func (d *Driver) loadResource(ctx context.Context, tx *sql.Tx, resource string, initial *airlock.ResourceConfig) (*airlock.SharedState, map[string]row, error) {
-	return d.loadState(ctx, tx, resource, initial, "", nil)
+	return d.loadState(ctx, tx, request.Resource, &request.Config, request.ID, new(storedHistory))
 }
 
 func (d *Driver) loadState(ctx context.Context, tx *sql.Tx, resource string, initial *airlock.ResourceConfig, target string, history *storedHistory) (*airlock.SharedState, map[string]row, error) {
@@ -101,22 +96,14 @@ func (d *Driver) loadState(ctx context.Context, tx *sql.Tx, resource string, ini
 		return nil, nil, airlock.ErrCorruptState
 	}
 	s.Time = instant(observed)
-	filter := ""
-	columns := requestColumns
-	args := []any{d.namespace, resource}
-	if s.Version == 2 {
-		if !total.Valid || total.Int64 < 0 || total.Int64 > int64(s.Config.MaxRecords) {
-			return nil, nil, airlock.ErrCorruptState
-		}
-		s.Version = 1
-		if history != nil {
-			history.partitioned, history.total = true, int(total.Int64)
-			columns += ", gc_after_ms"
-			// Each UNION arm has an independent index access path; an OR could scan history.
-			filter = " AND status IN ('queued','granted') UNION ALL SELECT " + columns + " FROM " + d.requestTable + " WHERE namespace=$1 AND resource=$2 AND id=$3 AND status NOT IN ('queued','granted')"
-			args = append(args, target)
-		}
+	if s.Version != 1 || !total.Valid || total.Int64 < 0 || total.Int64 > int64(s.Config.MaxRecords) {
+		return nil, nil, airlock.ErrCorruptState
 	}
+	history.total = int(total.Int64)
+	columns := requestColumns + ", gc_after_ms"
+	// Separate arms preserve the active-index and exact target-primary-key access paths.
+	filter := " AND status IN ('queued','granted') UNION ALL SELECT " + columns + " FROM " + d.requestTable + " WHERE namespace=$1 AND resource=$2 AND id=$3 AND status NOT IN ('queued','granted')"
+	args := []any{d.namespace, resource, target}
 	rows, err := tx.QueryContext(
 		ctx,
 		fmt.Sprintf(`
@@ -145,9 +132,7 @@ func (d *Driver) loadState(ctx context.Context, tx *sql.Tx, resource string, ini
 			&submit, &wait, &rec.Status, &rec.LeaseID,
 			&until, &finished, &rec.Failure, &position,
 		}
-		if history != nil && history.partitioned {
-			dest = append(dest, &gc)
-		}
+		dest = append(dest, &gc)
 		err = rows.Scan(dest...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("airlock/postgres: decode request: %w", err)
@@ -156,7 +141,7 @@ func (d *Driver) loadState(ctx context.Context, tx *sql.Tx, resource string, ini
 		rec.Request.SubmitUntil = time.UnixMilli(submit).UTC()
 		rec.Request.WaitUntil = time.UnixMilli(wait).UTC()
 		rec.Until, rec.Finished = instant(until), instant(finished)
-		if history != nil && history.partitioned && gc != terminalDeadline(&rec, s.Config.Retention) {
+		if gc != terminalDeadline(&rec, s.Config.Retention) {
 			return nil, nil, airlock.ErrCorruptState
 		}
 		if (rec.Status == airlock.Queued) != position.Valid {
@@ -172,18 +157,18 @@ func (d *Driver) loadState(ctx context.Context, tx *sql.Tx, resource string, ini
 			s.Queues[rec.Request.Tenant] = append(queue, rec.Request.ID)
 		}
 
-		before[rec.Request.ID] = row{record: rec, position: position, indexed: history != nil && history.partitioned}
+		before[rec.Request.ID] = row{record: rec, position: position}
 		s.Records[rec.Request.ID] = &rec
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, nil, fmt.Errorf("airlock/postgres: read requests: %w", err)
 	}
-	if history != nil && !history.partitioned {
-		history.total = len(before)
+	if history.total < len(before) {
+		return nil, nil, airlock.ErrCorruptState
 	}
 	if s.Revision == 0 {
-		if len(before) != 0 || observed.Valid || s.Version != 1 || s.Protected != "" || s.Cursor != 0 || len(s.Rotations) != 0 {
+		if history.total != 0 || len(before) != 0 || observed.Valid || s.Version != 1 || s.Protected != "" || s.Cursor != 0 || len(s.Rotations) != 0 {
 			return nil, nil, airlock.ErrCorruptState
 		}
 		if initial == nil {
@@ -220,7 +205,7 @@ func (d *Driver) persistState(ctx context.Context, tx *sql.Tx, s *airlock.Shared
 			next_maintenance_ms = $8,
 			capacity = $9,
 			capacity_version = $10,
-            state_version = 2, total_records = $11
+            total_records = $11
 		WHERE namespace = $1
 			AND resource = $2
 	`, d.resourceTable)
@@ -318,7 +303,7 @@ func (d *Driver) persistState(ctx context.Context, tx *sql.Tx, s *airlock.Shared
 	}
 	for id, rec := range s.Records {
 		position := positions[id]
-		if old, ok := before[id]; ok && old.position == position && reflect.DeepEqual(old.record, *rec) && (rec.Status == airlock.Queued || rec.Status == airlock.Granted || old.indexed) {
+		if old, ok := before[id]; ok && old.position == position && reflect.DeepEqual(old.record, *rec) {
 			continue
 		}
 		if count > 0 {

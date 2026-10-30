@@ -61,16 +61,16 @@ func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
 	if string(snapshot) == "corrupt" {
 		config = []byte("corrupt")
 	}
-	return sqlmock.NewRows(strings.Split(strings.ReplaceAll(resourceColumns, " ", ""), ",")).AddRow(s.Version, config, rotations, s.Protected, s.Cursor, strconv.FormatUint(s.Revision, 10), millis(s.Time), s.Capacity, strconv.FormatUint(s.CapacityVersion, 10), nil)
+	return sqlmock.NewRows(strings.Split(strings.ReplaceAll(resourceColumns, " ", ""), ",")).AddRow(s.Version, config, rotations, s.Protected, s.Cursor, strconv.FormatUint(s.Revision, 10), millis(s.Time), s.Capacity, strconv.FormatUint(s.CapacityVersion, 10), len(s.Records))
 }
 
 func requestRows(snapshot []byte) *sqlmock.Rows {
-	rows := sqlmock.NewRows(strings.Split(strings.ReplaceAll(requestColumns, " ", ""), ","))
+	rows := sqlmock.NewRows(strings.Split(strings.ReplaceAll(requestColumns+", gc_after_ms", " ", ""), ","))
 	var s airlock.SharedState
 	_ = json.Unmarshal(snapshot, &s)
 
 	for _, r := range s.Records {
-		rows.AddRow(r.Request.ID, r.Request.Owner, r.Request.Tenant, r.Request.Weight, r.Request.SubmitUntil.UnixMilli(), r.Request.WaitUntil.UnixMilli(), string(r.Status), r.LeaseID, millis(r.Until), millis(r.Finished), r.Failure, nil)
+		rows.AddRow(r.Request.ID, r.Request.Owner, r.Request.Tenant, r.Request.Weight, r.Request.SubmitUntil.UnixMilli(), r.Request.WaitUntil.UnixMilli(), string(r.Status), r.LeaseID, millis(r.Until), millis(r.Finished), r.Failure, nil, terminalDeadline(r, s.Config.Retention))
 	}
 
 	return rows

@@ -138,10 +138,10 @@ func TestValidationAndCorrupt(t *testing.T) {
 	}
 
 	for _, value := range []string{"", "corrupt", "{}"} {
-		if err := client.HSet(ctx, d.key(r.Resource), "state", value).Err(); err != nil {
+		if err := client.HSet(ctx, d.key(r.Resource), "state", value, "meta", "present").Err(); err != nil {
 			t.Fatal(err)
 		}
-		if result, err := d.Submit(ctx, r); !errors.Is(err, airlock.ErrCorruptState) || result != (airlock.Result{}) {
+		if result, err := d.Submit(ctx, r); err == nil || (value != "" && !errors.Is(err, airlock.ErrCorruptState)) || result != (airlock.Result{}) {
 			t.Fatal(result, err)
 		}
 	}
@@ -211,7 +211,7 @@ func (h hook) ProcessHook(next goredis.ProcessHook) goredis.ProcessHook {
 }
 
 func isCommit(cmd goredis.Cmder) bool {
-	return isScript(cmd, commitScript) || isScript(cmd, deltaCommitScript) || isScript(cmd, partitionCommit)
+	return isScript(cmd, partitionCommit)
 }
 
 func isScript(cmd goredis.Cmder, script string) bool {
@@ -598,12 +598,12 @@ func TestObserveReplyErrors(t *testing.T) {
 
 func TestIndexEncodingErrors(t *testing.T) {
 	invalid := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
-	if _, err := index(&airlock.SharedState{Time: invalid}); err == nil {
+	if _, _, err := partitionPublication(&airlock.SharedState{Time: invalid}, airlock.RetainedHistory{}, "token", nil); err == nil {
 		t.Fatal("invalid header time encoded")
 	}
 
 	s := &airlock.SharedState{Records: map[string]*airlock.DriverRecord{"bad": {Request: airlock.Request{Weight: 1}, Until: invalid, Status: airlock.Granted}}}
-	if _, err := index(s); err == nil {
+	if _, _, err := partitionPublication(s, airlock.RetainedHistory{}, "token", nil); err == nil {
 		t.Fatal("invalid record time encoded")
 	}
 
@@ -612,7 +612,7 @@ func TestIndexEncodingErrors(t *testing.T) {
 		"a": {Status: airlock.Granted, Request: airlock.Request{Weight: int(^uint(0) >> 1)}},
 		"b": {Status: airlock.Granted, Request: airlock.Request{Weight: 1}},
 	}}
-	if data, err := index(s); data != nil || !errors.Is(err, airlock.ErrCorruptState) {
+	if data, _, err := partitionPublication(s, airlock.RetainedHistory{}, "token", nil); data != nil || !errors.Is(err, airlock.ErrCorruptState) {
 		t.Fatal(data, err)
 	}
 }

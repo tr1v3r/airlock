@@ -46,8 +46,8 @@ AIRLOCK_REDIS_ADDR=127.0.0.1:6379 go run ./examples/basic
 
 每个资源使用永久 hash `airlock:{sha256(namespace + NUL + resource)}:state`，
 以及在该完整 key 后追加 `:history` 的到期 sorted set，两者位于同一 Cluster slot。
-namespace 必须为合法 UTF-8、无 NUL、最多 256 字节。v2 的 `state` 为版本标记，
-`active` 保存仅活动记录的 JSON 快照，`meta` 保存观察元数据，`r:<request-id>` 保存独立记录。
+namespace 必须为合法 UTF-8、无 NUL、最多 256 字节。`state` 保存仅活动记录的 SharedState JSON 快照（Version 1），
+`meta` 保存观察元数据，`r:<request-id>` 保存独立记录。
 终态索引分数为毫秒精度的 `max(Finished + Retention, SubmitUntil)`。
 缺失、损坏、错误类型及未完成发布的状态均拒绝操作。资源 key 不过期，更新锁有 TTL。
 参与者须使用相同不可变队列/租约策略，首次创建容量提示可以不同。
@@ -79,18 +79,15 @@ Cluster slot 内独立的 string key；用新的随机 owner token 执行 `SET N
 失去锁时丢弃候选、清理残余归属，在操作截止前重新读取计算。锁只覆盖 driver 状态
 更新，不跨越业务任务执行。
 
-v2 提交在修改前验证参数和 key 类型，随后持久写入 `airlock:v2:incomplete` 标记并清空观察元数据。
-更新变化记录与历史索引后，最后一条 HSET 同时发布活动快照、元数据和 `airlock:v2` 标记。
-Redis Lua 出错不回滚先前修改，因此任何中间运行时错误都会使该资源的读写均不可用，
-不会自动重放或重置。记录 generation 标记稳定复用，不编码无关的未到期终态历史。
+提交在修改前验证参数和 key 类型，随后持久清空 `state` 和 `meta`。
+更新变化记录与历史索引后，最后一条 HSET 同时发布活动快照和元数据。
+空 state 表示未完成发布，不能当作资源不存在。Redis Lua 出错不回滚先前修改，因此任何中间
+运行时错误都会使该资源的读写均不可用，不自动重放或重置。记录 generation 标记稳定复用，
+不编码无关的未到期终态历史。
 
-现有 v1 快照在首次更新（或需要维护的 Observe）时，持同一 owner 锁一次性惰性迁移。
-迁移完整读取并划分 v1 快照，应为这一次开销预留更新锁 TTL 和内存。旧 updater 若仍持锁，
-迁移无法开始；锁过期后旧 updater 的 guarded commit 无法覆盖 v2。旧二进制无法解码 v2 的
-state 标记，其修改操作拒绝执行；旧只读投影仍可返回已提交结果。上线应部署新 writer，
-不要让旧 writer 持续服务，也不能直接回滚二进制访问已迁移资源。先做一致备份并演练迁移。
-若发布停在 incomplete，必须停止所有客户端与活动工作，依据可信状态恢复或核对完整资源和历史。
-禁止仅删除或重置 state key 或索引，否则可能遗忘活动容量或请求结果。
+当前是开发期存储格式，不提供升级或兼容路径，只支持上述布局；普通命令没有旧快照加载、
+版本标记或迁移分支。未完成发布的恢复必须停止所有客户端与活动工作，再依据可信状态恢复或
+核对完整资源和历史。禁止仅删除或重置 state key 或索引，否则可能遗忘活动容量或请求结果。
 
 只有明确的锁竞争、归属失效或时间窗口失效才进行 1–10ms 有界退避，
 受 context 约束。每条脚本命令通过 `Cmder.NoRetry` 禁止 go-redis 网络重试；明确的

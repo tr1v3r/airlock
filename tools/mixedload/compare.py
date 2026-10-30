@@ -38,6 +38,8 @@ for repeat in range(1, args.repeats + 1):
                        "-address", addresses[backend], "-scenario", "expiry-gc" if case == 5 else "steady",
                        "-history", str(history), "-capacity", str(capacity), "-workers", str(workers),
                        "-repeat", str(repeat), "-duration", args.duration, "-output", str(raw)]
+                if variant == "baseline":
+                    cmd.append("-full-state-fixture")
                 begin = time.time()
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
                 (root / f"{name}.stderr.txt").write_text(result.stderr)

@@ -38,6 +38,7 @@ type config struct {
 	Backend, Address, Scenario, Output string
 	History, Capacity, Workers, Repeat int
 	Duration                           time.Duration
+	FullStateFixture                   bool
 }
 type sample struct {
 	Op, Phase, Status, Error, ErrorClass string
@@ -83,6 +84,7 @@ type backend struct {
 	db                               *sql.DB
 	namespace, key, resource, rt, qt string
 	seedRoles                        map[string]string
+	fullStateFixture                 bool
 }
 
 func main() {
@@ -96,6 +98,7 @@ func main() {
 	flag.IntVar(&c.Workers, "workers", 8, "lifecycle workers")
 	flag.IntVar(&c.Repeat, "repeat", 1, "trial number")
 	flag.DurationVar(&c.Duration, "duration", 15*time.Second, "measurement window")
+	flag.BoolVar(&c.FullStateFixture, "full-state-fixture", false, "baseline-only fixture for the pre-partition storage layout")
 	flag.Parse()
 	if err := run(c); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -457,7 +460,7 @@ func summarize(c config, data []sample) report {
 	return r
 }
 func connect(c config) (*backend, error) {
-	b := &backend{namespace: "validation-" + a.NewRequest(time.Now()).Owner, resource: "capacity"}
+	b := &backend{namespace: "validation-" + a.NewRequest(time.Now()).Owner, resource: "capacity", fullStateFixture: c.FullStateFixture}
 	if c.Backend == "redis" {
 		b.r = redis.NewClient(&redis.Options{Addr: c.Address, ContextTimeoutEnabled: true, PoolSize: max(c.Workers, 16)})
 		d, err := rd.New(b.r, b.namespace)
@@ -559,11 +562,60 @@ func (b *backend) seed(ctx context.Context, s *a.SharedState) error {
 	}
 
 	if b.r != nil {
-		data, err := a.EncodeState(s)
+		if b.fullStateFixture {
+			data, err := a.EncodeState(s)
+			if err != nil {
+				return err
+			}
+			return b.r.HSet(ctx, b.key, "state", string(data)).Err()
+		}
+		active := *s
+		active.Records = make(map[string]*a.DriverRecord)
+		observation, err := s.Observation()
 		if err != nil {
 			return err
 		}
-		return b.r.HSet(ctx, b.key, "state", string(data)).Err()
+		token := a.NewRequest(s.Time).Owner
+		meta, err := json.Marshal(struct {
+			a.Observation
+			Token string
+		}{observation, token})
+		if err != nil {
+			return err
+		}
+		fields := map[string]any{"meta": string(meta)}
+		var history []redis.Z
+		for id, rec := range s.Records {
+			encoded, err := json.Marshal(struct {
+				Token  string
+				Record *a.DriverRecord
+			}{token, rec})
+			if err != nil {
+				return err
+			}
+			fields["r:"+id] = string(encoded)
+			if rec.Status == a.Queued || rec.Status == a.Granted {
+				active.Records[id] = rec
+			} else {
+				at := rec.Finished.Add(s.Config.Retention)
+				if rec.Request.SubmitUntil.After(at) {
+					at = rec.Request.SubmitUntil
+				}
+				history = append(history, redis.Z{Score: float64(at.UnixMilli()), Member: id})
+			}
+		}
+		data, err := a.EncodeState(&active)
+		if err != nil {
+			return err
+		}
+		fields["state"] = string(data)
+		pipe := b.r.TxPipeline()
+		pipe.HSet(ctx, b.key, fields)
+		if len(history) > 0 {
+			pipe.ZAdd(ctx, b.key+":history", history...)
+		}
+		_, err = pipe.Exec(ctx)
+		return err
 	}
 	tx, err := b.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -580,19 +632,30 @@ func (b *backend) seed(ctx context.Context, s *a.SharedState) error {
 	if err != nil {
 		return err
 	}
+	if !b.fullStateFixture {
+		if _, err = tx.ExecContext(ctx, "UPDATE "+b.rt+" SET total_records=$1 WHERE namespace=$2 AND resource=$3", len(s.Records), b.namespace, s.Resource); err != nil {
+			return err
+		}
+	}
 	positions := map[string]int{}
 	for _, queue := range s.Queues {
 		for i, id := range queue {
 			positions[id] = i
 		}
 	}
-	args := make([]any, 0, 256*14)
+	width := 14
+	columns := "namespace,resource,id,owner,tenant,weight,submit_until_ms,wait_until_ms,status,lease_id,until_ms,finished_ms,failure,queue_position"
+	if !b.fullStateFixture {
+		width++
+		columns += ",gc_after_ms"
+	}
+	args := make([]any, 0, 256*width)
 	var values []string
 	flush := func() error {
 		if len(values) == 0 {
 			return nil
 		}
-		_, err := tx.ExecContext(ctx, "INSERT INTO "+b.qt+" (namespace,resource,id,owner,tenant,weight,submit_until_ms,wait_until_ms,status,lease_id,until_ms,finished_ms,failure,queue_position) VALUES "+strings.Join(values, ","), args...)
+		_, err := tx.ExecContext(ctx, "INSERT INTO "+b.qt+" ("+columns+") VALUES "+strings.Join(values, ","), args...)
 		args = args[:0]
 		values = values[:0]
 		return err
@@ -608,12 +671,23 @@ func (b *backend) seed(ctx context.Context, s *a.SharedState) error {
 		if n, ok := positions[id]; ok {
 			position = n
 		}
-		place := make([]string, 14)
+		place := make([]string, width)
 		for i := range place {
 			place[i] = fmt.Sprintf("$%d", len(args)+i+1)
 		}
 		values = append(values, "("+strings.Join(place, ",")+")")
 		args = append(args, b.namespace, s.Resource, id, r.Request.Owner, r.Request.Tenant, r.Request.Weight, r.Request.SubmitUntil.UnixMilli(), r.Request.WaitUntil.UnixMilli(), r.Status, r.LeaseID, until, finished, r.Failure, position)
+		if !b.fullStateFixture {
+			var gc any
+			if r.Status != a.Queued && r.Status != a.Granted {
+				at := r.Finished.Add(s.Config.Retention)
+				if r.Request.SubmitUntil.After(at) {
+					at = r.Request.SubmitUntil
+				}
+				gc = at.UnixMilli()
+			}
+			args = append(args, gc)
+		}
 		if len(values) == 256 {
 			if err := flush(); err != nil {
 				return err
@@ -632,13 +706,7 @@ func (b *backend) stats(ctx context.Context) (population, error) {
 		if err != nil {
 			return m, err
 		}
-		partitioned := string(data) == "airlock:v2"
-		if partitioned {
-			data, err = b.r.HGet(ctx, b.key, "active").Bytes()
-			if err != nil {
-				return m, err
-			}
-		}
+		partitioned := !b.fullStateFixture
 		s, err := a.DecodeState(data)
 		if err != nil {
 			return m, err

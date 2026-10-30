@@ -15,7 +15,7 @@ import (
 
 func TestReclaimHistoryBoundaries(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	for _, mode := range []string{"legacy", "retained", "empty", "delete-error", "affected-error", "over-delete", "query-error", "missing-index", "unexpected-index", "due-index", "rollback-clock"} {
+	for _, mode := range []string{"no-omitted", "retained", "empty", "delete-error", "affected-error", "over-delete", "query-error", "missing-index", "unexpected-index", "due-index", "rollback-clock"} {
 		t.Run(mode, func(t *testing.T) {
 			d, m := mockDriver(t)
 			m.ExpectBegin()
@@ -25,9 +25,12 @@ func TestReclaimHistoryBoundaries(t *testing.T) {
 			}
 			defer func() { _ = tx.Rollback() }()
 			s := &airlock.SharedState{Resource: "r", Records: map[string]*airlock.DriverRecord{}, Time: now}
-			stored := storedHistory{partitioned: mode != "legacy", total: 3}
+			stored := storedHistory{total: 3}
+			if mode == "no-omitted" {
+				stored.total = 0
+			}
 			wantErr := false
-			if mode != "legacy" {
+			if mode != "no-omitted" {
 				deleted := int64(2)
 				if mode == "empty" {
 					deleted = 3
@@ -77,14 +80,14 @@ func TestReclaimHistoryBoundaries(t *testing.T) {
 			if (err != nil) != wantErr {
 				t.Fatalf("%+v %v", got, err)
 			}
-			if !wantErr && mode != "legacy" && mode != "empty" && got.Count != 1 {
+			if !wantErr && mode != "no-omitted" && mode != "empty" && got.Count != 1 {
 				t.Fatal(got)
 			}
 		})
 	}
 }
 
-func TestPartitionedLoad(t *testing.T) {
+func TestActiveHistoryLoad(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	r := request(now)
 	state, _, _, err := airlock.Transition(nil, now, airlock.Command{Kind: airlock.Submit, Request: r})
@@ -100,7 +103,7 @@ func TestPartitionedLoad(t *testing.T) {
 			m.ExpectBegin()
 			tx, _ := d.db.Begin()
 			defer func() { _ = tx.Rollback() }()
-			m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"version", "config", "rotations", "protected", "cursor", "revision", "time", "capacity", "cv", "total"}).AddRow(2, config, rotations, state.Protected, state.Cursor, "1", now.UnixMilli(), 1, "1", total))
+			m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"version", "config", "rotations", "protected", "cursor", "revision", "time", "capacity", "cv", "total"}).AddRow(1, config, rotations, state.Protected, state.Cursor, "1", now.UnixMilli(), 1, "1", total))
 			valid := total == int64(2)
 			if valid {
 				var full airlock.SharedState
@@ -120,7 +123,7 @@ func TestPartitionedLoad(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || got.Version != 1 || !h.partitioned || h.total != 2 || len(before) != 1 {
+			if err != nil || got.Version != 1 || h.total != 2 || len(before) != 1 {
 				t.Fatalf("%+v %+v %v", got, h, err)
 			}
 		})

@@ -16,7 +16,7 @@ import (
 
 func seedPartitionHistory(t *testing.T, count int) (*Driver, airlock.Request, time.Time) {
 	t.Helper()
-	d, c, server := fixture(t)
+	d, _, server := fixture(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	server.SetTime(now)
 	r := requestAt(now)
@@ -31,17 +31,11 @@ func seedPartitionHistory(t *testing.T, count int) (*Driver, airlock.Request, ti
 		req.Config = r.Config
 		s.Records[req.ID] = &airlock.DriverRecord{Request: req, Status: airlock.Cancelled, Finished: now}
 	}
-	data, err := airlock.EncodeState(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := c.HSet(context.Background(), d.key(r.Resource), "state", string(data)).Err(); err != nil {
-		t.Fatal(err)
-	}
+	seedPartitionState(t, d, s)
 	return d, r, now
 }
 
-func TestPartitionMigrationAndBoundedRead(t *testing.T) {
+func TestPartitionBoundedRead(t *testing.T) {
 	d, r, _ := seedPartitionHistory(t, 1000)
 	ctx := context.Background()
 	key := d.key(r.Resource)
@@ -50,13 +44,10 @@ func TestPartitionMigrationAndBoundedRead(t *testing.T) {
 		t.Fatal(result, err)
 	}
 	c := d.client
-	if c.HGet(ctx, key, "state").Val() != layoutV2 || c.ZCard(ctx, key+":history").Val() != 1000 {
-		t.Fatal("missing migration")
+	if c.ZCard(ctx, key+":history").Val() != 1000 {
+		t.Fatal("missing history")
 	}
-	if _, err := airlock.DecodeState([]byte(c.HGet(ctx, key, "state").Val())); err == nil {
-		t.Fatal("legacy decoder accepted v2")
-	}
-	active, err := airlock.DecodeState([]byte(c.HGet(ctx, key, "active").Val()))
+	active, err := airlock.DecodeState([]byte(c.HGet(ctx, key, "state").Val()))
 	if err != nil || len(active.Records) != 1 {
 		t.Fatal(active, err)
 	}
@@ -123,18 +114,22 @@ func TestPartitionFailedPublicationRemainsUnavailable(t *testing.T) {
 	if _, err := d.Observe(ctx, r); err != nil {
 		t.Fatal(err)
 	}
-	active := d.client.HGet(ctx, key, "active").Val()
+	active := d.client.HGet(ctx, key, "state").Val()
 	meta := d.client.HGet(ctx, key, "meta").Val()
-	payload := `{"Meta":` + strconvQuote(meta) + `,"Records":{},"Expires":{},"Deletes":[],"Migrate":false}`
+	removed := d.client.ZRange(ctx, key+":history", 0, 0).Val()[0]
+	payload := `{"Meta":` + strconvQuote(meta) + `,"Records":{},"Expires":{},"Deletes":[` + strconvQuote(removed) + `]}`
 	if ok, err := d.tryUpdateLock(ctx, key, "fault"); !ok || err != nil {
 		t.Fatal(ok, err)
 	}
-	script := strings.Replace(partitionCommit, "redis.call('HSET',KEYS[1],'state','airlock:v2','active',ARGV[2],'meta',p.Meta)", "error('injected publication failure')", 1)
+	script := strings.Replace(partitionCommit, "redis.call('HSET',KEYS[1],'state',ARGV[2],'meta',p.Meta)", "error('injected publication failure')", 1)
 	if _, err := d.evalKeys(ctx, script, []string{key, updateLockKey(key), key + ":history"}, "fault", active, 0, 0, payload); err == nil {
 		t.Fatal("missing fault")
 	}
 	d.releaseUpdateLock(ctx, key, "fault")
-	if d.client.HGet(ctx, key, "state").Val() != "airlock:v2:incomplete" {
+	if d.client.HExists(ctx, key, "r:"+removed).Val() {
+		t.Fatal("fault did not follow record deletion")
+	}
+	if d.client.HGet(ctx, key, "state").Val() != "" {
 		t.Fatal("lost guard")
 	}
 	if _, err := d.Observe(ctx, r); err == nil {
@@ -146,7 +141,7 @@ func TestPartitionFailedPublicationRemainsUnavailable(t *testing.T) {
 	if _, err := d.InspectResource(ctx, r.Resource); err == nil {
 		t.Fatal("inspected partial publication")
 	}
-	// The old reader also sees no ready projection and its snapshot cannot decode.
+	// Observation metadata is cleared until the entire publication succeeds.
 	raw, err := d.eval(ctx, observeScript, key, r.ID)
 	if err != nil || raw.([]any)[0] != "" {
 		t.Fatal(raw, err)
@@ -185,6 +180,16 @@ func TestPartitionMalformedReadFailsClosed(t *testing.T) {
 		{"before", func(v []any) []any { v[7] = "bad"; return v }},
 		{"terminal", func(v []any) []any { v[5] = []any{"bad", "{}", "1"}; return v }},
 		{"score", func(v []any) []any { r := v[5].([]any); r[2] = "1"; return v }},
+		{"terminal-in-active-state", func(v []any) []any {
+			var state airlock.SharedState
+			_ = json.Unmarshal([]byte(v[1].(string)), &state)
+			for _, rec := range state.Records {
+				rec.Status = airlock.Cancelled
+			}
+			encoded, _ := json.Marshal(&state)
+			v[1] = string(encoded)
+			return v
+		}},
 		{"nil-record", func(v []any) []any {
 			var s airlock.SharedState
 			_ = json.Unmarshal([]byte(v[1].(string)), &s)
@@ -223,30 +228,27 @@ func TestPartitionMalformedReadFailsClosed(t *testing.T) {
 	}
 }
 
-func TestPartitionPublicationAndLegacyIndexErrors(t *testing.T) {
+func TestPartitionPublicationErrors(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	r := requestAt(now)
 	state, _, _, err := airlock.Transition(nil, now, submit(r))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := index(state); err != nil {
-		t.Fatal(err)
-	}
 	state.Records[r.ID] = nil
-	if _, _, err := partitionPublication(state, airlock.RetainedHistory{}, "token", nil, false); err == nil {
+	if _, _, err := partitionPublication(state, airlock.RetainedHistory{}, "token", nil); err == nil {
 		t.Fatal("accepted null record")
 	}
 	state.Records = map[string]*airlock.DriverRecord{}
 	state.Time = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
-	if _, _, err := partitionPublication(state, airlock.RetainedHistory{}, "token", nil, false); err == nil {
+	if _, _, err := partitionPublication(state, airlock.RetainedHistory{}, "token", nil); err == nil {
 		t.Fatal("accepted invalid JSON time")
 	}
 	state.Time = now
 	bad := r
 	bad.SubmitUntil = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
 	state.Records[r.ID] = &airlock.DriverRecord{Request: bad, Status: airlock.Granted, Until: now.Add(time.Second)}
-	if _, _, err := partitionPublication(state, airlock.RetainedHistory{}, "token", nil, false); err == nil {
+	if _, _, err := partitionPublication(state, airlock.RetainedHistory{}, "token", nil); err == nil {
 		t.Fatal("accepted invalid record time")
 	}
 }
@@ -269,14 +271,8 @@ func TestPartitionAllDueHistoryReclaimedWithoutFalseFull(t *testing.T) {
 		target.Config = r.Config
 		state.Records[target.ID] = &airlock.DriverRecord{Request: target, Status: airlock.Cancelled, Finished: now}
 	}
-	encoded, err := airlock.EncodeState(state)
-	if err != nil {
-		t.Fatal(err)
-	}
 	key := d.key(r.Resource)
-	if err := c.HSet(ctx, key, "state", string(encoded)).Err(); err != nil {
-		t.Fatal(err)
-	}
+	seedPartitionState(t, d, state)
 	if _, err := d.Resize(ctx, airlock.ResizeRequest{Resource: r.Resource, Capacity: 1, ExpectedVersion: 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +292,7 @@ func TestPartitionAllDueHistoryReclaimedWithoutFalseFull(t *testing.T) {
 	if n := c.ZCard(ctx, key+":history").Val(); n != 0 {
 		t.Fatal("due history retained", n)
 	}
-	if n := c.HLen(ctx, key).Val(); n != 4 {
+	if n := c.HLen(ctx, key).Val(); n != 3 {
 		t.Fatal("orphan history", n)
 	}
 }
@@ -323,7 +319,7 @@ func TestPartitionCommitGuard(t *testing.T) {
 			if ok, err := d.tryUpdateLock(ctx, key, "owner"); !ok || err != nil {
 				t.Fatal(ok, err)
 			}
-			payload := `{"Meta":"meta","Records":{},"Expires":{},"Deletes":[],"Migrate":true}`
+			payload := `{"Meta":"meta","Records":{},"Expires":{},"Deletes":[]}`
 			result, err := d.evalKeys(ctx, partitionCommit, []string{key, updateLockKey(key), key + ":history"}, tc.owner, "snapshot", tc.lower, tc.upper, payload)
 			if (err != nil) != tc.wantError || (!tc.wantError && result != tc.want) {
 				t.Fatal(result, err)
@@ -354,21 +350,15 @@ func integrationPartitionHistory(t *testing.T, client goredis.UniversalClient, n
 		req.Config = r.Config
 		state.Records[req.ID] = &airlock.DriverRecord{Request: req, Status: airlock.Cancelled, Finished: now}
 	}
-	data, err := airlock.EncodeState(state)
-	if err != nil {
-		t.Fatal(err)
-	}
 	key := d.key(r.Resource)
 	t.Cleanup(func() { client.Del(context.Background(), key, key+":history", updateLockKey(key)) })
-	if err := client.HSet(ctx, key, "state", string(data)).Err(); err != nil {
-		t.Fatal(err)
-	}
+	seedPartitionState(t, d, state)
 	result, err := d.Observe(ctx, r)
 	if err != nil || result.Status != airlock.Granted {
 		t.Fatal(result, err)
 	}
 	if client.ZCard(ctx, key+":history").Val() != 1000 {
-		t.Fatal("migration lost history")
+		t.Fatal("lost history")
 	}
 	raw, err := d.evalKeys(ctx, partitionRead, []string{key, key + ":history"}, r.ID)
 	if err != nil {
@@ -379,5 +369,24 @@ func integrationPartitionHistory(t *testing.T, client goredis.UniversalClient, n
 	}
 	if _, err := d.Renew(ctx, airlock.LeaseRef{Request: r, ID: result.LeaseID}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// seedPartitionState builds the same storage layout as ordinary publications.
+func seedPartitionState(t *testing.T, d *Driver, state *airlock.SharedState) {
+	t.Helper()
+	payload, snapshot, err := partitionPublication(state, airlock.RetainedHistory{}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	key := d.key(state.Resource)
+	if ok, err := d.tryUpdateLock(ctx, key, "fixture"); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
+	defer d.releaseUpdateLock(ctx, key, "fixture")
+	result, err := d.evalKeys(ctx, partitionCommit, []string{key, updateLockKey(key), key + ":history"}, "fixture", string(snapshot), 0, 0, string(payload))
+	if err != nil || result != int64(1) {
+		t.Fatal(result, err)
 	}
 }

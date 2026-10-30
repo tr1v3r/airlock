@@ -47,22 +47,21 @@ or hold a connection for the duration of an acquired lease.
 Custom names use quoted ASCII identifiers: schema up to 63 bytes, resource table
 up to 54 bytes to leave room for the `_requests` suffix. Run deployment DDL
 serially. Required columns are checked; this is not a comprehensive
-schema/constraint audit. Migration relaxes the legacy capacity check, adds
-`total_records` and `gc_after_ms`, permits storage versions 1/2, and creates partial
-active/terminal indexes. These are ordinary transactional DDL operations and may
-block writes; schedule a maintenance window and upgrade writers before resuming.
-The first mutation of each v1 resource reads/validates the complete old state,
-backfills terminal deadlines/counts, and marks it v2 in the same transaction.
-Future mutations read only active records and the exact target terminal. Old
-writers reject v2 through the state version check; old Observe projections may
-still read the unchanged request rows, but cannot mutate them. Do not downgrade
-or reset version/count fields to enable mixed-version writes.
+schema/constraint audit. The fresh layout uses `state_version=1`, an exact
+`total_records NOT NULL DEFAULT 0` counter, terminal `gc_after_ms` deadlines, and
+partial active/terminal indexes. Required layout is created directly; there is no
+old-layout detection, backfill, version promotion, or mixed-writer compatibility.
+Existing development tables from earlier experimental layouts must be recreated
+with all clients stopped; do not reuse their data or reset markers in place.
+Ordinary transactional index creation may block writes: provision tables/indexes
+before serving traffic. The previously shipped legacy capacity-check relaxation
+for Resize(0) remains independent of this new layout.
 
-升级先停止旧 writer，在维护窗口串行执行 `EnsureSchema`，再恢复新版本写入。
-DDL 增加精确计数、终态期限列及活动/终态部分索引，并允许存储版本 1/2；普通事务式
-建索引可能阻塞写入。每个 v1 资源首次写入时，在资源锁内全量验证、补齐索引元数据，
-与业务变化一起原子升级至 v2。旧 writer 读取 v2 后拒绝转换，旧 Observe 仍可只读同表
-投影。禁止为了降级而重置版本或计数；这不是支持新旧 writer 混写的迁移。
+新表直接使用 `state_version=1`、精确 `total_records NOT NULL DEFAULT 0` 计数、
+终态 `gc_after_ms` 期限及活动/终态部分索引。本次不提供旧布局检测、回填、版本升级或
+新旧 writer 混用兼容。此前实验布局的开发表必须在停止所有客户端后重建，不复用旧数据，
+不通过重置标记原地转换。事务式建索引可能阻塞写入，应在接入流量前完成建表和索引。
+此前已发布的 Resize(0) 旧容量检查放宽逻辑保留，与本次布局设计独立。
 
 **Upgrade before using Resize(0):** upgrade all clients to understand paused state,
 then explicitly run the new `EnsureSchema` during deployment before publishing zero
@@ -120,14 +119,14 @@ GROUP BY tenant, status;
 ```
 
 Only configuration and group/tenant rotation lists remain JSONB on the resource
-row. There is no complete-resource snapshot column. After migration, mutations
+row. There is no complete-resource snapshot column. Mutations
 read all queued/granted records plus the target request by ID, including a target
 already due for GC so request conflicts are checked before reclamation. Other
 terminal records remain in the same table and consume the exact MaxRecords budget.
 An authoritative resource count and indexed earliest deadline summarize them;
 ordinary operations do not decode or scan unrelated retained history. Loaded
 records are validated, including exact indexed terminal deadlines. Untouched
-history relies on validation at migration/write and the transactionally maintained
+history relies on validation at write and the transactionally maintained
 count/index; arbitrary external corruption is not audited on every command.
 
 Terminal GC removes all due non-target rows using the deadline index, then adjusts
@@ -139,10 +138,10 @@ first retained terminal deadline, without scanning the history. Deletes/upserts
 for loaded deltas use batches of at most 256 records and check affected counts.
 Queue positions retain the deferred uniqueness constraint.
 
-迁移后只读取全部 queued/granted 与当前请求 ID 对应的记录；目标即使到期也先读入，
+普通操作只读取全部 queued/granted 与当前请求 ID 对应的记录；目标即使到期也先读入，
 保留“先检测请求冲突、后 GC”的次序。其他终态同表保留，仍精确占用 MaxRecords。
 资源计数及期限索引汇总未加载历史，普通操作不扫描/解码无关终态。已读取记录会验证
-真实 GC 期限；未读取历史依赖迁移/写入时验证及事务维护的计数/索引，不逐次审计外部损坏。
+真实 GC 期限；未读取历史依赖写入时验证及事务维护的计数/索引，不逐次审计外部损坏。
 
 GC 按索引一次删除全部已到期非目标终态，成本 O(due)，集中到期仍可能有延迟尖峰。
 目标 GC、活动租约过期、调度、请求差异和资源计数共用行锁与同一事务，错误时整体回滚。

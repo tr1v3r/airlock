@@ -10,25 +10,18 @@ import (
 	"github.com/tr1v3r/airlock"
 )
 
-const layoutV2 = "airlock:v2"
-
 // partitionRead reads all active state, the target and expired history only.
 // The expiry index and hash are authoritative together; incomplete publications
 // remain unavailable rather than silently recreating a resource.
 const partitionRead = `
-local marker = redis.call('HGET', KEYS[1], 'state')
+local active = redis.call('HGET', KEYS[1], 'state')
 local tm = redis.call('TIME')
-if not marker then
+if not active then
  if redis.call('EXISTS', KEYS[1]) ~= 0 or redis.call('EXISTS', KEYS[2]) ~= 0 then return redis.error_reply('incomplete resource') end
  return {0, '', tm[1], tm[2], '', {}, 0, ''}
 end
-if marker ~= 'airlock:v2' then
- if string.sub(marker,1,8) == 'airlock:' then return redis.error_reply('incomplete layout') end
- return {1,marker,tm[1],tm[2],'',{},0,''}
-end
-local active = redis.call('HGET',KEYS[1],'active')
 local meta = redis.call('HGET',KEYS[1],'meta')
-if not active or not meta or meta == '' then return redis.error_reply('incomplete resource') end
+if active == '' or not meta or meta == '' then return redis.error_reply('incomplete resource') end
 local now = tonumber(tm[1])*1000+math.floor(tonumber(tm[2])/1000)
 local due = redis.call('ZRANGEBYSCORE',KEYS[2],'-inf',now)
 local records = {}
@@ -46,7 +39,7 @@ if targetScore and tonumber(targetScore)>now then count=count-1 end
 local first = redis.call('ZRANGEBYSCORE',KEYS[2],'('..now,'+inf','WITHSCORES','LIMIT',0,2)
 local before = ''
 for i=1,#first,2 do if first[i] ~= ARGV[1] then before=first[i+1]; break end end
-return {2,active,tm[1],tm[2],meta,records,count,before,redis.call('HLEN',KEYS[1]),redis.call('ZCARD',KEYS[2])}
+return {1,active,tm[1],tm[2],meta,records,count,before,redis.call('HLEN',KEYS[1]),redis.call('ZCARD',KEYS[2])}
 `
 
 // partitionCommit deliberately publishes an unavailable marker before any
@@ -85,23 +78,19 @@ const partitionCommit = `
 	if now < lower or (upper ~= 0 and now >= upper) then return 0 end
 
 local p=cjson.decode(ARGV[5])
-if type(p)~='table' or type(p.Meta)~='string' or type(p.Records)~='table' or type(p.Expires)~='table' or type(p.Deletes)~='table' or type(p.Migrate)~='boolean' or ARGV[2]=='' then return redis.error_reply('invalid publication') end
+if type(p)~='table' or type(p.Meta)~='string' or type(p.Records)~='table' or type(p.Expires)~='table' or type(p.Deletes)~='table' or ARGV[2]=='' then return redis.error_reply('invalid publication') end
 for id,value in pairs(p.Records) do if type(id)~='string' or type(value)~='string' then return redis.error_reply('invalid record') end end
 for id,score in pairs(p.Expires) do if type(id)~='string' or type(score)~='number' or score<=0 or score>9007199254740991 or score~=math.floor(score) or not p.Records[id] then return redis.error_reply('invalid expiry') end end
 for _,id in ipairs(p.Deletes) do if type(id)~='string' then return redis.error_reply('invalid deletion') end end
 local ht=redis.call('TYPE',KEYS[1]).ok; local zt=redis.call('TYPE',KEYS[3]).ok
 if (ht~='none' and ht~='hash') or (zt~='none' and zt~='zset') then return redis.error_reply('invalid storage type') end
-local marker=redis.call('HGET',KEYS[1],'state')
-if marker and string.sub(marker,1,8)=='airlock:' and marker~='airlock:v2' then return redis.error_reply('incomplete layout') end
-redis.call('HSET',KEYS[1],'state','airlock:v2:incomplete','meta','')
-if p.Migrate then
- for _,field in ipairs(redis.call('HKEYS',KEYS[1])) do if string.sub(field,1,2)=='r:' then redis.call('HDEL',KEYS[1],field) end end
- redis.call('DEL',KEYS[3])
-end
+local current=redis.call('HGET',KEYS[1],'state')
+if current == '' then return redis.error_reply('incomplete resource') end
+redis.call('HSET',KEYS[1],'state','','meta','')
 for _,id in ipairs(p.Deletes) do redis.call('HDEL',KEYS[1],'r:'..id); redis.call('ZREM',KEYS[3],id) end
 for id,value in pairs(p.Records) do redis.call('HSET',KEYS[1],'r:'..id,value) end
 for id,score in pairs(p.Expires) do redis.call('ZADD',KEYS[3],score,id) end
-redis.call('HSET',KEYS[1],'state','airlock:v2','active',ARGV[2],'meta',p.Meta)
+redis.call('HSET',KEYS[1],'state',ARGV[2],'meta',p.Meta)
 return 1
 `
 
@@ -115,10 +104,10 @@ func (d *Driver) executePartitioned(ctx context.Context, command airlock.Command
 		return airlock.Result{}, false, airlock.ErrCorruptState
 	}
 	kind, ok := values[0].(int64)
-	if !ok || kind < 0 || kind > 2 {
+	if !ok || kind < 0 || kind > 1 {
 		return airlock.Result{}, false, airlock.ErrCorruptState
 	}
-	snapshot, now, err := decodeRead([]any{min(kind, int64(1)), values[1], values[2], values[3]})
+	snapshot, now, err := decodeRead([]any{kind, values[1], values[2], values[3]})
 	if err != nil {
 		return airlock.Result{}, false, err
 	}
@@ -128,13 +117,18 @@ func (d *Driver) executePartitioned(ctx context.Context, command airlock.Command
 	}
 	history := airlock.RetainedHistory{}
 	token := ""
-	if kind == 2 {
+	if kind == 1 {
 		if state == nil || len(values) != 10 {
 			return airlock.Result{}, false, airlock.ErrCorruptState
 		}
+		for _, rec := range state.Records {
+			if rec == nil || !activeRecord(rec) {
+				return airlock.Result{}, false, airlock.ErrCorruptState
+			}
+		}
 		fields, fok := values[8].(int64)
 		total, tok := values[9].(int64)
-		if !fok || !tok || fields != int64(len(state.Records))+total+3 {
+		if !fok || !tok || fields != int64(len(state.Records))+total+2 {
 			return airlock.Result{}, false, airlock.ErrCorruptState
 		}
 		meta, mok := values[4].(string)
@@ -179,9 +173,6 @@ func (d *Driver) executePartitioned(ctx context.Context, command airlock.Command
 	before := make(map[string]recordVersion)
 	if state != nil {
 		for id, rec := range state.Records {
-			if rec == nil {
-				return airlock.Result{}, false, airlock.ErrCorruptState
-			}
 			before[id] = version(rec)
 		}
 	}
@@ -197,7 +188,7 @@ func (d *Driver) executePartitioned(ctx context.Context, command airlock.Command
 			publicationBaseline[id] = recordVersion{}
 		}
 	}
-	projection, active, err := partitionPublication(next, history, token, publicationBaseline, kind != 2)
+	projection, active, err := partitionPublication(next, history, token, publicationBaseline)
 	if err != nil {
 		return airlock.Result{}, false, err
 	}
@@ -224,7 +215,7 @@ func activeRecord(rec *airlock.DriverRecord) bool {
 	return rec.Status == airlock.Queued || rec.Status == airlock.Granted
 }
 
-func partitionPublication(state *airlock.SharedState, history airlock.RetainedHistory, token string, before map[string]recordVersion, migrate bool) ([]byte, []byte, error) {
+func partitionPublication(state *airlock.SharedState, history airlock.RetainedHistory, token string, before map[string]recordVersion) ([]byte, []byte, error) {
 	if token == "" {
 		token = airlock.NewRequest(state.Time).Owner
 	}
@@ -244,15 +235,14 @@ func partitionPublication(state *airlock.SharedState, history airlock.RetainedHi
 		Records map[string]string
 		Expires map[string]int64
 		Deletes []string
-		Migrate bool
-	}{string(meta), map[string]string{}, map[string]int64{}, []string{}, migrate}
+	}{string(meta), map[string]string{}, map[string]int64{}, []string{}}
 	active := *state
 	active.Records = make(map[string]*airlock.DriverRecord)
 	for id, rec := range state.Records {
 		if activeRecord(rec) {
 			active.Records[id] = rec
 		}
-		if old, ok := before[id]; !migrate && ok && old == version(rec) {
+		if old, ok := before[id]; ok && old == version(rec) {
 			continue
 		}
 		encoded, e := json.Marshal(observationRecord{Token: token, Record: rec})

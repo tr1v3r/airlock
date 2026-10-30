@@ -46,8 +46,8 @@ Do not mutate client options or install hooks that retry ambiguous operations.
 Each resource uses a permanent hash
 `airlock:{sha256(namespace + NUL + resource)}:state` and an expiry sorted set
 at that exact key plus `:history`, in the same Cluster slot. Namespace is valid
-UTF-8, without NUL, at most 256 bytes. Layout v2 stores a version marker in
-`state`, an active-only JSON snapshot in `active`, observation metadata in `meta`,
+UTF-8, without NUL, at most 256 bytes. The hash stores an active-only `SharedState` JSON snapshot (Version 1) in
+`state`, observation metadata in `meta`,
 and independent records in `r:<request-id>`. Terminal IDs are indexed by
 `max(Finished + Retention, SubmitUntil)` in whole milliseconds. Missing, corrupt,
 wrong-type and incomplete state fails closed. Resource keys do not expire;
@@ -90,26 +90,20 @@ confirmed expiry discards the candidate, releases any remaining ownership and
 retries from a fresh read within the operation deadline. The lock covers driver
 state updates only and is never held while application work runs.
 
-The v2 commit validates arguments and key types before mutation, then writes a
-persistent `airlock:v2:incomplete` marker and clears observation metadata. It
-updates changed records and the history index, and publishes the active snapshot,
-metadata and `airlock:v2` marker in its final HSET. Redis scripts do not roll back
+The commit validates arguments and key types before mutation, then persistently
+clears `state` and `meta`. It updates changed records and the history index, and
+publishes the active snapshot and metadata in its final HSET. Empty state is an
+incomplete publication, not an absent resource. Redis scripts do not roll back
 earlier writes: any intermediate runtime failure leaves the resource unavailable
-for both reads and writes. There is no automatic replay or reset. Publication
-reuses a stable record token and never encodes unrelated retained history.
+for reads and writes. There is no automatic replay or reset. Publication reuses a
+stable record token and never encodes unrelated retained history.
 
-Existing v1 snapshots migrate lazily under the same owner lock on the first update
-(or Observe requiring maintenance). Migration reads and partitions the full v1
-snapshot once; provision update TTL and memory for this one-time cost. An old
-updater already computing a candidate loses its owner before migration can start;
-its guarded commit cannot overwrite v2. Older binaries cannot decode the v2 state
-marker, so their mutations fail closed; legacy read-only projections can still
-return already committed outcomes. Deploy new writers before relying on continued
-availability, and do not roll back binaries against migrated resources. Take a
-consistent backup and test migration before rollout. To recover an incomplete
-publication, stop all clients and active work, then restore/reconcile the complete
-resource and history from trustworthy state. Do not delete/reset only the state
-key or index: that can forget live capacity or request outcomes.
+This development storage layout has no upgrade or compatibility path. Only this
+layout is supported; no old snapshot loader, version marker or migration runs on
+ordinary commands. To recover an incomplete publication, stop all clients and
+active work, then restore/reconcile the complete resource and history from
+trustworthy state. Do not delete/reset only the state key or index: that can
+forget live capacity or request outcomes.
 
 Only known lock contention or explicit ownership/time-window misses
 trigger bounded, context-aware backoff (1–10ms). Each script command disables

@@ -78,7 +78,7 @@ func integrationSuite(t *testing.T, cluster bool) {
 		return d
 	}
 	driverconformance.Run(t, factory)
-	t.Run("partitioned_history_migration", func(t *testing.T) { integrationPartitionHistory(t, client, namespace+"-history") })
+	t.Run("partitioned_history", func(t *testing.T) { integrationPartitionHistory(t, client, namespace+"-history") })
 	t.Run("shared_clients_and_permanent_state", func(t *testing.T) {
 		other := integrationClient(t, cluster)
 		first, err := New(client, namespace)
@@ -161,7 +161,7 @@ func integrationSuite(t *testing.T, cluster bool) {
 			t.Fatal(ok, err)
 		}
 		defer d.releaseUpdateLock(ctx, key, "successor")
-		raw, err := d.evalKeys(ctx, commitScript, []string{key, updateLockKey(key)}, "expired-owner", "stale", 0, 0, `{"Meta":"","Records":{}}`)
+		raw, err := d.evalKeys(ctx, partitionCommit, []string{key, updateLockKey(key), key + ":history"}, "expired-owner", "stale", 0, 0, `{"Meta":"","Records":{},"Expires":{},"Deletes":[]}`)
 		if err != nil || raw != int64(0) || client.Exists(ctx, key).Val() != 0 {
 			t.Fatal("expired owner published", raw, err)
 		}
