@@ -34,14 +34,14 @@ func TestIntegrationPauseMigratesLegacyConstraint(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := request(time.Now())
-	grant, err := d.Submit(ctx, r)
-	if err != nil {
-		t.Fatal(err)
-	}
 	for i := 0; i < 2; i++ {
 		if err := d.EnsureSchema(ctx); err != nil {
 			t.Fatal(err)
 		}
+	}
+	grant, err := d.Submit(ctx, r)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if _, err := d.Resize(ctx, airlock.ResizeRequest{Resource: r.Resource, Capacity: 0, ExpectedVersion: 1}); err != nil {
 		t.Fatal(err)

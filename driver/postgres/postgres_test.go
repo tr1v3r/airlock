@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -60,7 +61,7 @@ func resourceRows(snapshot []byte, now time.Time) *sqlmock.Rows {
 	if string(snapshot) == "corrupt" {
 		config = []byte("corrupt")
 	}
-	return sqlmock.NewRows(strings.Split(strings.ReplaceAll(resourceColumns, " ", ""), ",")).AddRow(s.Version, config, rotations, s.Protected, s.Cursor, strconv.FormatUint(s.Revision, 10), millis(s.Time), s.Capacity, strconv.FormatUint(s.CapacityVersion, 10))
+	return sqlmock.NewRows(strings.Split(strings.ReplaceAll(resourceColumns, " ", ""), ",")).AddRow(s.Version, config, rotations, s.Protected, s.Cursor, strconv.FormatUint(s.Revision, 10), millis(s.Time), s.Capacity, strconv.FormatUint(s.CapacityVersion, 10), nil)
 }
 
 func requestRows(snapshot []byte) *sqlmock.Rows {
@@ -165,11 +166,9 @@ func TestEnsureSchema(t *testing.T) {
 	d, m := mockDriver(t)
 	m.ExpectBegin()
 
-	for i := 0; i < 2; i++ {
-		m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+	for _, ddl := range d.schema() {
+		m.ExpectExec(regexp.QuoteMeta(ddl)).WillReturnResult(sqlmock.NewResult(0, 0))
 	}
-
-	m.ExpectExec("DO ").WillReturnResult(sqlmock.NewResult(0, 0))
 	m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"unused"}))
 	m.ExpectQuery("SELECT id").WillReturnRows(sqlmock.NewRows([]string{"unused"}))
 	m.ExpectCommit()
@@ -193,9 +192,9 @@ func TestEnsureSchema(t *testing.T) {
 
 	// Missing required columns fail the schema probe.
 	m.ExpectBegin()
-	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
-	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
-	m.ExpectExec("DO ").WillReturnResult(sqlmock.NewResult(0, 0))
+	for _, ddl := range d.schema() {
+		m.ExpectExec(regexp.QuoteMeta(ddl)).WillReturnResult(sqlmock.NewResult(0, 0))
+	}
 	m.ExpectQuery("SELECT state_version").WillReturnError(sentinel)
 	m.ExpectRollback()
 	err := d.EnsureSchema(context.Background())
@@ -205,9 +204,9 @@ func TestEnsureSchema(t *testing.T) {
 
 	// Row-close failures abort the probe transaction.
 	m.ExpectBegin()
-	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
-	m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
-	m.ExpectExec("DO ").WillReturnResult(sqlmock.NewResult(0, 0))
+	for _, ddl := range d.schema() {
+		m.ExpectExec(regexp.QuoteMeta(ddl)).WillReturnResult(sqlmock.NewResult(0, 0))
+	}
 	m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"unused"}).CloseError(sentinel))
 	m.ExpectRollback()
 	if err = d.EnsureSchema(context.Background()); !errors.Is(err, sentinel) {

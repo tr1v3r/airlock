@@ -59,8 +59,8 @@ func TestDeltaProjectionReusesUnchangedRecordsAndRepairsLegacyCandidate(t *testi
 		t.Fatal(result, err)
 	}
 	_ = json.Unmarshal([]byte(c.HGet(ctx, key, "meta").Val()), &after)
-	if after.Token == header.Token {
-		t.Fatal("full repair did not change generation")
+	if after.Token != header.Token {
+		t.Fatal("partition repair changed generation of unrelated history")
 	}
 	before = c.HGet(ctx, key, "r:"+pending.ID).Val()
 	server.SetTime(now.Add(3 * time.Millisecond))
@@ -299,6 +299,23 @@ func TestDeltaFailureAfterDeletionFallsBackToCommittedSnapshot(t *testing.T) {
 	mustExecute(t, d, submit(pending))
 	mustExecute(t, d, airlock.Command{Kind: airlock.Cancel, Request: pending})
 	key := d.key(r.Resource)
+	// Exercise an interrupted legacy publication, followed by v2 migration.
+	legacy, err := airlock.DecodeState([]byte(c.HGet(ctx, key, "active").Val()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var terminal observationRecord
+	if err := json.Unmarshal([]byte(c.HGet(ctx, key, "r:"+pending.ID).Val()), &terminal); err != nil {
+		t.Fatal(err)
+	}
+	legacy.Records[pending.ID] = terminal.Record
+	encoded, err := airlock.EncodeState(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.HSet(ctx, key, "state", string(encoded))
+	c.HDel(ctx, key, "active")
+	c.Del(ctx, key+":history")
 	oldState := c.HGet(ctx, key, "state").Val()
 	oldMeta := c.HGet(ctx, key, "meta").Val()
 	data, _ := json.Marshal(struct {

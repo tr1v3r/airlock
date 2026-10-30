@@ -18,6 +18,7 @@ import (
 type row struct {
 	record   airlock.DriverRecord
 	position sql.NullInt64
+	indexed  bool
 }
 
 func millis(t time.Time) sql.NullInt64 {
@@ -31,7 +32,7 @@ func instant(n sql.NullInt64) time.Time {
 	return time.UnixMilli(n.Int64).UTC()
 }
 
-const resourceColumns = `state_version, config, rotations, protected, cursor, revision, observed_ms, capacity, capacity_version`
+const resourceColumns = `state_version, config, rotations, protected, cursor, revision, observed_ms, capacity, capacity_version, total_records`
 const requestColumns = `id, owner, tenant, weight, submit_until_ms, wait_until_ms, status, lease_id, until_ms, finished_ms, failure, queue_position`
 
 func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) (*airlock.SharedState, map[string]row, error) {
@@ -39,6 +40,10 @@ func (d *Driver) load(ctx context.Context, tx *sql.Tx, request airlock.Request) 
 }
 
 func (d *Driver) loadResource(ctx context.Context, tx *sql.Tx, resource string, initial *airlock.ResourceConfig) (*airlock.SharedState, map[string]row, error) {
+	return d.loadState(ctx, tx, resource, initial, "", nil)
+}
+
+func (d *Driver) loadState(ctx context.Context, tx *sql.Tx, resource string, initial *airlock.ResourceConfig, target string, history *storedHistory) (*airlock.SharedState, map[string]row, error) {
 	var config []byte
 	var err error
 	if initial != nil {
@@ -64,7 +69,7 @@ func (d *Driver) loadResource(ctx context.Context, tx *sql.Tx, resource string, 
 	s := &airlock.SharedState{Resource: resource, Records: make(map[string]*airlock.DriverRecord), Queues: make(map[string][]string)}
 	var rotations []byte
 	var revision, capacityVersion string
-	var observed sql.NullInt64
+	var observed, total sql.NullInt64
 	err = tx.QueryRowContext(
 		ctx,
 		fmt.Sprintf(`
@@ -77,7 +82,7 @@ func (d *Driver) loadResource(ctx context.Context, tx *sql.Tx, resource string, 
 		d.namespace, resource,
 	).Scan(
 		&s.Version, &config, &rotations,
-		&s.Protected, &s.Cursor, &revision, &observed, &s.Capacity, &capacityVersion,
+		&s.Protected, &s.Cursor, &revision, &observed, &s.Capacity, &capacityVersion, &total,
 	)
 	if err == sql.ErrNoRows && initial == nil {
 		return nil, nil, airlock.ErrResourceNotFound
@@ -96,17 +101,33 @@ func (d *Driver) loadResource(ctx context.Context, tx *sql.Tx, resource string, 
 		return nil, nil, airlock.ErrCorruptState
 	}
 	s.Time = instant(observed)
+	filter := ""
+	columns := requestColumns
+	args := []any{d.namespace, resource}
+	if s.Version == 2 {
+		if !total.Valid || total.Int64 < 0 || total.Int64 > int64(s.Config.MaxRecords) {
+			return nil, nil, airlock.ErrCorruptState
+		}
+		s.Version = 1
+		if history != nil {
+			history.partitioned, history.total = true, int(total.Int64)
+			columns += ", gc_after_ms"
+			// Each UNION arm has an independent index access path; an OR could scan history.
+			filter = " AND status IN ('queued','granted') UNION ALL SELECT " + columns + " FROM " + d.requestTable + " WHERE namespace=$1 AND resource=$2 AND id=$3 AND status NOT IN ('queued','granted')"
+			args = append(args, target)
+		}
+	}
 	rows, err := tx.QueryContext(
 		ctx,
 		fmt.Sprintf(`
 		SELECT %s
 		FROM %s
 		WHERE namespace=$1
-			AND resource=$2
+			AND resource=$2 %s
 		ORDER BY tenant, queue_position NULLS LAST, id
 		LIMIT 1000001
-	`, requestColumns, d.requestTable),
-		d.namespace, resource,
+	`, columns, d.requestTable, filter),
+		args...,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("airlock/postgres: read requests: %w", err)
@@ -117,13 +138,17 @@ func (d *Driver) loadResource(ctx context.Context, tx *sql.Tx, resource string, 
 	for rows.Next() {
 		var rec airlock.DriverRecord
 		var submit, wait int64
-		var until, finished, position sql.NullInt64
+		var until, finished, position, gc sql.NullInt64
 		rec.Request.Resource = resource
-		err = rows.Scan(
+		dest := []any{
 			&rec.Request.ID, &rec.Request.Owner, &rec.Request.Tenant, &rec.Request.Weight,
 			&submit, &wait, &rec.Status, &rec.LeaseID,
 			&until, &finished, &rec.Failure, &position,
-		)
+		}
+		if history != nil && history.partitioned {
+			dest = append(dest, &gc)
+		}
+		err = rows.Scan(dest...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("airlock/postgres: decode request: %w", err)
 		}
@@ -131,6 +156,9 @@ func (d *Driver) loadResource(ctx context.Context, tx *sql.Tx, resource string, 
 		rec.Request.SubmitUntil = time.UnixMilli(submit).UTC()
 		rec.Request.WaitUntil = time.UnixMilli(wait).UTC()
 		rec.Until, rec.Finished = instant(until), instant(finished)
+		if history != nil && history.partitioned && gc != terminalDeadline(&rec, s.Config.Retention) {
+			return nil, nil, airlock.ErrCorruptState
+		}
 		if (rec.Status == airlock.Queued) != position.Valid {
 			return nil, nil, airlock.ErrCorruptState
 		}
@@ -144,12 +172,15 @@ func (d *Driver) loadResource(ctx context.Context, tx *sql.Tx, resource string, 
 			s.Queues[rec.Request.Tenant] = append(queue, rec.Request.ID)
 		}
 
-		before[rec.Request.ID] = row{record: rec, position: position}
+		before[rec.Request.ID] = row{record: rec, position: position, indexed: history != nil && history.partitioned}
 		s.Records[rec.Request.ID] = &rec
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, nil, fmt.Errorf("airlock/postgres: read requests: %w", err)
+	}
+	if history != nil && !history.partitioned {
+		history.total = len(before)
 	}
 	if s.Revision == 0 {
 		if len(before) != 0 || observed.Valid || s.Version != 1 || s.Protected != "" || s.Cursor != 0 || len(s.Rotations) != 0 {
@@ -167,13 +198,20 @@ func (d *Driver) loadResource(ctx context.Context, tx *sql.Tx, resource string, 
 }
 
 func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState, before map[string]row) error {
+	return d.persistState(ctx, tx, s, before, airlock.RetainedHistory{})
+}
+func (d *Driver) persistState(ctx context.Context, tx *sql.Tx, s *airlock.SharedState, before map[string]row, history airlock.RetainedHistory) error {
 	rotations, err := json.Marshal(s.Rotations)
 	if err != nil {
 		return err
 	}
 
+	nextMaintenance := s.NextMaintenance()
+	if !history.Before.IsZero() && (nextMaintenance.IsZero() || history.Before.Before(nextMaintenance)) {
+		nextMaintenance = history.Before
+	}
 	query := fmt.Sprintf(`
-		UPDATE %s
+  UPDATE %s
 		SET rotations = $3,
 			protected = $4,
 			cursor = $5,
@@ -181,7 +219,8 @@ func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState
 			observed_ms = $7,
 			next_maintenance_ms = $8,
 			capacity = $9,
-			capacity_version = $10
+			capacity_version = $10,
+            state_version = 2, total_records = $11
 		WHERE namespace = $1
 			AND resource = $2
 	`, d.resourceTable)
@@ -189,7 +228,7 @@ func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState
 		ctx, query,
 		d.namespace, s.Resource,
 		string(rotations), s.Protected, s.Cursor,
-		strconv.FormatUint(s.Revision, 10), millis(s.Time), millis(s.NextMaintenance()), s.Capacity, strconv.FormatUint(s.CapacityVersion, 10),
+		strconv.FormatUint(s.Revision, 10), millis(s.Time), millis(nextMaintenance), s.Capacity, strconv.FormatUint(s.CapacityVersion, 10), history.Count+len(s.Records),
 	)
 	if err = oneRow(result, err); err != nil {
 		return fmt.Errorf("airlock/postgres: persist resource: %w", err)
@@ -262,11 +301,11 @@ func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState
 		if count == 0 {
 			return nil
 		}
-		query := fmt.Sprintf(`INSERT INTO %s (namespace, resource, %s) VALUES %s
+		query := fmt.Sprintf(`INSERT INTO %s (namespace, resource, %s, gc_after_ms) VALUES %s
 			ON CONFLICT (namespace,resource,id) DO UPDATE SET
 			status=EXCLUDED.status, lease_id=EXCLUDED.lease_id,
 			until_ms=EXCLUDED.until_ms, finished_ms=EXCLUDED.finished_ms,
-			failure=EXCLUDED.failure, queue_position=EXCLUDED.queue_position`,
+			failure=EXCLUDED.failure, queue_position=EXCLUDED.queue_position, gc_after_ms=EXCLUDED.gc_after_ms`,
 			d.requestTable, requestColumns, values.String())
 		result, err := tx.ExecContext(ctx, query, args...)
 		if err = affectedRows(result, err, count); err != nil {
@@ -279,14 +318,14 @@ func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState
 	}
 	for id, rec := range s.Records {
 		position := positions[id]
-		if old, ok := before[id]; ok && old.position == position && reflect.DeepEqual(old.record, *rec) {
+		if old, ok := before[id]; ok && old.position == position && reflect.DeepEqual(old.record, *rec) && (rec.Status == airlock.Queued || rec.Status == airlock.Granted || old.indexed) {
 			continue
 		}
 		if count > 0 {
 			values.WriteByte(',')
 		}
 		values.WriteByte('(')
-		for i := 0; i < 14; i++ {
+		for i := 0; i < 15; i++ {
 			if i > 0 {
 				values.WriteByte(',')
 			}
@@ -296,7 +335,7 @@ func (d *Driver) persist(ctx context.Context, tx *sql.Tx, s *airlock.SharedState
 		args = append(args, d.namespace, s.Resource, id,
 			rec.Request.Owner, rec.Request.Tenant, rec.Request.Weight,
 			rec.Request.SubmitUntil.UnixMilli(), rec.Request.WaitUntil.UnixMilli(),
-			string(rec.Status), rec.LeaseID, millis(rec.Until), millis(rec.Finished), rec.Failure, position)
+			string(rec.Status), rec.LeaseID, millis(rec.Until), millis(rec.Finished), rec.Failure, position, terminalDeadline(rec, s.Config.Retention))
 		count++
 		if count == persistBatchSize {
 			if err := flushUpserts(); err != nil {

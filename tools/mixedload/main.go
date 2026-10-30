@@ -207,7 +207,7 @@ func run(c config) error {
 	var mu sync.Mutex
 	data := make([]sample, 0, 10000)
 	var admitted atomic.Int64
-	call := func(op, phase string, r a.Request, id string, prior time.Time) (a.Result, error, time.Time) {
+	call := func(op, phase string, r a.Request, id string, prior time.Time) (a.Result, time.Time, error) {
 		begin := time.Now()
 		cx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
@@ -255,7 +255,7 @@ func run(c config) error {
 		mu.Lock()
 		data = append(data, s)
 		mu.Unlock()
-		return out, e, deadline
+		return out, deadline, e
 	}
 	var wg sync.WaitGroup
 	for worker := 0; worker < c.Workers; worker++ {
@@ -269,16 +269,16 @@ func run(c config) error {
 				r.Tenant = fmt.Sprintf("tenant-%d", w%8)
 				r.Weight = 1
 				r.WaitUntil = time.Now().Add(9 * time.Second).UTC().Truncate(time.Millisecond)
-				out, e, deadline := call("submit", "measured", r, "", time.Time{})
+				out, deadline, e := call("submit", "measured", r, "", time.Time{})
 				for e == nil && out.Status == a.Queued && time.Now().Before(stop) {
 					sleep(earlier(stop, time.Now().Add(pollEvery)))
 					if !time.Now().Before(stop) {
 						break
 					}
-					out, e, deadline = call("observe", "measured", r, "", time.Time{})
+					out, deadline, e = call("observe", "measured", r, "", time.Time{})
 				}
 				if e != nil || out.Status != a.Granted || !time.Now().Before(deadline) {
-					call("cancel", "cleanup", r, "", time.Time{})
+					_, _, _ = call("cancel", "cleanup", r, "", time.Time{})
 					continue
 				}
 				if time.Now().Before(stop) {
@@ -296,7 +296,7 @@ func run(c config) error {
 						break
 					}
 					old := deadline
-					next, e, end := call("renew", "measured", r, out.LeaseID, old)
+					next, end, e := call("renew", "measured", r, out.LeaseID, old)
 					if e != nil || next.Status != a.Granted || !time.Now().Before(old) || !time.Now().Before(end) {
 						live = false
 						break
@@ -308,9 +308,9 @@ func run(c config) error {
 					phase = "cleanup"
 				}
 				if live {
-					call("release", phase, r, out.LeaseID, time.Time{})
+					_, _, _ = call("release", phase, r, out.LeaseID, time.Time{})
 				} else {
-					call("cancel", "cleanup", r, "", time.Time{})
+					_, _, _ = call("cancel", "cleanup", r, "", time.Time{})
 				}
 			}
 		}(worker)
@@ -361,12 +361,12 @@ func run(c config) error {
 	enc := json.NewEncoder(f)
 	for _, s := range data {
 		if err = enc.Encode(s); err != nil {
-			f.Close()
+			_ = f.Close()
 			return err
 		}
 	}
 	if err = enc.Encode(result); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err = f.Close(); err != nil {
@@ -494,7 +494,7 @@ func (b *backend) close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if b.r != nil {
-		_ = b.r.Del(ctx, b.key, strings.TrimSuffix(b.key, ":state")+":update-lock").Err()
+		_ = b.r.Del(ctx, b.key, b.key+":history", strings.TrimSuffix(b.key, ":state")+":update-lock").Err()
 		_ = b.r.Close()
 	}
 	if b.db != nil {
@@ -632,6 +632,13 @@ func (b *backend) stats(ctx context.Context) (population, error) {
 		if err != nil {
 			return m, err
 		}
+		partitioned := string(data) == "airlock:v2"
+		if partitioned {
+			data, err = b.r.HGet(ctx, b.key, "active").Bytes()
+			if err != nil {
+				return m, err
+			}
+		}
 		s, err := a.DecodeState(data)
 		if err != nil {
 			return m, err
@@ -648,7 +655,44 @@ func (b *backend) stats(ctx context.Context) (population, error) {
 				m.Terminal++
 			}
 		}
+		if partitioned {
+			ids, e := b.r.ZRange(ctx, b.key+":history", 0, -1).Result()
+			if e != nil {
+				return m, e
+			}
+			fields := make([]string, len(ids))
+			for i, id := range ids {
+				fields[i] = "r:" + id
+			}
+			var records []any
+			if len(fields) != 0 {
+				records, e = b.r.HMGet(ctx, b.key, fields...).Result()
+				if e != nil {
+					return m, e
+				}
+			}
+			for i, id := range ids {
+				encoded, ok := records[i].(string)
+				if !ok {
+					return m, errors.New("missing terminal projection in validation snapshot")
+				}
+				var projection struct{ Record *a.DriverRecord }
+				if e = json.Unmarshal([]byte(encoded), &projection); e != nil || projection.Record == nil {
+					return m, errors.New("invalid terminal projection in validation snapshot")
+				}
+				m.Records++
+				m.Terminal++
+				b.seedCount(&m, id, string(projection.Record.Status))
+			}
+		}
 		m.Bytes, err = b.r.MemoryUsage(ctx, b.key, 0).Result()
+		if err == nil && partitioned {
+			if n, e := b.r.MemoryUsage(ctx, b.key+":history", 0).Result(); e == nil {
+				m.Bytes += n
+			} else if !errors.Is(e, redis.Nil) {
+				return m, e
+			}
+		}
 		return m, err
 	}
 	err := b.db.QueryRowContext(ctx, "SELECT count(*),count(*) FILTER(WHERE status='granted'),count(*) FILTER(WHERE status='queued'),coalesce(sum(pg_column_size(q)),0) FROM "+b.qt+" q WHERE namespace=$1", b.namespace).Scan(&m.Records, &m.Granted, &m.Queued, &m.RowBytes)
@@ -661,13 +705,13 @@ func (b *backend) stats(ctx context.Context) (population, error) {
 		for rows.Next() {
 			var id, status string
 			if e = rows.Scan(&id, &status); e != nil {
-				rows.Close()
+				_ = rows.Close()
 				return m, e
 			}
 			b.seedCount(&m, id, status)
 		}
 		e = rows.Err()
-		rows.Close()
+		_ = rows.Close()
 		if e != nil {
 			return m, e
 		}

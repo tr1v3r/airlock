@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 )
 
@@ -53,7 +54,7 @@ func (d *Driver) schema() []string {
 		CREATE TABLE IF NOT EXISTS %s (
 			namespace              text COLLATE pg_catalog."C" NOT NULL,
 			resource               text COLLATE pg_catalog."C" NOT NULL,
-			state_version          integer NOT NULL DEFAULT 1 CHECK (state_version=1),
+			state_version          integer NOT NULL DEFAULT 1 CHECK (state_version IN (1,2)),
 			config                 jsonb NOT NULL,
 			capacity               bigint NOT NULL CHECK (capacity>=0),
 			capacity_version       numeric(20,0) NOT NULL DEFAULT 1 CHECK (capacity_version>=1 AND capacity_version<=18446744073709551615),
@@ -92,6 +93,28 @@ func (d *Driver) schema() []string {
 		)
 		`, d.requestTable, d.resourceTable),
 
+		fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS total_records bigint CHECK (total_records >= 0 AND total_records <= 1000000)`, d.resourceTable),
+		fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS gc_after_ms bigint`, d.requestTable),
+		fmt.Sprintf(`DO $airlock$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid='%s'::regclass AND conname='%s') THEN
+            ALTER TABLE %s ADD CONSTRAINT %s CHECK (status NOT IN ('queued','granted') OR gc_after_ms IS NULL);
+          END IF;
+        END $airlock$`, d.requestTable, d.historyIndex("gc_check"), d.requestTable, d.historyIndex("gc_check")),
+		// Upgrade the legacy version check; old writers reject version 2 before mutation.
+		fmt.Sprintf(`DO $airlock$
+        DECLARE legacy record;
+        BEGIN
+          FOR legacy IN SELECT conname FROM pg_catalog.pg_constraint
+          WHERE conrelid = '%s'::regclass AND contype='c'
+          AND regexp_replace(pg_catalog.pg_get_expr(conbin,conrelid),'[[:space:]()]','','g')='state_version=1'
+          LOOP
+            EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %%I',legacy.conname);
+            EXECUTE format('ALTER TABLE %s ADD CONSTRAINT %%I CHECK (state_version IN (1,2))',legacy.conname);
+          END LOOP;
+        END $airlock$`, d.resourceTable, d.resourceTable, d.resourceTable),
+		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (namespace,resource,tenant,queue_position,id) WHERE status IN ('queued','granted')`, d.historyIndex("active"), d.requestTable),
+		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (namespace,resource,gc_after_ms,id) WHERE gc_after_ms IS NOT NULL`, d.historyIndex("terminal"), d.requestTable),
+
 		// Match only the legacy capacity check, not unrelated operator constraints.
 		// Reuse its actual name (PostgreSQL may truncate generated identifiers).
 		fmt.Sprintf(`DO $airlock$
@@ -107,4 +130,9 @@ func (d *Driver) schema() []string {
 			END LOOP;
 		END $airlock$`, d.resourceTable, d.resourceTable, d.resourceTable),
 	}
+}
+
+// Hash qualified table identity so PostgreSQL name truncation cannot alias indexes.
+func (d *Driver) historyIndex(kind string) string {
+	return fmt.Sprintf("airlock_%s_%x", kind, sha256.Sum256([]byte(d.requestTable)))[:55]
 }

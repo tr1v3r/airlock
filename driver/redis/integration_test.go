@@ -78,6 +78,7 @@ func integrationSuite(t *testing.T, cluster bool) {
 		return d
 	}
 	driverconformance.Run(t, factory)
+	t.Run("partitioned_history_migration", func(t *testing.T) { integrationPartitionHistory(t, client, namespace+"-history") })
 	t.Run("shared_clients_and_permanent_state", func(t *testing.T) {
 		other := integrationClient(t, cluster)
 		first, err := New(client, namespace)

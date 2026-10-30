@@ -1,18 +1,5 @@
 package redis
 
-// readScript pairs the authoritative snapshot with backend time.
-const readScript = `
-	local state = redis.call('HGET', KEYS[1], 'state')
-	local now = redis.call('TIME')
-
-	if state == false then
-		if redis.call('EXISTS', KEYS[1]) ~= 0 then return redis.error_reply('missing snapshot') end
-		return {0, '', now[1], now[2], '', 0}
-	end
-
-	return {1, state, now[1], now[2], redis.call('HGET', KEYS[1], 'meta') or '', redis.call('HLEN', KEYS[1])}
-`
-
 // commitGuard checks ownership, backend time and common publication fields
 // before either full or incremental publication can mutate derived records.
 const commitGuard = `

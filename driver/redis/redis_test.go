@@ -211,7 +211,7 @@ func (h hook) ProcessHook(next goredis.ProcessHook) goredis.ProcessHook {
 }
 
 func isCommit(cmd goredis.Cmder) bool {
-	return isScript(cmd, commitScript) || isScript(cmd, deltaCommitScript)
+	return isScript(cmd, commitScript) || isScript(cmd, deltaCommitScript) || isScript(cmd, partitionCommit)
 }
 
 func isScript(cmd goredis.Cmder, script string) bool {
@@ -252,14 +252,9 @@ func TestLostWriteResponseNeverRetries(t *testing.T) {
 				t.Fatal(result, err, commits.Load())
 			}
 
-			raw, err := client.HGet(context.Background(), d.key(r.Resource), "state").Result()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			_, recovered, recoveryErr := transitionSnapshot([]byte(raw), time.Now(), airlock.Command{Kind: airlock.Observe, Request: r})
-			if recoveryErr != nil {
-				t.Fatal(recoveryErr)
+			recovered, ready, recoveryErr := d.observe(context.Background(), r)
+			if recoveryErr != nil || !ready {
+				t.Fatal(recovered, ready, recoveryErr)
 			}
 
 			want := airlock.Granted
@@ -285,8 +280,8 @@ func TestScriptFailureAndMalformedResponse(t *testing.T) {
 		response any
 		err      error
 	}{
-		{"read transport", readScript, nil, io.ErrUnexpectedEOF}, {"read format", readScript, "bad", nil},
-		{"write transport", commitScript, nil, io.ErrUnexpectedEOF}, {"write format", commitScript, "bad", nil}, {"write code", commitScript, int64(2), nil},
+		{"read transport", partitionRead, nil, io.ErrUnexpectedEOF}, {"read format", partitionRead, "bad", nil},
+		{"write transport", partitionCommit, nil, io.ErrUnexpectedEOF}, {"write format", partitionCommit, "bad", nil}, {"write code", partitionCommit, int64(2), nil},
 		{"lock transport", acquireUpdateLockScript, nil, io.ErrUnexpectedEOF}, {"lock format", acquireUpdateLockScript, "bad", nil}, {"lock code", acquireUpdateLockScript, int64(2), nil},
 	}
 
@@ -450,24 +445,6 @@ func TestPriorityCursorSurvivesClientReplacement(t *testing.T) {
 	}
 }
 
-func transitionSnapshot(data []byte, now time.Time, cmd airlock.Command) ([]byte, airlock.Result, error) {
-	state, err := airlock.DecodeState(data)
-	if err != nil {
-		return nil, airlock.Result{}, err
-	}
-
-	next, result, _, err := airlock.Transition(state, now, cmd)
-	if next == nil {
-		return nil, result, err
-	}
-
-	encoded, codecErr := airlock.EncodeState(next)
-	if codecErr != nil {
-		return nil, airlock.Result{}, codecErr
-	}
-	return encoded, result, err
-}
-
 func TestObserveUsesOnlyRequestProjection(t *testing.T) {
 	d, client, server := fixture(t)
 	ctx := context.Background()
@@ -555,7 +532,7 @@ func TestObserveIncompleteIndexFallsBack(t *testing.T) {
 			}
 
 			got, err := d.Observe(ctx, r)
-			if mode == "malformed" {
+			if mode == "malformed" || mode == "missing" {
 				if !errors.Is(err, airlock.ErrCorruptState) || got != (airlock.Result{}) {
 					t.Fatalf("%+v %v", got, err)
 				}
@@ -576,14 +553,8 @@ func TestObservationIndexCollectsDeletedRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.HSet(ctx, d.key(r.Resource), "r:orphan", "unpublished").Err(); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := d.Release(ctx, airlock.LeaseRef{Request: r, ID: grant.LeaseID}); err != nil {
 		t.Fatal(err)
-	}
-	if client.HExists(ctx, d.key(r.Resource), "r:orphan").Val() {
-		t.Fatal("orphaned index survived next commit")
 	}
 
 	server.SetTime(r.SubmitUntil.Add(r.Config.Retention + time.Millisecond))

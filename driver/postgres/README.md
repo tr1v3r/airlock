@@ -30,8 +30,8 @@ are separate columns, avoiding concatenation collisions.
 Use the same immutable queue/lease policy for all clients; creation-capacity hints may differ.
 
 Each command uses a short `READ COMMITTED` transaction: insert the resource if
-absent, lock its row, read its request rows, read `clock_timestamp()` in a **subsequent statement**, apply
-core `TransitionState`, update resource metadata and changed request rows, then commit. Backend time is read
+absent, lock its row, read all active requests and the command target, read `clock_timestamp()` in a **subsequent statement**, reclaim due indexed history, and apply
+core `TransitionPartial`, update resource metadata and changed request rows, then commit. Backend time is read
 after any lock wait, so an expired lease cannot be revived by a delayed renewal.
 Business rejections still commit expiry and scheduling changes. Transport or
 commit failures return no usable grant; a lost commit response is ambiguous and
@@ -47,9 +47,22 @@ or hold a connection for the duration of an acquired lease.
 Custom names use quoted ASCII identifiers: schema up to 63 bytes, resource table
 up to 54 bytes to leave room for the `_requests` suffix. Run deployment DDL
 serially. Required columns are checked; this is not a comprehensive
-schema/constraint audit. The only automatic migration relaxes the legacy
-`CHECK (capacity > 0)` to `CHECK (capacity >= 0)`, preserving its actual constraint
-name. Other layouts and constraints are unchanged.
+schema/constraint audit. Migration relaxes the legacy capacity check, adds
+`total_records` and `gc_after_ms`, permits storage versions 1/2, and creates partial
+active/terminal indexes. These are ordinary transactional DDL operations and may
+block writes; schedule a maintenance window and upgrade writers before resuming.
+The first mutation of each v1 resource reads/validates the complete old state,
+backfills terminal deadlines/counts, and marks it v2 in the same transaction.
+Future mutations read only active records and the exact target terminal. Old
+writers reject v2 through the state version check; old Observe projections may
+still read the unchanged request rows, but cannot mutate them. Do not downgrade
+or reset version/count fields to enable mixed-version writes.
+
+升级先停止旧 writer，在维护窗口串行执行 `EnsureSchema`，再恢复新版本写入。
+DDL 增加精确计数、终态期限列及活动/终态部分索引，并允许存储版本 1/2；普通事务式
+建索引可能阻塞写入。每个 v1 资源首次写入时，在资源锁内全量验证、补齐索引元数据，
+与业务变化一起原子升级至 v2。旧 writer 读取 v2 后拒绝转换，旧 Observe 仍可只读同表
+投影。禁止为了降级而重置版本或计数；这不是支持新旧 writer 混写的迁移。
 
 **Upgrade before using Resize(0):** upgrade all clients to understand paused state,
 then explicitly run the new `EnsureSchema` during deployment before publishing zero
@@ -107,21 +120,39 @@ GROUP BY tenant, status;
 ```
 
 Only configuration and group/tenant rotation lists remain JSONB on the resource
-row. There is no complete-resource snapshot column. Mutations read all retained
-requests for the resource (bounded by MaxRecords), run the shared scheduler, and
-write only inserted/changed/deleted requests. Deletes and upserts use batches of
-at most 256 records, keeping bind parameters below PostgreSQL's limit and checking
-the exact affected count. A batch failure rolls back the entire transition.
-Queue positions keep the existing deferred uniqueness constraint. This reduces
-round trips during bulk expiry/GC; it does not remove O(records) reads or validation.
+row. There is no complete-resource snapshot column. After migration, mutations
+read all queued/granted records plus the target request by ID, including a target
+already due for GC so request conflicts are checked before reclamation. Other
+terminal records remain in the same table and consume the exact MaxRecords budget.
+An authoritative resource count and indexed earliest deadline summarize them;
+ordinary operations do not decode or scan unrelated retained history. Loaded
+records are validated, including exact indexed terminal deadlines. Untouched
+history relies on validation at migration/write and the transactionally maintained
+count/index; arbitrary external corruption is not audited on every command.
 
-删除与 upsert 每批最多 256 条，并严格校验影响行数；任何批次失败都回滚整个转换。
-队列位置仍由延迟唯一约束校验。批量到期/GC 减少网络往返，但全量读取和状态验证仍为 O(records)。
+Terminal GC removes all due non-target rows using the deadline index, then adjusts
+the exact count. This costs O(due) for a simultaneous expiry burst; it is not a
+bounded-maintenance guarantee. Target GC, active expiry, dispatch, row deltas and
+metadata all commit under the same resource row lock. A nil transition, SQL failure
+or commit failure never publishes a partial state. NextMaintenance includes the
+first retained terminal deadline, without scanning the history. Deletes/upserts
+for loaded deltas use batches of at most 256 records and check affected counts.
+Queue positions retain the deferred uniqueness constraint.
+
+迁移后只读取全部 queued/granted 与当前请求 ID 对应的记录；目标即使到期也先读入，
+保留“先检测请求冲突、后 GC”的次序。其他终态同表保留，仍精确占用 MaxRecords。
+资源计数及期限索引汇总未加载历史，普通操作不扫描/解码无关终态。已读取记录会验证
+真实 GC 期限；未读取历史依赖迁移/写入时验证及事务维护的计数/索引，不逐次审计外部损坏。
+
+GC 按索引一次删除全部已到期非目标终态，成本 O(due)，集中到期仍可能有延迟尖峰。
+目标 GC、活动租约过期、调度、请求差异和资源计数共用行锁与同一事务，错误时整体回滚。
+NextMaintenance 合入索引首个保留期限；加载记录的删除/upsert 每批最多 256 条并校验
+影响行数，队列位置保留延迟唯一约束。
 
 Ordinary Observe reads one resource header and one request by primary key in a
 single MVCC statement, with no row lock, rotations load, full request scan or
 metadata write. If the stored next-maintenance boundary is due, it obtains the
-resource lock and rechecks using a new statement before loading full state; a
+resource lock and rechecks using a new statement before loading the active/target state; a
 peer may already have completed maintenance. Lease/queue expiry and history
 collection therefore progress even when no holder calls Release. Read-only
 observations keep the current Revision; writes still serialize per resource.

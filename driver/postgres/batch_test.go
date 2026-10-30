@@ -50,7 +50,7 @@ func TestPersistBatchesBoundParametersAndCheckCounts(t *testing.T) {
 			}
 			if !badCount {
 				for _, n := range []int{256, 256, 1} {
-					args := make([]driver.Value, n*14)
+					args := make([]driver.Value, n*15)
 					for i := range args {
 						args[i] = sqlmock.AnyArg()
 					}

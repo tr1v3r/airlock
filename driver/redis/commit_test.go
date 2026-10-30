@@ -360,7 +360,7 @@ func TestBusyUpdateLockAvoidsFullState(t *testing.T) {
 				if isScript(cmd, acquireUpdateLockScript) {
 					tries++
 				}
-				if isScript(cmd, readScript) {
+				if isScript(cmd, partitionRead) {
 					reads++
 				}
 				if isCommit(cmd) {
@@ -406,7 +406,7 @@ func TestObserveRechecksAfterAcquiringUpdateLock(t *testing.T) {
 				return err
 			}
 		}
-		if isScript(cmd, readScript) || isCommit(cmd) {
+		if isScript(cmd, partitionRead) || isCommit(cmd) {
 			reads++
 		}
 		return next(ctx, cmd)
@@ -447,7 +447,7 @@ func TestUpdateLockCleanupAfterCancellation(t *testing.T) {
 	defer cancel()
 	client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
 		err := next(ctx, cmd)
-		if isScript(cmd, readScript) && err == nil {
+		if isScript(cmd, partitionRead) && err == nil {
 			cancel()
 		}
 		return err
@@ -537,7 +537,7 @@ func TestConcurrentObserveMaintainsOnce(t *testing.T) {
 			default:
 			}
 		}
-		if isScript(cmd, readScript) && reads.Add(1) == 1 {
+		if isScript(cmd, partitionRead) && reads.Add(1) == 1 {
 			close(entered)
 			select {
 			case <-proceed:
@@ -591,7 +591,7 @@ func TestConcurrentObserveMaintainsOnce(t *testing.T) {
 
 func TestCommitDoesNotResendOldSnapshot(t *testing.T) {
 	d, client, _ := fixture(t)
-	if err := client.ScriptLoad(context.Background(), deltaCommitScript).Err(); err != nil {
+	if err := client.ScriptLoad(context.Background(), partitionCommit).Err(); err != nil {
 		t.Fatal(err)
 	}
 	r := request()
@@ -604,8 +604,8 @@ func TestCommitDoesNotResendOldSnapshot(t *testing.T) {
 	client.AddHook(hook{func(ctx context.Context, cmd goredis.Cmder, next goredis.ProcessHook) error {
 		if isCommit(cmd) {
 			commits++
-			// Two declared keys plus owner, next state, bounds and projection.
-			if len(cmd.Args()) != 10 {
+			// Three declared keys plus owner, active state, bounds and projection.
+			if len(cmd.Args()) != 11 {
 				t.Error("commit sent an extra snapshot or existence guard")
 			}
 			for _, arg := range cmd.Args()[5:] {

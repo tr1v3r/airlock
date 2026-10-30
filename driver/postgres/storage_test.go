@@ -52,7 +52,7 @@ func TestLoadRelationalFailures(t *testing.T) {
 				observed = nil
 			}
 
-			m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"v", "c", "r", "p", "cursor", "rev", "time", "capacity", "cv"}).AddRow(1, config, rotations, "", 0, revision, observed, r.Config.Admission.Capacity, "1"))
+			m.ExpectQuery("SELECT state_version").WillReturnRows(sqlmock.NewRows([]string{"v", "c", "r", "p", "cursor", "rev", "time", "capacity", "cv", "total"}).AddRow(1, config, rotations, "", 0, revision, observed, r.Config.Admission.Capacity, "1", nil))
 			if mode != "bad-revision" && mode != "bad-rotations" {
 				q := m.ExpectQuery("SELECT id")
 				if mode == "query" {
