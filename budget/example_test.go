@@ -12,10 +12,10 @@ import (
 )
 
 func ExampleNew() {
-	// exampleDriver below is an in-process fixture. Applications supply their
+	// examplePool below is an in-process fixture. Applications supply their
 	// shared Redis or PostgreSQL driver; stage-one leases do not stop external work.
 	manager, err := budget.New(budget.Options{
-		Driver:    &exampleDriver{},
+		Driver:    &examplePool{},
 		Resource:  "workers",
 		GatewayID: "gateway-a",
 		Policy: airlock.ResourceConfig{
@@ -29,28 +29,28 @@ func ExampleNew() {
 		panic(err)
 	}
 	closeManager := func() {
-		closeCtx, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancelClose()
+		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 		if err := manager.Close(closeCtx); err != nil {
 			panic(err)
 		}
 	}
 	defer closeManager()
 
-	acquireCtx, cancelAcquire := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelAcquire()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	// Acquire waits for the control loop to obtain enough budget for all four
 	// tokens. No caller-side sleep or readiness polling is needed.
-	permit, err := manager.Acquire(acquireCtx, "online", 4)
+	permit, err := manager.Acquire(ctx, "online", 4)
 	if err != nil {
 		panic(err)
 	}
 	defer permit.Release()
 	fmt.Println("in use:", manager.Stats().InUse)
 
-	batchPermit, err := manager.TryAcquire("batch", 1)
-	if batchPermit != nil {
-		batchPermit.Release()
+	extra, err := manager.TryAcquire("batch", 1)
+	if extra != nil {
+		extra.Release()
 	}
 	fmt.Println("full:", errors.Is(err, airlock.ErrWouldBlock))
 
@@ -66,50 +66,50 @@ func ExampleNew() {
 	// closed: true
 }
 
-// exampleDriver is a single-resource, in-memory Driver fixture for the executable
+// examplePool is a single-resource, in-memory Driver fixture for the executable
 // example. Each operation runs a structured transition under one mutex. It is
 // not a durable backend or a replacement for the independent driver modules.
-type exampleDriver struct {
+type examplePool struct {
 	mu    sync.Mutex
 	state *airlock.SharedState
 }
 
 // apply atomically publishes the transition, including state accompanying a
 // business error. Backend time is sampled inside the serialization boundary.
-func (d *exampleDriver) apply(ctx context.Context, command airlock.Command) (airlock.Result, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+func (p *examplePool) apply(ctx context.Context, cmd airlock.Command) (airlock.Result, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return airlock.Result{}, err
 	}
-	nextState, result, _, err := airlock.Transition(d.state, time.Now().UTC(), command)
-	if nextState != nil {
-		d.state = nextState
+	next, result, _, err := airlock.Transition(p.state, time.Now().UTC(), cmd)
+	if next != nil {
+		p.state = next
 	}
 	return result, err
 }
 
 // Submit acquires or queues a whole chunk.
-func (d *exampleDriver) Submit(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.apply(ctx, airlock.Command{Kind: airlock.Submit, Request: request})
+func (p *examplePool) Submit(ctx context.Context, r airlock.Request) (airlock.Result, error) {
+	return p.apply(ctx, airlock.Command{Kind: airlock.Submit, Request: r})
 }
 
 // Observe looks up a request and applies due maintenance.
-func (d *exampleDriver) Observe(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.apply(ctx, airlock.Command{Kind: airlock.Observe, Request: request})
+func (p *examplePool) Observe(ctx context.Context, r airlock.Request) (airlock.Result, error) {
+	return p.apply(ctx, airlock.Command{Kind: airlock.Observe, Request: r})
 }
 
 // Cancel terminates a queued or granted request.
-func (d *exampleDriver) Cancel(ctx context.Context, request airlock.Request) (airlock.Result, error) {
-	return d.apply(ctx, airlock.Command{Kind: airlock.Cancel, Request: request})
+func (p *examplePool) Cancel(ctx context.Context, r airlock.Request) (airlock.Result, error) {
+	return p.apply(ctx, airlock.Command{Kind: airlock.Cancel, Request: r})
 }
 
 // Renew extends an owned chunk lease.
-func (d *exampleDriver) Renew(ctx context.Context, leaseRef airlock.LeaseRef) (airlock.Result, error) {
-	return d.apply(ctx, airlock.Command{Kind: airlock.Renew, Request: leaseRef.Request, LeaseID: leaseRef.ID})
+func (p *examplePool) Renew(ctx context.Context, r airlock.LeaseRef) (airlock.Result, error) {
+	return p.apply(ctx, airlock.Command{Kind: airlock.Renew, Request: r.Request, LeaseID: r.ID})
 }
 
 // Release returns an owned chunk lease.
-func (d *exampleDriver) Release(ctx context.Context, leaseRef airlock.LeaseRef) (airlock.Result, error) {
-	return d.apply(ctx, airlock.Command{Kind: airlock.Release, Request: leaseRef.Request, LeaseID: leaseRef.ID})
+func (p *examplePool) Release(ctx context.Context, r airlock.LeaseRef) (airlock.Result, error) {
+	return p.apply(ctx, airlock.Command{Kind: airlock.Release, Request: r.Request, LeaseID: r.ID})
 }

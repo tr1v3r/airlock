@@ -47,7 +47,7 @@ func waitPending(t *testing.T, m *Manager, n int) {
 	defer cancel()
 	for {
 		m.mu.Lock()
-		got := len(m.pendingWeights)
+		got := len(m.pending)
 		m.mu.Unlock()
 		if got == n {
 			return
@@ -73,7 +73,7 @@ func TestReturnFreezesBeforeBackendReissues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.heldChunks = []chunkLease{&callbackLease{chunkLease: chunk, release: func(ctx context.Context) error {
+	a.chunks = []chunkLease{&callbackLease{chunkLease: chunk, release: func(ctx context.Context) error {
 		if err := chunk.Release(ctx); err != nil {
 			return err
 		}
@@ -89,7 +89,7 @@ func TestReturnFreezesBeforeBackendReissues(t *testing.T) {
 		p.Release()
 		return nil
 	}}}
-	_ = a.admission.Resize(4)
+	_ = a.local.Resize(4)
 	a.step()
 	if a.Held() != 0 || b.Held() != 4 {
 		t.Fatalf("A=%d B=%d", a.Held(), b.Held())
@@ -138,8 +138,8 @@ func TestCloseCancelsRenewWithoutHoldingAdmissionMutex(t *testing.T) {
 	m.step()
 	entered := make(chan struct{})
 	finished := make(chan struct{})
-	original := m.heldChunks[0]
-	m.heldChunks[0] = &callbackLease{chunkLease: original, renew: func(ctx context.Context) error { close(entered); <-ctx.Done(); return ctx.Err() }}
+	original := m.chunks[0]
+	m.chunks[0] = &callbackLease{chunkLease: original, renew: func(ctx context.Context) error { close(entered); <-ctx.Done(); return ctx.Err() }}
 	go func() { m.step(); close(finished) }()
 	<-entered
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -263,9 +263,9 @@ func TestReturnTriesSmallerChunksWhenLargestCannotFit(t *testing.T) {
 	m := mustManager(t, src, opts)
 	for _, w := range []int{16, 4, 1} {
 		c, _ := src.Acquire(context.Background(), "a", w)
-		m.heldChunks = append(m.heldChunks, c)
+		m.chunks = append(m.chunks, c)
 	}
-	_ = m.admission.Resize(21)
+	_ = m.local.Resize(21)
 	p, e := m.TryAcquire("a", 4)
 	if e != nil {
 		t.Fatal(e)
@@ -409,8 +409,8 @@ func TestSharedLeaseInvalidationClosesLocalAdmission(t *testing.T) {
 		t.Fatal(e)
 	}
 	m := mustManager(t, source, opts)
-	m.heldChunks = []chunkLease{c}
-	_ = m.admission.Resize(4)
+	m.chunks = []chunkLease{c}
+	_ = m.local.Resize(4)
 	if e := c.Release(context.Background()); e != nil {
 		t.Fatal(e)
 	}
@@ -430,7 +430,7 @@ func TestTryAcquireRechecksValidityAfterLocalGrant(t *testing.T) {
 	m := mustManager(t, src, opts)
 	m.step()
 	var calls int
-	m.heldChunks[0] = &callbackLease{chunkLease: m.heldChunks[0], valid: func() bool { calls++; return calls < 3 }}
+	m.chunks[0] = &callbackLease{chunkLease: m.chunks[0], valid: func() bool { calls++; return calls < 3 }}
 	if p, e := m.TryAcquire("a", 1); e == nil {
 		p.Release()
 		t.Fatal("permit escaped final validity check")
@@ -453,9 +453,9 @@ func TestQueuedAcquireRechecksExpiredGrant(t *testing.T) {
 	var invalid atomic.Bool
 	var once sync.Once
 	checked := make(chan struct{})
-	m.heldChunks[0] = &callbackLease{chunkLease: m.heldChunks[0], valid: func() bool {
+	m.chunks[0] = &callbackLease{chunkLease: m.chunks[0], valid: func() bool {
 		if invalid.Load() {
-			if m.admission.Stats().InUse == 1 {
+			if m.local.Stats().InUse == 1 {
 				once.Do(func() { close(checked) })
 			}
 			return false
@@ -475,7 +475,7 @@ func TestQueuedAcquireRechecksExpiredGrant(t *testing.T) {
 	waitPending(t, m, 1)
 	// Synchronize actual core enqueue before releasing the holder.
 	end := time.Now().Add(time.Second)
-	for m.admission.Stats().Queued != 1 {
+	for m.local.Stats().Queued != 1 {
 		if time.Now().After(end) {
 			t.Fatal("waiter did not queue")
 		}
@@ -556,14 +556,14 @@ func TestCloseCancelsQueuedCallerAndRetainsFailedCleanup(t *testing.T) {
 	if e := m.Close(context.Background()); e == nil {
 		t.Fatal("cleanup error hidden")
 	}
-	if len(m.heldChunks) != 1 {
+	if len(m.chunks) != 1 {
 		t.Fatal("unknown cleanup identity forgotten")
 	}
 	src.leases[0].releaseErr = nil
 	if e := m.Close(context.Background()); e != nil {
 		t.Fatal(e)
 	}
-	if len(m.heldChunks) != 0 {
+	if len(m.chunks) != 0 {
 		t.Fatal("confirmed cleanup retained")
 	}
 }
@@ -586,7 +586,7 @@ func TestCloseDeadlineDoesNotWaitForUncooperativeRenew(t *testing.T) {
 	m.step()
 	entered, allow := make(chan struct{}), make(chan struct{})
 	finished := make(chan struct{})
-	m.heldChunks[0] = &callbackLease{chunkLease: m.heldChunks[0], renew: func(context.Context) error { close(entered); <-allow; return nil }}
+	m.chunks[0] = &callbackLease{chunkLease: m.chunks[0], renew: func(context.Context) error { close(entered); <-allow; return nil }}
 	go func() { m.step(); close(finished) }()
 	<-entered
 	ctx, cancel := context.WithCancel(context.Background())
@@ -595,7 +595,7 @@ func TestCloseDeadlineDoesNotWaitForUncooperativeRenew(t *testing.T) {
 	end := time.Now().Add(time.Second)
 	for {
 		m.mu.Lock()
-		stopped := m.closing
+		stopped := m.stopped
 		m.mu.Unlock()
 		if stopped {
 			break
@@ -659,7 +659,7 @@ func TestAcquireFastPathRechecksValidity(t *testing.T) {
 	m := mustManager(t, src, opts)
 	m.step()
 	var calls int
-	m.heldChunks[0] = &callbackLease{chunkLease: m.heldChunks[0], valid: func() bool { calls++; return calls < 2 }}
+	m.chunks[0] = &callbackLease{chunkLease: m.chunks[0], valid: func() bool { calls++; return calls < 2 }}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {

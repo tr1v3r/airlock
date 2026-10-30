@@ -20,39 +20,39 @@ const (
 
 // sharedSource acquires budget chunks through an airlock.Shared pool client.
 type sharedSource struct {
-	// client is the pool client constructed from Options.
-	client *airlock.Shared
+	// shared is the pool client constructed from Options.
+	shared *airlock.Shared
 }
 
-// newSharedSource builds the Shared pool client for options. Policy protocol
+// newSharedSource builds the Shared pool client for opts. Policy protocol
 // fields keep their explicit values; an unset MaxWait is shortened to keep
 // control-loop acquisitions bounded.
-func newSharedSource(options Options) (*sharedSource, error) {
-	policy := options.Policy
-	if policy.MaxWait == 0 {
-		policy.MaxWait = sharedMaxWait
+func newSharedSource(opts Options) (*sharedSource, error) {
+	cfg := opts.Policy
+	if cfg.MaxWait == 0 {
+		cfg.MaxWait = sharedMaxWait
 	}
-	operationTimeout := options.OperationTimeout
-	if operationTimeout <= 0 {
-		operationTimeout = defaultOperationTimeout
+	timeout := opts.OperationTimeout
+	if timeout <= 0 {
+		timeout = defaultOperationTimeout
 	}
-	client, err := airlock.NewShared(options.Driver, airlock.SharedOptions{
-		Resource:         options.Resource,
-		Config:           policy,
-		OperationTimeout: operationTimeout,
+	shared, err := airlock.NewShared(opts.Driver, airlock.SharedOptions{
+		Resource:         opts.Resource,
+		Config:           cfg,
+		OperationTimeout: timeout,
 		PollInterval:     sharedPollInterval,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &sharedSource{client: client}, nil
+	return &sharedSource{shared: shared}, nil
 }
 
 // Acquire obtains a whole chunk of weight tokens for tenant through Shared
 // waiting and lease-lifetime rules. Shared semantics apply: a lease whose
 // Renew ever failed is permanently invalid and must be dropped by the caller.
 func (s *sharedSource) Acquire(ctx context.Context, tenant string, weight int) (chunkLease, error) {
-	lease, err := s.client.AcquireNFor(ctx, tenant, weight)
+	lease, err := s.shared.AcquireNFor(ctx, tenant, weight)
 	if err != nil {
 		return nil, err
 	}

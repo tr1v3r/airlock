@@ -131,32 +131,32 @@ func TestNewManagerDefaults(t *testing.T) {
 	opts := Options{Resource: "res", GatewayID: "gw"}
 	opts.Policy.Admission.Capacity = 64
 	m := mustManager(t, &fakeSource{}, opts)
-	if m.options.Interval != 200*time.Millisecond {
-		t.Errorf("Interval = %v, want 200ms", m.options.Interval)
+	if m.opts.Interval != 200*time.Millisecond {
+		t.Errorf("Interval = %v, want 200ms", m.opts.Interval)
 	}
-	if len(m.options.Denominations) != 3 || m.options.Denominations[0] != 16 || m.options.Denominations[1] != 4 || m.options.Denominations[2] != 1 {
-		t.Errorf("Denominations = %v, want [16 4 1]", m.options.Denominations)
+	if len(m.opts.Denominations) != 3 || m.opts.Denominations[0] != 16 || m.opts.Denominations[1] != 4 || m.opts.Denominations[2] != 1 {
+		t.Errorf("Denominations = %v, want [16 4 1]", m.opts.Denominations)
 	}
-	if m.options.MaxChunks != 12 {
-		t.Errorf("MaxChunks = %d, want 12", m.options.MaxChunks)
+	if m.opts.MaxChunks != 12 {
+		t.Errorf("MaxChunks = %d, want 12", m.opts.MaxChunks)
 	}
-	if m.options.MaxHeld != 64 {
-		t.Errorf("MaxHeld = %d, want 64", m.options.MaxHeld)
+	if m.opts.MaxHeld != 64 {
+		t.Errorf("MaxHeld = %d, want 64", m.opts.MaxHeld)
 	}
-	if m.options.Headroom != 1.3 {
-		t.Errorf("Headroom = %v, want 1.3", m.options.Headroom)
+	if m.opts.Headroom != 1.3 {
+		t.Errorf("Headroom = %v, want 1.3", m.opts.Headroom)
 	}
-	if m.options.LowUtilization != 0.5 {
-		t.Errorf("LowUtilization = %v, want 0.5", m.options.LowUtilization)
+	if m.opts.LowUtilization != 0.5 {
+		t.Errorf("LowUtilization = %v, want 0.5", m.opts.LowUtilization)
 	}
-	if m.options.LowPeriods != 2 {
-		t.Errorf("LowPeriods = %d, want 2", m.options.LowPeriods)
+	if m.opts.LowPeriods != 2 {
+		t.Errorf("LowPeriods = %d, want 2", m.opts.LowPeriods)
 	}
-	if m.options.LocalQueue != 8 {
-		t.Errorf("LocalQueue = %d, want 8", m.options.LocalQueue)
+	if m.opts.LocalQueue != 8 {
+		t.Errorf("LocalQueue = %d, want 8", m.opts.LocalQueue)
 	}
-	if m.options.OperationTimeout != 500*time.Millisecond {
-		t.Errorf("OperationTimeout = %v, want 500ms", m.options.OperationTimeout)
+	if m.opts.OperationTimeout != 500*time.Millisecond {
+		t.Errorf("OperationTimeout = %v, want 500ms", m.opts.OperationTimeout)
 	}
 }
 
@@ -463,7 +463,7 @@ func TestStepRenewFailureDropsChunk(t *testing.T) {
 		t.Fatalf("Held = %d, want 4", m.Held())
 	}
 	// Drop the floor so the failed chunk is not immediately replaced.
-	m.options.MinHeld = 0
+	m.opts.MinHeld = 0
 	src.mu.Lock()
 	src.leases[0].renewErr = errors.New("lease lost")
 	src.mu.Unlock()
@@ -584,8 +584,8 @@ func TestCloseReleasesAllAndIdempotent(t *testing.T) {
 	opts.MinHeld = 8
 	m := mustManager(t, src, opts)
 	m.step()
-	if len(m.heldChunks) != 2 {
-		t.Fatalf("held chunks = %d, want 2", len(m.heldChunks))
+	if len(m.chunks) != 2 {
+		t.Fatalf("held chunks = %d, want 2", len(m.chunks))
 	}
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatalf("Close: %v", err)
