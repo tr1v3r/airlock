@@ -32,10 +32,13 @@ func newSharedSource(opts Options) (*sharedSource, error) {
 	if cfg.MaxWait == 0 {
 		cfg.MaxWait = sharedMaxWait
 	}
+
+	// NewShared is constructed before newManager fills defaults in its own copy.
 	timeout := opts.OperationTimeout
 	if timeout <= 0 {
 		timeout = defaultOperationTimeout
 	}
+
 	shared, err := airlock.NewShared(opts.Driver, airlock.SharedOptions{
 		Resource:         opts.Resource,
 		Config:           cfg,
@@ -45,6 +48,7 @@ func newSharedSource(opts Options) (*sharedSource, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &sharedSource{shared: shared}, nil
 }
 
@@ -56,6 +60,7 @@ func (s *sharedSource) Acquire(ctx context.Context, tenant string, weight int) (
 	if err != nil {
 		return nil, err
 	}
+
 	return &sharedChunk{lease: lease}, nil
 }
 
