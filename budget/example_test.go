@@ -28,30 +28,37 @@ func ExampleNew() {
 	if err != nil {
 		panic(err)
 	}
+
 	closeManager := func() {
 		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+
 		if err := manager.Close(closeCtx); err != nil {
 			panic(err)
 		}
 	}
+
 	defer closeManager()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
 	// Acquire waits for the control loop to obtain enough budget for all four
 	// tokens. No caller-side sleep or readiness polling is needed.
 	permit, err := manager.Acquire(ctx, "online", 4)
 	if err != nil {
 		panic(err)
 	}
+
 	defer permit.Release()
+
 	fmt.Println("in use:", manager.Stats().InUse)
 
 	extra, err := manager.TryAcquire("batch", 1)
 	if extra != nil {
 		extra.Release()
 	}
+
 	fmt.Println("full:", errors.Is(err, airlock.ErrWouldBlock))
 
 	// Finish the actual work before releasing its permit. Stop/join workers
@@ -60,6 +67,7 @@ func ExampleNew() {
 	closeManager()
 	_, err = manager.TryAcquire("online", 1)
 	fmt.Println("closed:", errors.Is(err, budget.ErrClosed))
+
 	// Output:
 	// in use: 4
 	// full: true
@@ -79,13 +87,16 @@ type examplePool struct {
 func (p *examplePool) apply(ctx context.Context, cmd airlock.Command) (airlock.Result, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	if err := ctx.Err(); err != nil {
 		return airlock.Result{}, err
 	}
+
 	next, result, _, err := airlock.Transition(p.state, time.Now().UTC(), cmd)
 	if next != nil {
 		p.state = next
 	}
+
 	return result, err
 }
 

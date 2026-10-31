@@ -29,12 +29,15 @@ func (h *poolHarness) execute(ctx context.Context, cmd airlock.Command) (airlock
 	if err := ctx.Err(); err != nil {
 		return airlock.Result{}, err
 	}
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
 	next, result, _, err := airlock.Transition(h.state, time.Now().UTC(), cmd)
 	if next != nil {
 		h.state = next
 	}
+
 	return result, err
 }
 
@@ -69,6 +72,7 @@ func (h *poolHarness) Resize(ctx context.Context, request airlock.ResizeRequest)
 	if err != nil {
 		return airlock.ResourceStatus{}, err
 	}
+
 	return result.ResourceStatus, nil
 }
 
@@ -77,15 +81,19 @@ func (h *poolHarness) InspectResource(ctx context.Context, name string) (airlock
 	if err := ctx.Err(); err != nil {
 		return airlock.ResourceStatus{}, err
 	}
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
 	if h.state == nil {
 		return airlock.ResourceStatus{}, airlock.ErrResourceNotFound
 	}
+
 	observation, err := h.state.Observation()
 	if err != nil {
 		return airlock.ResourceStatus{}, err
 	}
+
 	return observation.Inspect(time.Now().UTC(), name)
 }
 
@@ -94,9 +102,11 @@ func (h *poolHarness) InspectResource(ctx context.Context, name string) (airlock
 func (h *poolHarness) capacityVersion() uint64 {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
 	if h.state == nil {
 		return 0
 	}
+
 	return h.state.CapacityVersion
 }
 
@@ -151,11 +161,14 @@ func newIntegrationManager(t *testing.T, driver airlock.Driver, gateway string) 
 	if err != nil {
 		t.Fatalf("gateway %s: New: %v", gateway, err)
 	}
+
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), testAcquireWait)
 		defer cancel()
+
 		_ = m.Close(ctx)
 	})
+
 	return m
 }
 
@@ -167,9 +180,11 @@ func eventually(t *testing.T, deadline time.Duration, interval time.Duration, de
 		if check() {
 			return
 		}
+
 		if !time.Now().Before(end) {
 			t.Fatalf("condition not met within %s: %s", deadline, description)
 		}
+
 		time.Sleep(interval)
 	}
 }
@@ -182,6 +197,7 @@ func startWorkers(m *Manager, gateway string, n int, stop <-chan struct{}, accou
 		wg.Add(1)
 		go func(seed int64, worker int) {
 			defer wg.Done()
+
 			rng := rand.New(rand.NewSource(seed))
 			tenant := gateway + "-worker"
 			for {
@@ -190,23 +206,28 @@ func startWorkers(m *Manager, gateway string, n int, stop <-chan struct{}, accou
 					return
 				default:
 				}
+
 				ctx, cancel := context.WithTimeout(context.Background(), testAcquireWait)
 				permit, err := m.Acquire(ctx, tenant, 1)
 				cancel()
 				if err != nil {
 					continue
 				}
+
 				if len(accounting) > 0 {
 					accounting[0](1)
 				}
+
 				time.Sleep(time.Duration(1+rng.Intn(8)) * time.Millisecond)
 				if len(accounting) > 0 {
 					accounting[0](-1)
 				}
+
 				permit.Release()
 			}
 		}(time.Now().UnixNano()+int64(i), i)
 	}
+
 	return wg.Wait
 }
 
@@ -227,10 +248,12 @@ func TestIntegrationSafetyAcrossGateways(t *testing.T) {
 				break
 			}
 		}
+
 		if n > testPoolCapacity {
 			exceeded.Store(true)
 		}
 	}
+
 	stop := make(chan struct{})
 	waitA := startWorkers(a, "a", 4, stop, account)
 	waitB := startWorkers(b, "b", 4, stop, account)
@@ -241,6 +264,7 @@ func TestIntegrationSafetyAcrossGateways(t *testing.T) {
 	if exceeded.Load() {
 		t.Fatalf("delivered work exceeded capacity: peak=%d", peak.Load())
 	}
+
 	if active.Load() != 0 || peak.Load() == 0 {
 		t.Fatalf("active=%d peak=%d", active.Load(), peak.Load())
 	}
@@ -324,6 +348,7 @@ func TestIntegrationResizeZeroBlocksNewChunks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resize(0): %v", err)
 	}
+
 	if status.Capacity != 0 {
 		t.Fatalf("Resize(0) reported capacity %d", status.Capacity)
 	}
@@ -342,6 +367,7 @@ func TestIntegrationResizeZeroBlocksNewChunks(t *testing.T) {
 			demandWait()
 			t.Fatalf("banned gateway acquired chunks: Held=%d", held)
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
 
@@ -349,6 +375,7 @@ func TestIntegrationResizeZeroBlocksNewChunks(t *testing.T) {
 	// the control loop has resized the local Airlock to zero.
 	eventually(t, 3*time.Second, 10*time.Millisecond, "banned gateway local admission should stop", func() bool {
 		_, err := c.TryAcquire("drain-tenant", 1)
+
 		return err != nil
 	})
 
@@ -360,9 +387,11 @@ func TestIntegrationResizeZeroBlocksNewChunks(t *testing.T) {
 
 	ctx2, cancel2 := context.WithTimeout(context.Background(), testAcquireWait)
 	defer cancel2()
+
 	if err := a.Close(ctx2); err != nil {
 		t.Fatalf("Close after drain: %v", err)
 	}
+
 	close(stop)
 	wait()
 }
@@ -375,16 +404,20 @@ func TestIntegrationManagerCloseIdempotent(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), testAcquireWait)
 	defer cancel()
+
 	if err := m.Close(ctx); err != nil {
 		t.Fatalf("first Close: %v", err)
 	}
+
 	if err := m.Close(ctx); err != nil {
 		t.Fatalf("second Close should be idempotent, got %v", err)
 	}
+
 	if p, err := m.TryAcquire("post-close", 1); err == nil {
 		p.Release()
 		t.Fatal("post-close admission succeeded")
 	}
+
 	if m.Stats().Capacity < 0 {
 		t.Fatalf("negative capacity after close: %+v", m.Stats())
 	}
